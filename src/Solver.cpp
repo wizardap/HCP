@@ -150,6 +150,12 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // Check for -h/--help as the very first arg (before graph file)
+    if (std::string(argv[1]) == "-h" || std::string(argv[1]) == "--help") {
+        printHelp(argv[0]);
+        return 0;
+    }
+
     std::string graphFile = argv[1];
     Solver solver(graphFile);
     std::string solFile = "";
