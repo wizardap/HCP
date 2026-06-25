@@ -12,5 +12,15 @@ knight-graph: KnightGraphGenerator.cpp
 grid-graph: GridGraphGenerator.cpp
 	$(CXX) $(CXXFLAGS) GridGraphGenerator.cpp -o grid-graph
 
+.PHONY: all clean test
+
 clean:
-	rm -f hcp-solver knight-graph grid-graph
+	rm -f hcp-solver knight-graph grid-graph test_incremental_solver *.o
+
+test: test_incremental_solver
+	./test_incremental_solver
+
+test_incremental_solver: test_incremental_solver.cpp IncrementalSolver.cpp IncrementalSolver.hpp SubtourDetector.cpp SubtourDetector.hpp SecEncoder.cpp SecEncoder.hpp VariableManager.cpp VariableManager.hpp Graph.hpp
+	$(CXX) $(CXXFLAGS) -I../refs/cadical/src test_incremental_solver.cpp IncrementalSolver.cpp SubtourDetector.cpp SecEncoder.cpp VariableManager.cpp -o test_incremental_solver -L../refs/cadical/build -lcadical -L../refs/pblib/build -lpb
+
+
