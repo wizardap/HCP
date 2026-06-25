@@ -2,9 +2,17 @@
 .gemini/
 .codegraph/
 .DS_Store
+.opencode/
 *.swp
 *.swo
 *~
+
+# Opencode Config
+opencode.json
+opencode.jsonc 
+
+# Draft solutions
+
 
 # IDE files
 .vscode/
@@ -23,13 +31,24 @@ dist/
 *.dylib
 *.dll
 
-# Logs and data files
+# Compiled solver binaries
+src/hcp-solver
+src/hcp-encode
+src/hcp-decode
+src/grid-graph
+src/knight-graph
+src/test_incremental_solver
+
+# Generated/temporary graph and solution files
+src/*.edge
+src/*.sat
+src/*.cnf
+src/graphs/
+solutions/
+
+# Logs and solver output
 sol.log
 out.cnf
 out.sat
 result
-
-# Temporary files
-*.tmp
-temp_*.cnf
-temp_*.sat
+solution.sat

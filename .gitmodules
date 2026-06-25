@@ -1,0 +1,12 @@
+[submodule "refs/cadical"]
+	path = refs/cadical
+	url = https://github.com/arminbiere/cadical.git
+[submodule "refs/pblib"]
+	path = refs/pblib
+	url = https://github.com/master-keying/pblib.git
+[submodule "refs/ChineseRemainderEncoding"]
+	path = refs/ChineseRemainderEncoding
+	url = https://github.com/marijnheule/ChineseRemainderEncoding.git
+[submodule "refs/painless"]
+	path = refs/painless
+	url = https://github.com/lip6/painless.git
