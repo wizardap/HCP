@@ -44,6 +44,19 @@ def main():
                     solve_time = t_end - t_start
                     output = proc.stdout + proc.stderr
                     
+                    # Parse variable and clause counts from stderr
+                    for line in proc.stderr.split("\n"):
+                        if "c total variables:" in line:
+                            try:
+                                n_vars = int(line.split("c total variables:")[1].strip())
+                            except:
+                                pass
+                        if "c total clauses:" in line:
+                            try:
+                                n_clauses = int(line.split("c total clauses:")[1].strip())
+                            except:
+                                pass
+                    
                     if "c HAMILTONIAN found" in output:
                         status = "SAT"
                     elif "c UNSAT" in output:

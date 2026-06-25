@@ -26,6 +26,7 @@ IncrementalSolver::~IncrementalSolver() {
 
 void IncrementalSolver::addClause(std::vector<int> const& clause) {
     state = SolverState::UNSOLVED;
+    numClauses++;
     for (int lit : clause) {
         if (lit == INT_MIN) {
             throw std::out_of_range("Literal index cannot be INT_MIN");
@@ -71,6 +72,9 @@ void IncrementalSolver::addClausesFromStream(std::istream& in) {
                 max_var = abs_lit;
             }
             ccadical_add(solver, lit);
+            if (lit == 0) {
+                numClauses++;
+            }
         }
     }
 }
@@ -134,6 +138,10 @@ std::vector<int> IncrementalSolver::getModel() const {
 
 int IncrementalSolver::getNumVars() const {
     return max_var;
+}
+
+int64_t IncrementalSolver::getNumClauses() const {
+    return numClauses;
 }
 
 void IncrementalSolver::setTimeLimit(int64_t ms) {

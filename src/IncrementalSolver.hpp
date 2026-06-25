@@ -54,6 +54,9 @@ public:
     // Returns the maximum variable index added or solved.
     int getNumVars() const;
 
+    // Returns the total number of clauses added.
+    int64_t getNumClauses() const;
+
     // Sets the execution time limit in milliseconds.
     void setTimeLimit(int64_t ms);
 
@@ -63,6 +66,7 @@ public:
 private:
     CCaDiCaL* solver = nullptr;
     int max_var = 0;
+    int64_t numClauses = 0;
     int64_t timeLimitMs = 0;
     std::chrono::steady_clock::time_point startTime;
     SolverState state = SolverState::UNSOLVED;

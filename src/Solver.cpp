@@ -23,10 +23,10 @@ bool Solver::run() {
     }
 
     std::unique_ptr<IAtMostOne> amo;
-    if (amoOption == AtMostOneOption::DEFAULT) {
-        amo.reset(new DefaultAtMostOne());
-    } else if (amoOption == AtMostOneOption::PBLIB) {
+    if (amoOption == AtMostOneOption::PBLIB) {
         amo.reset(new PbLibAtMostOne());
+    } else {
+        amo.reset(new DefaultAtMostOne());
     }
 
     std::unique_ptr<ISymmetryBreaker> sym;
@@ -56,10 +56,10 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
     }
 
     std::unique_ptr<IAtMostOne> amo;
-    if (amoOption == AtMostOneOption::DEFAULT) {
-        amo.reset(new DefaultAtMostOne());
-    } else if (amoOption == AtMostOneOption::PBLIB) {
+    if (amoOption == AtMostOneOption::PBLIB) {
         amo.reset(new PbLibAtMostOne());
+    } else {
+        amo.reset(new DefaultAtMostOne());
     }
 
     std::unique_ptr<ISymmetryBreaker> sym;
@@ -79,6 +79,9 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
     IncrementalSolver isolver(timeLimitMs);
     HcpEncoder encoder(g, cycle, *amo, *sym, sNode, vm);
     encoder.encodeBase(isolver);
+
+    std::cerr << "c total variables: " << isolver.getNumVars() << "\n";
+    std::cerr << "c total clauses: " << isolver.getNumClauses() << "\n";
 
     while (true) {
         auto result = isolver.solve();
