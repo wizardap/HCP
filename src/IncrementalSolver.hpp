@@ -26,7 +26,7 @@ public:
         TIMEOUT
     };
 
-    IncrementalSolver();
+    explicit IncrementalSolver(int64_t timeLimitMs = 0);
     ~IncrementalSolver();
 
     // Disable copy and move operations to manage CaDiCaL resource safely

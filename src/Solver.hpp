@@ -1,0 +1,60 @@
+#ifndef SOLVER_HPP
+#define SOLVER_HPP
+
+#include <string>
+#include <memory>
+#include "Graph.hpp"
+#include "AtMostOne/IAtMostOne.hpp"
+#include "AtMostOne/DefaultAtMostOne.hpp"
+
+class IncrementalSolver;
+
+class Solver {
+public:
+    enum class AtMostOneOption {
+        DEFAULT,
+        PBLIB
+    };
+
+    enum class SymmetryOption {
+        DEFAULT,
+        NONE
+    };
+
+    enum class StartNodeOption {
+        MIN_DEGREE,
+        MAX_DEGREE,
+        FIRST_NODE,
+        SPECIFIC_NODE
+    };
+
+private:
+    std::string graphFile;
+    int cycle;
+    AtMostOneOption amoOption;
+    SymmetryOption symOption;
+    StartNodeOption startNodeOption;
+    int specificStartNode;
+    std::string satSolverCmd;
+
+public:
+    Solver(const std::string& gFile) 
+        : graphFile(gFile), cycle(2), amoOption(AtMostOneOption::DEFAULT), 
+          symOption(SymmetryOption::DEFAULT),
+          startNodeOption(StartNodeOption::MIN_DEGREE), specificStartNode(0), 
+          satSolverCmd("glucose") {}
+
+    void setCycle(int c) { cycle = c; }
+    void setAtMostOneOption(AtMostOneOption opt) { amoOption = opt; }
+    void setStartNodeOption(StartNodeOption opt, int node = 0) { 
+        startNodeOption = opt; 
+        specificStartNode = node; 
+    }
+    void setSymmetryOption(SymmetryOption opt) { symOption = opt; }
+    void setSatSolverCmd(const std::string& cmd) { satSolverCmd = cmd; }
+
+    bool run();
+    bool runIncremental(int64_t timeLimitMs = 600000);
+};
+
+#endif

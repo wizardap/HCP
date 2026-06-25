@@ -8,13 +8,12 @@
 // Forward declaration of C-linkage callback
 extern "C" int ccadical_terminate_callback(void* state);
 
-IncrementalSolver::IncrementalSolver() {
+IncrementalSolver::IncrementalSolver(int64_t timeLimitMs) : timeLimitMs(timeLimitMs) {
     solver = ccadical_init();
     if (!solver) {
         throw std::runtime_error("Failed to initialize CaDiCaL solver: ccadical_init returned nullptr");
     }
     max_var = 0;
-    timeLimitMs = 0;
     state = SolverState::UNSOLVED;
 }
 
@@ -31,11 +30,13 @@ void IncrementalSolver::addClause(std::vector<int> const& clause) {
         if (lit == INT_MIN) {
             throw std::out_of_range("Literal index cannot be INT_MIN");
         }
-        ccadical_add(solver, lit);
         int abs_lit = std::abs(lit);
         if (abs_lit > max_var) {
+            int diff = abs_lit - max_var;
+            ccadical_declare_more_variables(solver, diff);
             max_var = abs_lit;
         }
+        ccadical_add(solver, lit);
     }
     ccadical_add(solver, 0);
 }
@@ -63,11 +64,13 @@ void IncrementalSolver::addClausesFromStream(std::istream& in) {
             if (lit == INT_MIN) {
                 throw std::out_of_range("Literal index cannot be INT_MIN");
             }
-            ccadical_add(solver, lit);
             int abs_lit = std::abs(lit);
             if (abs_lit > max_var) {
+                int diff = abs_lit - max_var;
+                ccadical_declare_more_variables(solver, diff);
                 max_var = abs_lit;
             }
+            ccadical_add(solver, lit);
         }
     }
 }
