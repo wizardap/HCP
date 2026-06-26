@@ -102,7 +102,7 @@ def main():
                 # Step 1: Encode
                 try:
                     subprocess.run(
-                        ["./hcp-solver", graph_path],
+                        ["./hcp-solver", graph_path, "-c", "420"],
                         stdout=open(temp_cnf, "w"),
                         stderr=subprocess.PIPE,
                         check=True
