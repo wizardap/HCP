@@ -37,7 +37,6 @@ private:
     int startNode;
     std::unique_ptr<VariableManager> localVarManager_;
     VariableManager& varManager;
-    std::vector<std::vector<int>> edgeVars; // edgeVars[u][v] = variable for edge u->v
 
     int lfsr(int n, int size, int xor_val) {
         int m = n << 1;
@@ -61,16 +60,14 @@ public:
     HcpEncoder(Graph& g, int c, IAtMostOne& amo, ISymmetryBreaker& sym, int sNode = -1) 
         : graph(g), atMostOneEncoder(amo), symBreaker(sym), maxVar(0), cycle(c), startNode(sNode),
           localVarManager_(new VariableManager(2 * g.getEdges() + 1)),
-          varManager(*localVarManager_), edgeVars() {
-        initEdgeVars();
+          varManager(*localVarManager_) {
     }
     
     // New constructor for incremental mode (uses external VariableManager)
     HcpEncoder(Graph& g, int c, IAtMostOne& amo, ISymmetryBreaker& sym, int sNode, VariableManager& vm) 
         : graph(g), atMostOneEncoder(amo), symBreaker(sym), maxVar(0), cycle(c), startNode(sNode),
           localVarManager_(nullptr),
-          varManager(vm), edgeVars() {
-        initEdgeVars();
+          varManager(vm) {
     }
     
     ~HcpEncoder() = default;
@@ -114,27 +111,12 @@ public:
         solver.addClausesFromStream(ss);
     }
 
-    // Accessor for edge variable mapping (needed by SubtourDetector and SecEncoder)
-    const std::vector<std::vector<int>>& getEdgeVars() const {
-        return edgeVars;
-    }
-
     // Accessor for variable manager (needed by SecEncoder)
     VariableManager& getVariableManager() {
         return varManager;
     }
 
 private:
-
-    void initEdgeVars() {
-        int nNode = graph.getNodes();
-        edgeVars.assign(nNode, std::vector<int>(nNode, 0));
-        for (int i = 0; i < nNode; i++) {
-            for (int j = 0; j < nNode; j++) {
-                edgeVars[i][j] = graph.getAdj(i, j);
-            }
-        }
-    }
 
     void encodeBaseOutput(std::ostream& out) {
         // This contains the original encode() logic but outputs to the given stream
@@ -160,8 +142,8 @@ private:
         }
 
         std::vector<int> firstNeighbors;
-        for (int i = 0; i < nNode; i++) {
-            if (graph.getAdj(i, first)) firstNeighbors.push_back(i);
+        for (auto& [v, _] : graph.getNeighbors(first)) {
+            firstNeighbors.push_back(v);
         }
 
         // Output preamble will be handled by caller in incremental mode
@@ -193,8 +175,8 @@ private:
         // Exactly one successor
         for (int i = 0; i < nNode; i++) {
             neighbors.clear();
-            for (int j = 0; j < nNode; j++) {
-                if (graph.getAdj(i, j)) neighbors.push_back(graph.getAdj(i, j));
+            for (auto& [j, edgeIdx] : graph.getNeighbors(i)) {
+                neighbors.push_back(edgeIdx);
             }
             for (size_t j = 0; j < neighbors.size(); j++) out << neighbors[j] << " ";
             out << "0\n";
@@ -206,8 +188,9 @@ private:
         // Exactly one predecessor
         for (int i = 0; i < nNode; i++) {
             neighbors.clear();
-            for (int j = 0; j < nNode; j++) {
-                if (graph.getAdj(j, i)) neighbors.push_back(graph.getAdj(j, i));
+            for (auto& [j, _] : graph.getNeighbors(i)) {
+                int edgeIdx = graph.getAdj(j, i);
+                if (edgeIdx > 0) neighbors.push_back(edgeIdx);
             }
             for (size_t j = 0; j < neighbors.size(); j++) out << neighbors[j] << " ";
             out << "0\n";
@@ -218,8 +201,8 @@ private:
 
         // one of first neighbors must be the final connection
         neighbors.clear();
-        for (int i = 0; i < nNode; i++) {
-            if (graph.getAdj(i, first)) neighbors.push_back(i);
+        for (auto& [v, _] : graph.getNeighbors(first)) {
+            neighbors.push_back(v);
         }
         for (size_t j = 0; j < neighbors.size(); j++) out << graph.getAdj(neighbors[j], first) << " ";
         out << "0\n";
@@ -352,12 +335,12 @@ private:
 
         // enforce the next relationship
         for (int i = 0; i < nNode; i++) {
-            for (int j = 0; j < nNode; j++) {
-                if (graph.getAdj(i, j) && (j != first)) {
+            for (auto& [j, edgeIdx] : graph.getNeighbors(i)) {
+                if (j != first) {
                     int b = 0;
                     if ((cycle % 2) == 0) {
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b) << " " << bit(i, b) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b) << " -" << bit(i, b) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b) << " " << bit(i, b) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b) << " -" << bit(i, b) << " 0\n";
                         b++;
                     }
 
@@ -365,103 +348,103 @@ private:
                     while (true) {
                         if ((cycle % (1 << k)) == 0) {
                             for (int l = 1; l < k; l++) {
-                                out << "-" << graph.getAdj(i, j) << " " << bit(i, b - l) << " " << bit(j, b) << " -" << bit(i, b) << " 0\n";
-                                out << "-" << graph.getAdj(i, j) << " " << bit(i, b - l) << " -" << bit(j, b) << " " << bit(i, b) << " 0\n";
+                                out << "-" << edgeIdx << " " << bit(i, b - l) << " " << bit(j, b) << " -" << bit(i, b) << " 0\n";
+                                out << "-" << edgeIdx << " " << bit(i, b - l) << " -" << bit(j, b) << " " << bit(i, b) << " 0\n";
                             }
                             for (int l = 1; l < k; l++) out << "-" << bit(i, b - l) << " ";
-                            out << "-" << graph.getAdj(i, j) << " " << bit(j, b) << " " << bit(i, b) << " 0\n";
+                            out << "-" << edgeIdx << " " << bit(j, b) << " " << bit(i, b) << " 0\n";
                             for (int l = 1; l < k; l++) out << "-" << bit(i, b - l) << " ";
-                            out << "-" << graph.getAdj(i, j) << " -" << bit(j, b) << " -" << bit(i, b) << " 0\n";
+                            out << "-" << edgeIdx << " -" << bit(j, b) << " -" << bit(i, b) << " 0\n";
                             b++;
                         } else break;
                         k++;
                     }
 
                     if ((cycle % 3) == 0) {
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b) << " -" << bit(i, b + 1) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b) << " " << bit(i, b + 1) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 1) << " " << bit(i, b) << " -" << bit(i, b + 1) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 1) << " -" << bit(i, b) << " " << bit(i, b + 1) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 1) << " " << bit(i, b) << " " << bit(i, b + 1) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 1) << " -" << bit(i, b) << " -" << bit(i, b + 1) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b) << " -" << bit(i, b + 1) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b) << " " << bit(i, b + 1) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 1) << " " << bit(i, b) << " -" << bit(i, b + 1) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 1) << " -" << bit(i, b) << " " << bit(i, b + 1) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 1) << " " << bit(i, b) << " " << bit(i, b + 1) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 1) << " -" << bit(i, b) << " -" << bit(i, b + 1) << " 0\n";
                         b += 2;
                     }
 
                     if ((cycle % 5) == 0) {
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b) << " -" << bit(i, b) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b) << " -" << bit(i, b + 2) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b) << " " << bit(i, b) << " " << bit(i, b + 2) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 1) << " " << bit(i, b) << " -" << bit(i, b + 1) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 1) << " -" << bit(i, b) << " " << bit(i, b + 1) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 1) << " " << bit(i, b) << " " << bit(i, b + 1) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 1) << " -" << bit(i, b) << " -" << bit(i, b + 1) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 2) << " " << bit(i, b) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 2) << " " << bit(i, b + 1) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 2) << " -" << bit(i, b) << " -" << bit(i, b + 1) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b) << " -" << bit(i, b) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b) << " -" << bit(i, b + 2) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b) << " " << bit(i, b) << " " << bit(i, b + 2) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 1) << " " << bit(i, b) << " -" << bit(i, b + 1) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 1) << " -" << bit(i, b) << " " << bit(i, b + 1) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 1) << " " << bit(i, b) << " " << bit(i, b + 1) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 1) << " -" << bit(i, b) << " -" << bit(i, b + 1) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 2) << " " << bit(i, b) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 2) << " " << bit(i, b + 1) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 2) << " -" << bit(i, b) << " -" << bit(i, b + 1) << " 0\n";
                         b += 3;
                     }
 
                     if ((cycle % 7) == 0) {
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b) << " -" << bit(i, b + 2) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b) << " " << bit(i, b + 2) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 1) << " -" << bit(i, b) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 1) << " " << bit(i, b) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 2) << " " << bit(i, b + 1) << " -" << bit(i, b + 2) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 2) << " -" << bit(i, b + 1) << " " << bit(i, b + 2) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 2) << " " << bit(i, b + 1) << " " << bit(i, b + 2) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 2) << " -" << bit(i, b + 1) << " -" << bit(i, b + 2) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b) << " -" << bit(i, b + 2) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b) << " " << bit(i, b + 2) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 1) << " -" << bit(i, b) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 1) << " " << bit(i, b) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 2) << " " << bit(i, b + 1) << " -" << bit(i, b + 2) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 2) << " -" << bit(i, b + 1) << " " << bit(i, b + 2) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 2) << " " << bit(i, b + 1) << " " << bit(i, b + 2) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 2) << " -" << bit(i, b + 1) << " -" << bit(i, b + 2) << " 0\n";
                         b += 3;
                     }
 
                     if ((cycle % 511) == 0) {
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b) << " -" << bit(i, b + 8) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b) << " " << bit(i, b + 8) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 1) << " -" << bit(i, b) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 1) << " " << bit(i, b) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 2) << " -" << bit(i, b + 1) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 2) << " " << bit(i, b + 1) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 3) << " -" << bit(i, b + 2) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 3) << " " << bit(i, b + 2) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 4) << " -" << bit(i, b + 3) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 4) << " " << bit(i, b + 3) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 5) << " " << bit(i, b + 4) << " -" << bit(i, b + 8) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 5) << " -" << bit(i, b + 4) << " " << bit(i, b + 8) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 5) << " " << bit(i, b + 4) << " " << bit(i, b + 8) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 5) << " -" << bit(i, b + 4) << " -" << bit(i, b + 8) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 6) << " -" << bit(i, b + 5) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 6) << " " << bit(i, b + 5) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 7) << " -" << bit(i, b + 6) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 7) << " " << bit(i, b + 6) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 8) << " -" << bit(i, b + 7) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 8) << " " << bit(i, b + 7) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b) << " -" << bit(i, b + 8) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b) << " " << bit(i, b + 8) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 1) << " -" << bit(i, b) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 1) << " " << bit(i, b) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 2) << " -" << bit(i, b + 1) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 2) << " " << bit(i, b + 1) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 3) << " -" << bit(i, b + 2) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 3) << " " << bit(i, b + 2) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 4) << " -" << bit(i, b + 3) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 4) << " " << bit(i, b + 3) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 5) << " " << bit(i, b + 4) << " -" << bit(i, b + 8) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 5) << " -" << bit(i, b + 4) << " " << bit(i, b + 8) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 5) << " " << bit(i, b + 4) << " " << bit(i, b + 8) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 5) << " -" << bit(i, b + 4) << " -" << bit(i, b + 8) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 6) << " -" << bit(i, b + 5) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 6) << " " << bit(i, b + 5) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 7) << " -" << bit(i, b + 6) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 7) << " " << bit(i, b + 6) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 8) << " -" << bit(i, b + 7) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 8) << " " << bit(i, b + 7) << " 0\n";
                         b += 9;
                     }
 
                     if ((cycle % 1023) == 0) {
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b) << " -" << bit(i, b + 9) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b) << " " << bit(i, b + 9) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 1) << " -" << bit(i, b) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 1) << " " << bit(i, b) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 2) << " -" << bit(i, b + 1) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 2) << " " << bit(i, b + 1) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 3) << " -" << bit(i, b + 2) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 3) << " " << bit(i, b + 2) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 4) << " -" << bit(i, b + 3) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 4) << " " << bit(i, b + 3) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 5) << " " << bit(j, b + 4) << " -" << bit(i, b + 5) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 5) << " " << bit(i, b + 4) << " " << bit(i, b + 5) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 6) << " -" << bit(i, b + 5) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 6) << " " << bit(i, b + 5) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 7) << " -" << bit(i, b + 6) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 7) << " " << bit(i, b + 6) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 8) << " -" << bit(i, b + 7) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 8) << " " << bit(i, b + 7) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 9) << " " << bit(i, b + 8) << " -" << bit(i, b + 10) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 9) << " -" << bit(i, b + 8) << " " << bit(i, b + 10) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 9) << " " << bit(i, b + 8) << " " << bit(i, b + 10) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 9) << " " << bit(i, b + 8) << " -" << bit(i, b + 10) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " " << bit(j, b + 10) << " -" << bit(i, b + 9) << " 0\n";
-                        out << "-" << graph.getAdj(i, j) << " -" << bit(j, b + 10) << " " << bit(i, b + 9) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b) << " -" << bit(i, b + 9) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b) << " " << bit(i, b + 9) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 1) << " -" << bit(i, b) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 1) << " " << bit(i, b) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 2) << " -" << bit(i, b + 1) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 2) << " " << bit(i, b + 1) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 3) << " -" << bit(i, b + 2) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 3) << " " << bit(i, b + 2) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 4) << " -" << bit(i, b + 3) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 4) << " " << bit(i, b + 3) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 5) << " " << bit(j, b + 4) << " -" << bit(i, b + 5) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 5) << " " << bit(i, b + 4) << " " << bit(i, b + 5) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 6) << " -" << bit(i, b + 5) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 6) << " " << bit(i, b + 5) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 7) << " -" << bit(i, b + 6) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 7) << " " << bit(i, b + 6) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 8) << " -" << bit(i, b + 7) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 8) << " " << bit(i, b + 7) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 9) << " " << bit(i, b + 8) << " -" << bit(i, b + 10) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 9) << " -" << bit(i, b + 8) << " " << bit(i, b + 10) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 9) << " " << bit(i, b + 8) << " " << bit(i, b + 10) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 9) << " " << bit(i, b + 8) << " -" << bit(i, b + 10) << " 0\n";
+                        out << "-" << edgeIdx << " " << bit(j, b + 10) << " -" << bit(i, b + 9) << " 0\n";
+                        out << "-" << edgeIdx << " -" << bit(j, b + 10) << " " << bit(i, b + 9) << " 0\n";
                         b += 11;
                     }
                 }

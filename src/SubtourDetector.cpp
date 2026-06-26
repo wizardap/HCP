@@ -48,8 +48,7 @@ std::vector<Component> SubtourDetector::detect(
 
     UnionFind uf(n);
     for (int u = 0; u < n; ++u) {
-        for (int v = 0; v < n; ++v) {
-            int edgeVar = graph.getAdj(u, v);
+        for (auto& [v, edgeVar] : graph.getNeighbors(u)) {
             if (edgeVar > 0 && edgeVar < static_cast<int>(model.size()) && model[edgeVar] > 0) {
                 uf.unite(u, v);
             }

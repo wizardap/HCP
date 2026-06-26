@@ -22,7 +22,7 @@ std::vector<int> SecEncoder::getOutgoingLiterals(const Component& component) {
     int numNodes = graph_.getNodes();
     std::vector<int> validVertices;
     validVertices.reserve(component.vertices.size());
-    
+
     std::vector<bool> inComponent(numNodes, false);
     int totalDegree = 0;
     for (int u : component.vertices) {
@@ -32,17 +32,14 @@ std::vector<int> SecEncoder::getOutgoingLiterals(const Component& component) {
             validVertices.push_back(u);
         }
     }
-    
+
     std::vector<int> literals;
     literals.reserve(totalDegree);
-    
+
     for (int u : validVertices) {
-        for (int v = 0; v < numNodes; ++v) {
+        for (auto& [v, edgeIdx] : graph_.getNeighbors(u)) {
             if (!inComponent[v]) {
-                int edgeVar = graph_.getAdj(u, v);
-                if (edgeVar > 0) {
-                    literals.push_back(edgeVar);
-                }
+                literals.push_back(edgeIdx);
             }
         }
     }
@@ -53,7 +50,7 @@ std::vector<int> SecEncoder::getIncomingLiterals(const Component& component) {
     int numNodes = graph_.getNodes();
     std::vector<int> validVertices;
     validVertices.reserve(component.vertices.size());
-    
+
     std::vector<bool> inComponent(numNodes, false);
     int totalDegree = 0;
     for (int v : component.vertices) {
@@ -63,16 +60,15 @@ std::vector<int> SecEncoder::getIncomingLiterals(const Component& component) {
             validVertices.push_back(v);
         }
     }
-    
+
     std::vector<int> literals;
     literals.reserve(totalDegree);
-    
+
     for (int u = 0; u < numNodes; ++u) {
         if (!inComponent[u]) {
-            for (int v : validVertices) {
-                int edgeVar = graph_.getAdj(u, v);
-                if (edgeVar > 0) {
-                    literals.push_back(edgeVar);
+            for (auto& [v, edgeIdx] : graph_.getNeighbors(u)) {
+                if (inComponent[v]) {
+                    literals.push_back(edgeIdx);
                 }
             }
         }
