@@ -14,7 +14,6 @@
 #include "AtMostOne/DefaultAtMostOne.hpp"
 #include "SymmetryBreaking/ISymmetryBreaker.hpp"
 #include "VariableManager.hpp"
-#include "IncrementalSolver.hpp"
 
 class HcpEncoder {
 private:
@@ -63,13 +62,6 @@ public:
           varManager(*localVarManager_) {
     }
     
-    // New constructor for incremental mode (uses external VariableManager)
-    HcpEncoder(Graph& g, int c, IAtMostOne& amo, ISymmetryBreaker& sym, int sNode, VariableManager& vm) 
-        : graph(g), atMostOneEncoder(amo), symBreaker(sym), maxVar(0), cycle(c), startNode(sNode),
-          localVarManager_(nullptr),
-          varManager(vm) {
-    }
-    
     ~HcpEncoder() = default;
 
     // Backward compatible method - outputs CNF to stdout (uses stringstream and CoutRedirectGuard, no disk write)
@@ -97,23 +89,6 @@ public:
         ss.clear();
         ss.seekg(0, std::ios::beg);
         std::cout << ss.rdbuf();
-    }
-
-    // New method for incremental encoding - adds clauses to solver
-    void encodeBase(IncrementalSolver& solver) {
-        std::stringstream ss;
-        {
-            CoutRedirectGuard guard(ss.rdbuf());
-            encodeBaseOutput(std::cout);
-            std::cout.flush();
-        }
-
-        solver.addClausesFromStream(ss);
-    }
-
-    // Accessor for variable manager (needed by SecEncoder)
-    VariableManager& getVariableManager() {
-        return varManager;
     }
 
 private:
@@ -146,7 +121,6 @@ private:
             firstNeighbors.push_back(v);
         }
 
-        // Output preamble will be handled by caller in incremental mode
         // For backward compatibility in encode(), the caller handles the preamble
 
         // ENCODE CONSTRAINTS - same as original encode() but output to 'out' stream

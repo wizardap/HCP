@@ -7,8 +7,6 @@
 #include "AtMostOne/IAtMostOne.hpp"
 #include "AtMostOne/DefaultAtMostOne.hpp"
 
-class IncrementalSolver;
-
 class Solver {
 public:
     enum class AtMostOneOption {
@@ -54,7 +52,6 @@ public:
     void setSatSolverCmd(const std::string& cmd) { satSolverCmd = cmd; }
 
     bool run();
-    bool runIncremental(int64_t timeLimitMs = 600000);
 };
 
 #endif
