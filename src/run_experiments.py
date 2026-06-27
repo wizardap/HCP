@@ -39,6 +39,7 @@ def main():
             
             n_vars = "N/A"
             n_clauses = "N/A"
+            solve_time = 0.0
             actions = "N/A"
             conflicts = "N/A"
             decisions = "N/A"
@@ -109,6 +110,7 @@ def main():
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
                             text=True,
+                            timeout=10,
                             check=True
                         )
                         # 2. Original C Decoder
@@ -117,6 +119,7 @@ def main():
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
                             text=True,
+                            timeout=10,
                             check=True
                         )
                         if "VERIFIED" in dec_proc.stdout and "VERIFIED" in orig_dec_proc.stdout:
@@ -141,13 +144,16 @@ def main():
                 t_start = time.time()
                 # Step 1: Encode
                 try:
-                    subprocess.run(
-                        ["./hcp-solver", graph_path, "-c", "420"],
-                        stdout=open(temp_cnf, "w"),
-                        stderr=subprocess.PIPE,
-                        check=True
-                    )
+                    with open(temp_cnf, "w") as out_f:
+                        subprocess.run(
+                            ["./hcp-solver", graph_path, "-c", "420"],
+                            stdout=out_f,
+                            stderr=subprocess.PIPE,
+                            check=True
+                        )
                 except Exception as e:
+                    if os.path.exists(temp_cnf):
+                        os.remove(temp_cnf)
                     msg = f"{file:<15} | {'Error':<10} | {'Error':<10} | {'0.00':<15} | {'EncodeErr':<12} | {'No':<10} | {'N/A':<8} | {'N/A':<10} | {'N/A':<10} | {'N/A':<12}"
                     print(msg)
                     log.write(msg + "\n")
@@ -168,12 +174,13 @@ def main():
                 # Step 2: Solve with cadical
                 actions = 1
                 try:
-                    proc = subprocess.run(
-                        ["../refs/cadical/build/cadical", temp_cnf, "-t", "600"],
-                        stdout=open(test_sat, "w"),
-                        stderr=subprocess.PIPE,
-                        timeout=610
-                    )
+                    with open(test_sat, "w") as out_f:
+                        proc = subprocess.run(
+                            ["../refs/cadical/build/cadical", temp_cnf, "-t", "600"],
+                            stdout=out_f,
+                            stderr=subprocess.PIPE,
+                            timeout=610
+                        )
                     t_end = time.time()
                     solve_time = t_end - t_start
                     
@@ -210,18 +217,27 @@ def main():
                 # Step 3: Decode/Verify if SAT
                 if status == "SAT":
                     try:
+                        # Create a clean version of the sat file without stats for the naive C decoder
+                        clean_sat = "temp_clean.sat"
+                        with open(test_sat, "r") as infile, open(clean_sat, "w") as outfile:
+                            for line in infile:
+                                if line.startswith("s ") or line.startswith("v "):
+                                    outfile.write(line)
+
                         dec_proc = subprocess.run(
                             ["./hcp-solver", graph_path, "-d", test_sat],
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
                             text=True,
+                            timeout=10,
                             check=True
                         )
                         orig_dec_proc = subprocess.run(
-                            ["../refs/ChineseRemainderEncoding/hcp-decode", graph_path, test_sat],
+                            ["../refs/ChineseRemainderEncoding/hcp-decode", graph_path, clean_sat],
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
                             text=True,
+                            timeout=10,
                             check=True
                         )
                         if "VERIFIED" in dec_proc.stdout and "VERIFIED" in orig_dec_proc.stdout:
@@ -236,7 +252,7 @@ def main():
                     verified = "N/A"
                     
                 # Clean up temp files
-                for f_tmp in [temp_cnf, test_sat]:
+                for f_tmp in [temp_cnf, test_sat, "temp_clean.sat"]:
                     if os.path.exists(f_tmp):
                         os.remove(f_tmp)
                     
