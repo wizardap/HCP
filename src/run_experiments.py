@@ -7,6 +7,14 @@ import re
 def main():
     incremental = "--incremental" in sys.argv
     graphs_dir = "graphs"
+    
+    # Build original decoder
+    print("c Compiling original hcp-decode...")
+    subprocess.run(
+        ["make", "-C", "../refs/ChineseRemainderEncoding", "hcp-decode"],
+        check=True
+    )
+    
     # Find all .edge files in graphs/
     files = [f for f in os.listdir(graphs_dir) if f.endswith(".edge")]
     # Sort files numerically if possible
@@ -15,23 +23,31 @@ def main():
         return int(match.group()) if match else filename
     files.sort(key=get_num)
     
-    print(f"{'Graph':<15} | {'Variables':<10} | {'Clauses':<10} | {'Solve Time (s)':<15} | {'Status':<12} | {'Verified':<10}")
-    print("-" * 85)
+    # Header
+    header = f"{'Graph':<15} | {'Variables':<10} | {'Clauses':<10} | {'Solve Time (s)':<15} | {'Status':<12} | {'Verified':<10} | {'Actions':<8} | {'Conflicts':<10} | {'Decisions':<10} | {'Propagations':<12}"
+    separator = "-" * 135
+    print(header)
+    print(separator)
     
     log_file = "sol.log"
     with open(log_file, "w") as log:
-        log.write(f"{'Graph':<15} | {'Variables':<10} | {'Clauses':<10} | {'Solve Time (s)':<15} | {'Status':<12} | {'Verified':<10}\n")
-        log.write("-" * 85 + "\n")
+        log.write(header + "\n")
+        log.write(separator + "\n")
         
         for file in files:
             graph_path = os.path.join(graphs_dir, file)
             
+            n_vars = "N/A"
+            n_clauses = "N/A"
+            actions = "N/A"
+            conflicts = "N/A"
+            decisions = "N/A"
+            propagations = "N/A"
+            status = "Unknown"
+            verified = "No"
+            
             if incremental:
-                n_vars = "N/A"
-                n_clauses = "N/A"
                 t_start = time.time()
-                status = "Unknown"
-                solve_time = 0.0
                 try:
                     proc = subprocess.run(
                         ["./hcp-solver", graph_path, "--incremental", "--time-limit", "600"],
@@ -56,6 +72,19 @@ def main():
                                 n_clauses = int(line.split("c total clauses:")[1].strip())
                             except:
                                 pass
+                        if "c incremental actions:" in line:
+                            try:
+                                actions = int(line.split("c incremental actions:")[1].strip())
+                            except:
+                                pass
+                    
+                    # Parse CaDiCaL stats via regex
+                    conf_match = re.search(r'conflicts:\s+(\d+)', output)
+                    dec_match = re.search(r'decisions:\s+(\d+)', output)
+                    prop_match = re.search(r'propagations:\s+(\d+)', output)
+                    if conf_match: conflicts = int(conf_match.group(1))
+                    if dec_match: decisions = int(dec_match.group(1))
+                    if prop_match: propagations = int(prop_match.group(1))
                     
                     if "c HAMILTONIAN found" in output:
                         status = "SAT"
@@ -71,9 +100,10 @@ def main():
                 except Exception as e:
                     status = "SolveErr"
                 
-                verified = "No"
                 if status == "SAT":
+                    # Dual Verification
                     try:
+                        # 1. C++ Decoder
                         dec_proc = subprocess.run(
                             ["./hcp-solver", graph_path, "-d", "solution.sat"],
                             stdout=subprocess.PIPE,
@@ -81,7 +111,15 @@ def main():
                             text=True,
                             check=True
                         )
-                        if "VERIFIED" in dec_proc.stdout:
+                        # 2. Original C Decoder
+                        orig_dec_proc = subprocess.run(
+                            ["../refs/ChineseRemainderEncoding/hcp-decode", graph_path, "solution.sat"],
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            text=True,
+                            check=True
+                        )
+                        if "VERIFIED" in dec_proc.stdout and "VERIFIED" in orig_dec_proc.stdout:
                             verified = "Yes"
                         else:
                             verified = "Failed"
@@ -95,10 +133,12 @@ def main():
                 # Clean up solution file
                 if os.path.exists("solution.sat"):
                     os.remove("solution.sat")
+                    
             else:
                 temp_cnf = "temp_run.cnf"
                 test_sat = "temp_run.sat"
                 
+                t_start = time.time()
                 # Step 1: Encode
                 try:
                     subprocess.run(
@@ -108,15 +148,13 @@ def main():
                         check=True
                     )
                 except Exception as e:
-                    msg = f"{file:<15} | {'Error':<10} | {'Error':<10} | {'0.00':<15} | {'EncodeErr':<12} | {'No':<10}"
+                    msg = f"{file:<15} | {'Error':<10} | {'Error':<10} | {'0.00':<15} | {'EncodeErr':<12} | {'No':<10} | {'N/A':<8} | {'N/A':<10} | {'N/A':<10} | {'N/A':<12}"
                     print(msg)
                     log.write(msg + "\n")
                     log.flush()
                     continue
                     
                 # Extract variables and clauses from temp_cnf
-                n_vars = 0
-                n_clauses = 0
                 try:
                     with open(temp_cnf, "r") as f:
                         first_line = f.readline()
@@ -124,15 +162,11 @@ def main():
                             parts = first_line.split()
                             n_vars = int(parts[2])
                             n_clauses = int(parts[3])
-                except Exception as e:
+                except:
                     pass
                     
                 # Step 2: Solve with cadical
-                # Timeout is 600s
-                t_start = time.time()
-                status = "Unknown"
-                solve_time = 0.0
-                
+                actions = 1
                 try:
                     proc = subprocess.run(
                         ["../refs/cadical/build/cadical", temp_cnf, "-t", "600"],
@@ -147,13 +181,19 @@ def main():
                     is_sat = False
                     is_unsat = False
                     with open(test_sat, "r") as f:
-                        for line in f:
-                            if "SATISFIABLE" in line:
-                                is_sat = True
-                                break
-                            elif "UNSATISFIABLE" in line:
-                                is_unsat = True
-                                break
+                        sat_content = f.read()
+                        if "SATISFIABLE" in sat_content:
+                            is_sat = True
+                        elif "UNSATISFIABLE" in sat_content:
+                            is_unsat = True
+                            
+                        # Parse stats from temp_run.sat
+                        conf_match = re.search(r'conflicts:\s+(\d+)', sat_content)
+                        dec_match = re.search(r'decisions:\s+(\d+)', sat_content)
+                        prop_match = re.search(r'propagations:\s+(\d+)', sat_content)
+                        if conf_match: conflicts = int(conf_match.group(1))
+                        if dec_match: decisions = int(dec_match.group(1))
+                        if prop_match: propagations = int(prop_match.group(1))
                                 
                     if is_sat or proc.returncode == 10:
                         status = "SAT"
@@ -168,7 +208,6 @@ def main():
                     status = "SolveErr"
                     
                 # Step 3: Decode/Verify if SAT
-                verified = "No"
                 if status == "SAT":
                     try:
                         dec_proc = subprocess.run(
@@ -178,7 +217,14 @@ def main():
                             text=True,
                             check=True
                         )
-                        if "VERIFIED" in dec_proc.stdout:
+                        orig_dec_proc = subprocess.run(
+                            ["../refs/ChineseRemainderEncoding/hcp-decode", graph_path, test_sat],
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            text=True,
+                            check=True
+                        )
+                        if "VERIFIED" in dec_proc.stdout and "VERIFIED" in orig_dec_proc.stdout:
                             verified = "Yes"
                         else:
                             verified = "Failed"
@@ -194,7 +240,7 @@ def main():
                     if os.path.exists(f_tmp):
                         os.remove(f_tmp)
                     
-            msg = f"{file:<15} | {n_vars:<10} | {n_clauses:<10} | {solve_time:<15.2f} | {status:<12} | {verified:<10}"
+            msg = f"{file:<15} | {n_vars:<10} | {n_clauses:<10} | {solve_time:<15.2f} | {status:<12} | {verified:<10} | {actions:<8} | {conflicts:<10} | {decisions:<10} | {propagations:<12}"
             print(msg)
             log.write(msg + "\n")
             log.flush()
