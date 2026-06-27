@@ -107,7 +107,6 @@ public:
                 if ((i - visited[a]) == nNode) {
                     std::cout << "c VERIFIED HCP of size " << nNode << "\n";
                     
-                    // Write cycle path to solution.path
                     std::ofstream pathOut("solution.path");
                     if (pathOut.is_open()) {
                         for (size_t k = 0; k < path.size(); ++k) {
@@ -115,6 +114,8 @@ public:
                         }
                         pathOut << "\n";
                         pathOut.close();
+                    } else {
+                        std::cerr << "c Error: Could not write cycle path to solution.path\n";
                     }
                 } else {
                     std::cout << "c ERROR: cycle of size " << (i - visited[a]) << " out of " << nNode << "\n";
