@@ -5,13 +5,14 @@ import subprocess
 import re
 
 def main():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
     incremental = "--incremental" in sys.argv
-    graphs_dir = "graphs"
+    graphs_dir = os.path.join(script_dir, "graphs")
     
     # Build original decoder
     print("c Compiling original hcp-decode...")
     subprocess.run(
-        ["make", "-C", "../refs/ChineseRemainderEncoding", "hcp-decode"],
+        ["make", "-C", os.path.join(script_dir, "../refs/ChineseRemainderEncoding"), "hcp-decode"],
         check=True
     )
     
@@ -29,7 +30,7 @@ def main():
     print(header)
     print(separator)
     
-    log_file = "sol.log"
+    log_file = os.path.join(script_dir, "sol.log")
     with open(log_file, "w") as log:
         log.write(header + "\n")
         log.write(separator + "\n")
@@ -51,11 +52,12 @@ def main():
                 t_start = time.time()
                 try:
                     proc = subprocess.run(
-                        ["./hcp-solver", graph_path, "--incremental", "--time-limit", "600"],
+                        [os.path.join(script_dir, "hcp-solver"), graph_path, "--incremental", "--time-limit", "600"],
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
                         text=True,
-                        timeout=610
+                        timeout=610,
+                        cwd=script_dir
                     )
                     t_end = time.time()
                     solve_time = t_end - t_start
@@ -105,15 +107,16 @@ def main():
                     # Dual Verification
                     try:
                         # Create a clean version of the sat file without stats for the naive C decoder
-                        clean_sat = "temp_clean.sat"
-                        with open("solution.sat", "r") as infile, open(clean_sat, "w") as outfile:
+                        sol_file = os.path.join(script_dir, "solution.sat")
+                        clean_sat = os.path.join(script_dir, "temp_clean.sat")
+                        with open(sol_file, "r") as infile, open(clean_sat, "w") as outfile:
                             for line in infile:
                                 if line.startswith("s ") or line.startswith("v "):
                                     outfile.write(line)
 
                         # 1. C++ Decoder
                         dec_proc = subprocess.run(
-                            ["./hcp-solver", graph_path, "-d", "solution.sat"],
+                            [os.path.join(script_dir, "hcp-solver"), graph_path, "-d", sol_file],
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
                             text=True,
@@ -122,7 +125,7 @@ def main():
                         )
                         # 2. Original C Decoder
                         orig_dec_proc = subprocess.run(
-                            ["../refs/ChineseRemainderEncoding/hcp-decode", graph_path, clean_sat],
+                            [os.path.join(script_dir, "../refs/ChineseRemainderEncoding/hcp-decode"), graph_path, clean_sat],
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
                             text=True,
@@ -136,27 +139,29 @@ def main():
                     except Exception as e:
                         verified = "DecErr"
                     finally:
-                        if os.path.exists("temp_clean.sat"):
-                            os.remove("temp_clean.sat")
+                        clean_sat_path = os.path.join(script_dir, "temp_clean.sat")
+                        if os.path.exists(clean_sat_path):
+                            os.remove(clean_sat_path)
                 elif status == "UNSAT":
                     verified = "N/A"
                 else:
                     verified = "N/A"
                 
                 # Clean up solution file
-                if os.path.exists("solution.sat"):
-                    os.remove("solution.sat")
+                sol_file_path = os.path.join(script_dir, "solution.sat")
+                if os.path.exists(sol_file_path):
+                    os.remove(sol_file_path)
                     
             else:
-                temp_cnf = "temp_run.cnf"
-                test_sat = "temp_run.sat"
+                temp_cnf = os.path.join(script_dir, "temp_run.cnf")
+                test_sat = os.path.join(script_dir, "temp_run.sat")
                 
                 t_start = time.time()
                 # Step 1: Encode
                 try:
                     with open(temp_cnf, "w") as out_f:
                         subprocess.run(
-                            ["./hcp-solver", graph_path, "-c", "420"],
+                            [os.path.join(script_dir, "hcp-solver"), graph_path, "-c", "420"],
                             stdout=out_f,
                             stderr=subprocess.PIPE,
                             check=True
@@ -186,9 +191,9 @@ def main():
                 try:
                     with open(test_sat, "w") as out_f:
                         proc = subprocess.run(
-                            ["../refs/cadical/build/cadical", temp_cnf, "-t", "600"],
+                            [os.path.join(script_dir, "../refs/cadical/build/cadical"), temp_cnf, "-t", "600"],
                             stdout=out_f,
-                            stderr=subprocess.PIPE,
+                            stderr=subprocess.DEVNULL,
                             timeout=610
                         )
                     t_end = time.time()
@@ -228,14 +233,14 @@ def main():
                 if status == "SAT":
                     try:
                         # Create a clean version of the sat file without stats for the naive C decoder
-                        clean_sat = "temp_clean.sat"
+                        clean_sat = os.path.join(script_dir, "temp_clean.sat")
                         with open(test_sat, "r") as infile, open(clean_sat, "w") as outfile:
                             for line in infile:
                                 if line.startswith("s ") or line.startswith("v "):
                                     outfile.write(line)
 
                         dec_proc = subprocess.run(
-                            ["./hcp-solver", graph_path, "-d", test_sat],
+                            [os.path.join(script_dir, "hcp-solver"), graph_path, "-d", test_sat],
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
                             text=True,
@@ -243,7 +248,7 @@ def main():
                             check=True
                         )
                         orig_dec_proc = subprocess.run(
-                            ["../refs/ChineseRemainderEncoding/hcp-decode", graph_path, clean_sat],
+                            [os.path.join(script_dir, "../refs/ChineseRemainderEncoding/hcp-decode"), graph_path, clean_sat],
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
                             text=True,
@@ -262,7 +267,8 @@ def main():
                     verified = "N/A"
                     
                 # Clean up temp files
-                for f_tmp in [temp_cnf, test_sat, "temp_clean.sat"]:
+                clean_sat_path = os.path.join(script_dir, "temp_clean.sat")
+                for f_tmp in [temp_cnf, test_sat, clean_sat_path]:
                     if os.path.exists(f_tmp):
                         os.remove(f_tmp)
                     
