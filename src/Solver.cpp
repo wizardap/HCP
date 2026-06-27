@@ -83,14 +83,24 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
     std::cerr << "c total variables: " << isolver.getNumVars() << "\n";
     std::cerr << "c total clauses: " << isolver.getNumClauses() << "\n";
 
+    int actions = 0;
     while (true) {
+        actions++;
         auto result = isolver.solve();
         if (result == IncrementalSolver::Result::UNSAT) {
             std::cerr << "c UNSAT\n";
+            std::cerr << "c incremental actions: " << actions << "\n";
+            std::cerr << "c total variables: " << isolver.getNumVars() << "\n";
+            std::cerr << "c total clauses: " << isolver.getNumClauses() << "\n";
+            isolver.printStatistics();
             return false;
         }
         if (result == IncrementalSolver::Result::TIMEOUT) {
             std::cerr << "c TIMEOUT\n";
+            std::cerr << "c incremental actions: " << actions << "\n";
+            std::cerr << "c total variables: " << isolver.getNumVars() << "\n";
+            std::cerr << "c total clauses: " << isolver.getNumClauses() << "\n";
+            isolver.printStatistics();
             return false;
         }
         if (result == IncrementalSolver::Result::SAT) {
@@ -120,6 +130,11 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                     return false;
                 }
                 solOut.close();
+
+                std::cerr << "c incremental actions: " << actions << "\n";
+                std::cerr << "c total variables: " << isolver.getNumVars() << "\n";
+                std::cerr << "c total clauses: " << isolver.getNumClauses() << "\n";
+                isolver.printStatistics();
                 return true;
             } else {
                 SecEncoder secEncoder(g);
