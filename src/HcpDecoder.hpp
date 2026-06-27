@@ -99,11 +99,23 @@ public:
 
         visited.assign(nNode + 1, 0);
 
+        std::vector<int> path;
         int a = 1;
         for (int i = 1; i <= nNode + 1; i++) {
+            path.push_back(a);
             if (visited[a]) {
                 if ((i - visited[a]) == nNode) {
                     std::cout << "c VERIFIED HCP of size " << nNode << "\n";
+                    
+                    // Write cycle path to solution.path
+                    std::ofstream pathOut("solution.path");
+                    if (pathOut.is_open()) {
+                        for (size_t k = 0; k < path.size(); ++k) {
+                            pathOut << path[k] << (k == path.size() - 1 ? "" : " ");
+                        }
+                        pathOut << "\n";
+                        pathOut.close();
+                    }
                 } else {
                     std::cout << "c ERROR: cycle of size " << (i - visited[a]) << " out of " << nNode << "\n";
                 }
