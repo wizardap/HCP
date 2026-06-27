@@ -104,6 +104,13 @@ def main():
                 if status == "SAT":
                     # Dual Verification
                     try:
+                        # Create a clean version of the sat file without stats for the naive C decoder
+                        clean_sat = "temp_clean.sat"
+                        with open("solution.sat", "r") as infile, open(clean_sat, "w") as outfile:
+                            for line in infile:
+                                if line.startswith("s ") or line.startswith("v "):
+                                    outfile.write(line)
+
                         # 1. C++ Decoder
                         dec_proc = subprocess.run(
                             ["./hcp-solver", graph_path, "-d", "solution.sat"],
@@ -115,7 +122,7 @@ def main():
                         )
                         # 2. Original C Decoder
                         orig_dec_proc = subprocess.run(
-                            ["../refs/ChineseRemainderEncoding/hcp-decode", graph_path, "solution.sat"],
+                            ["../refs/ChineseRemainderEncoding/hcp-decode", graph_path, clean_sat],
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
                             text=True,
@@ -128,6 +135,9 @@ def main():
                             verified = "Failed"
                     except Exception as e:
                         verified = "DecErr"
+                    finally:
+                        if os.path.exists("temp_clean.sat"):
+                            os.remove("temp_clean.sat")
                 elif status == "UNSAT":
                     verified = "N/A"
                 else:

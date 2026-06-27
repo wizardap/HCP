@@ -114,7 +114,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                     std::cerr << "c Error: Could not write solution to " << solFile << "\n";
                     return false;
                 }
-                solOut << "SATISFIABLE\nv ";
+                solOut << "s SATISFIABLE\nv ";
                 for (int var = 1; var <= isolver.getNumVars(); ++var) {
                     int val = isolver.getModelValue(var);
                     if (val > 0) {
