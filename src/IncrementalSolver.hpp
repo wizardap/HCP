@@ -57,6 +57,9 @@ public:
     // Returns the total number of clauses added.
     int64_t getNumClauses() const;
 
+    // NEW: Print CaDiCaL statistics
+    void printStatistics() const;
+
     // Sets the execution time limit in milliseconds.
     void setTimeLimit(int64_t ms);
 

@@ -144,6 +144,10 @@ int64_t IncrementalSolver::getNumClauses() const {
     return numClauses;
 }
 
+void IncrementalSolver::printStatistics() const {
+    ccadical_print_statistics(solver);
+}
+
 void IncrementalSolver::setTimeLimit(int64_t ms) {
     timeLimitMs = ms;
 }

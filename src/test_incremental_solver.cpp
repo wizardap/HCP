@@ -40,6 +40,9 @@ void testIncrementalSolverBasic() {
     TEST_ASSERT(solver.getModelValue(2) == 1);
     TEST_ASSERT(solver.getModelValue(1) == -1);
     
+    std::cout << "Testing printStatistics():\n";
+    solver.printStatistics();
+    
     solver.addClause({1});
     solver.addClause({-1});
     res = solver.solve();
