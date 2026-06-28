@@ -87,10 +87,16 @@ IncrementalSolver::Result IncrementalSolver::solve() {
         ccadical_set_terminate(solver, nullptr, nullptr);
     }
 
+    auto solveStart = std::chrono::steady_clock::now();
     int res = ccadical_solve(solver);
+    auto solveEnd = std::chrono::steady_clock::now();
 
     // Clean up callback after solving
     ccadical_set_terminate(solver, nullptr, nullptr);
+
+    double duration = std::chrono::duration<double>(solveEnd - solveStart).count();
+    finalSolveTime = duration;
+    totalSolverTime += duration;
 
     if (res == 10) {
         state = SolverState::SAT;
@@ -137,11 +143,22 @@ std::vector<int> IncrementalSolver::getModel() const {
 }
 
 int IncrementalSolver::getNumVars() const {
+    if (solver) {
+        return ccadical_vars(solver);
+    }
     return max_var;
 }
 
 int64_t IncrementalSolver::getNumClauses() const {
     return numClauses;
+}
+
+double IncrementalSolver::getFinalSolveTime() const {
+    return finalSolveTime;
+}
+
+double IncrementalSolver::getTotalSolverTime() const {
+    return totalSolverTime;
 }
 
 void IncrementalSolver::printStatistics() const {

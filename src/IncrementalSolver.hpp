@@ -57,6 +57,10 @@ public:
     // Returns the total number of clauses added.
     int64_t getNumClauses() const;
 
+    // NEW: Get timing statistics in seconds
+    double getFinalSolveTime() const;
+    double getTotalSolverTime() const;
+
     // NEW: Print CaDiCaL statistics
     void printStatistics() const;
 
@@ -73,6 +77,10 @@ private:
     int64_t timeLimitMs = 0;
     std::chrono::steady_clock::time_point startTime;
     SolverState state = SolverState::UNSOLVED;
+
+    // NEW: Timings tracking in seconds
+    double finalSolveTime = 0.0;
+    double totalSolverTime = 0.0;
 
     bool checkTimeout() const;
 };

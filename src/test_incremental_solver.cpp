@@ -42,6 +42,12 @@ void testIncrementalSolverBasic() {
     
     std::cout << "Testing printStatistics():\n";
     solver.printStatistics();
+
+    // Verify solve times
+    TEST_ASSERT(solver.getFinalSolveTime() >= 0.0);
+    TEST_ASSERT(solver.getTotalSolverTime() >= 0.0);
+    std::cout << "Solve times verified: final=" << solver.getFinalSolveTime() 
+              << "s, total=" << solver.getTotalSolverTime() << "s\n";
     
     solver.addClause({1});
     solver.addClause({-1});
