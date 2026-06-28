@@ -39,7 +39,7 @@ def read_path(path_path):
         return []
     return [int(x) for x in content.split()]
 
-def detect_layout(G, num_nodes):
+def detect_layout(G, num_nodes, path_nodes=None, cycle_edges=None, optimize_spring=False):
     # 1. Grid Check
     # Try to factor num_nodes = C * R
     factors = []
@@ -56,7 +56,7 @@ def detect_layout(G, num_nodes):
             if diff == 1 or diff == rows:
                 matching_edges += 1
         # If a significant majority of edges match a grid, assume it's a grid
-        if matching_edges > 0.8 * len(G.edges()):
+        if len(G.edges()) > 0 and matching_edges > 0.8 * len(G.edges()):
             pos = {}
             for u in range(1, num_nodes + 1):
                 col = (u - 1) // rows
@@ -68,15 +68,30 @@ def detect_layout(G, num_nodes):
     s_float = num_nodes**0.5
     s = int(round(s_float))
     if s * s == num_nodes:
-        pos = {}
-        for u in range(1, num_nodes + 1):
-            i = u - 1
-            col = i % s
-            row = i // s
-            pos[u] = (col, s - 1 - row)
-        return pos, "Knight Chessboard"
+        matching_moves = 0
+        for u, v in G.edges():
+            i_u = u - 1
+            i_v = v - 1
+            r = abs((i_u % s) - (i_v % s))
+            c = abs((i_u // s) - (i_v // s))
+            if (r == 1 and c == 2) or (r == 2 and c == 1):
+                matching_moves += 1
+        # If majority of edges match knight moves, classify as Knight Chessboard
+        if len(G.edges()) > 0 and matching_moves > 0.8 * len(G.edges()):
+            pos = {}
+            for u in range(1, num_nodes + 1):
+                i = u - 1
+                col = i % s
+                row = i // s
+                pos[u] = (col, s - 1 - row)
+            return pos, "Knight Chessboard"
 
     # 3. Fallback: Spring Layout
+    if optimize_spring and path_nodes and cycle_edges:
+        CycleG = nx.Graph()
+        CycleG.add_nodes_from(path_nodes)
+        CycleG.add_edges_from(cycle_edges)
+        return nx.spring_layout(CycleG), "Spring (Cycle Subgraph)"
     return nx.spring_layout(G), "Spring"
 
 def visualize(graph_path, path_path, output_path):
@@ -94,15 +109,16 @@ def visualize(graph_path, path_path, output_path):
         # Close cycle
         cycle_edges.append((path_nodes[-1], path_nodes[0]))
         
-    pos, layout_type = detect_layout(G, num_nodes)
+    is_large_or_dense = (num_nodes > 500 or len(G.edges()) > 5000)
+    pos, layout_type = detect_layout(G, num_nodes, path_nodes=path_nodes, cycle_edges=cycle_edges, optimize_spring=is_large_or_dense)
     print(f"c Detected layout style: {layout_type}")
     
     plt.figure(figsize=(10, 10))
     plt.title(f"Hamiltonian Cycle on {os.path.basename(graph_path)}\nNodes: {num_nodes}, Layout: {layout_type}")
     
-    # Rendering threshold for large graphs to prevent CPU/memory exhaust
-    if num_nodes > 1000:
-        print("c Large graph detected. Rendering ONLY the cycle path to prevent memory exhaustion.")
+    # Rendering threshold for large/dense graphs to prevent CPU/memory exhaust
+    if is_large_or_dense:
+        print("c Large/dense graph detected. Rendering ONLY the cycle path to prevent memory exhaustion.")
         # Draw only cycle nodes and cycle edges
         nx.draw_networkx_nodes(G, pos, nodelist=path_nodes, node_size=10, node_color='blue')
         nx.draw_networkx_edges(G, pos, edgelist=cycle_edges, edge_color='red', width=2.0, arrows=True, arrowsize=8)

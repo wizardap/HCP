@@ -23,6 +23,7 @@ def parse_args():
 
 def main():
     args = parse_args()
+    script_dir = os.path.dirname(os.path.abspath(__file__))
     files = [f for f in os.listdir(GRAPHS_DIR) if f.endswith(".edge")]
 
     def get_num(filename):
@@ -63,8 +64,8 @@ def main():
             if args.cycle is not None:
                 cmd.append(str(args.cycle))
 
-            temp_cnf = "temp_cre.cnf"
-            temp_sat = "temp_cre.sat"
+            temp_cnf = os.path.join(script_dir, "temp_cre.cnf")
+            temp_sat = os.path.join(script_dir, "temp_cre.sat")
 
             # Step 1: Encode with CRE
             n_vars = 0
@@ -86,6 +87,8 @@ def main():
                         n_vars = int(parts[2])
                         n_clauses = int(parts[3])
             except Exception as e:
+                if os.path.exists(temp_cnf):
+                    os.remove(temp_cnf)
                 cycle_str = str(args.cycle) if args.cycle is not None else "auto"
                 msg = f"{file:<15} | {nNode:<9} | {cycle_str:<7} | {'Error':<10} | {'Error':<10} | {'0.00':<15} | {'EncodeErr':<12} | {'No':<10}"
                 print(msg)

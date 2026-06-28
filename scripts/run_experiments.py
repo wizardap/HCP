@@ -185,12 +185,13 @@ def main():
                 t_start = time.time()
                 # Step 1: Encode
                 try:
-                    subprocess.run(
-                        [os.path.join(script_dir, "../src/hcp-solver"), graph_path, "-c", "420"],
-                        stdout=open(temp_cnf, "w"),
-                        stderr=subprocess.PIPE,
-                        check=True
-                    )
+                    with open(temp_cnf, "w") as out_f:
+                        subprocess.run(
+                            [os.path.join(script_dir, "../src/hcp-solver"), graph_path, "-c", "420"],
+                            stdout=out_f,
+                            stderr=subprocess.PIPE,
+                            check=True
+                        )
                 except Exception as e:
                     if os.path.exists(temp_cnf):
                         os.remove(temp_cnf)
