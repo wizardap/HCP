@@ -47,6 +47,7 @@ def main():
             propagations = "N/A"
             status = "Unknown"
             verified = "No"
+            temp_stdout = os.path.join(script_dir, "temp_run_stdout.sat")
             
             if incremental:
                 t_start = time.time()
@@ -189,9 +190,9 @@ def main():
                 # Step 2: Solve with cadical
                 actions = 1
                 try:
-                    with open(test_sat, "w") as out_f:
+                    with open(temp_stdout, "w") as out_f:
                         proc = subprocess.run(
-                            [os.path.join(script_dir, "../refs/cadical/build/cadical"), temp_cnf, "-t", "600"],
+                            [os.path.join(script_dir, "../refs/cadical/build/cadical"), temp_cnf, "-w", test_sat, "-t", "600"],
                             stdout=out_f,
                             stderr=subprocess.DEVNULL,
                             timeout=610
@@ -199,23 +200,22 @@ def main():
                     t_end = time.time()
                     solve_time = t_end - t_start
                     
-                    # Check status
+                    # Check status and parse stats from temp_stdout line-by-line (prevents large memory footprint)
                     is_sat = False
                     is_unsat = False
-                    with open(test_sat, "r") as f:
-                        sat_content = f.read()
-                        if "SATISFIABLE" in sat_content:
-                            is_sat = True
-                        elif "UNSATISFIABLE" in sat_content:
-                            is_unsat = True
-                            
-                        # Parse stats from temp_run.sat
-                        conf_match = re.search(r'conflicts:\s+(\d+)', sat_content)
-                        dec_match = re.search(r'decisions:\s+(\d+)', sat_content)
-                        prop_match = re.search(r'propagations:\s+(\d+)', sat_content)
-                        if conf_match: conflicts = int(conf_match.group(1))
-                        if dec_match: decisions = int(dec_match.group(1))
-                        if prop_match: propagations = int(prop_match.group(1))
+                    if os.path.exists(temp_stdout):
+                        with open(temp_stdout, "r") as f:
+                            for line in f:
+                                if "SATISFIABLE" in line:
+                                    is_sat = True
+                                elif "UNSATISFIABLE" in line:
+                                    is_unsat = True
+                                conf_match = re.search(r'conflicts:\s+(\d+)', line)
+                                dec_match = re.search(r'decisions:\s+(\d+)', line)
+                                prop_match = re.search(r'propagations:\s+(\d+)', line)
+                                if conf_match: conflicts = int(conf_match.group(1))
+                                if dec_match: decisions = int(dec_match.group(1))
+                                if prop_match: propagations = int(prop_match.group(1))
                                 
                     if is_sat or proc.returncode == 10:
                         status = "SAT"
@@ -268,7 +268,7 @@ def main():
                     
                 # Clean up temp files
                 clean_sat_path = os.path.join(script_dir, "temp_clean.sat")
-                for f_tmp in [temp_cnf, test_sat, clean_sat_path]:
+                for f_tmp in [temp_cnf, test_sat, clean_sat_path, temp_stdout]:
                     if os.path.exists(f_tmp):
                         os.remove(f_tmp)
                     
