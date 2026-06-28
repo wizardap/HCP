@@ -143,9 +143,6 @@ std::vector<int> IncrementalSolver::getModel() const {
 }
 
 int IncrementalSolver::getNumVars() const {
-    if (solver) {
-        return ccadical_vars(solver);
-    }
     return max_var;
 }
 

@@ -92,6 +92,8 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
             std::cerr << "c incremental actions: " << actions << "\n";
             std::cerr << "c total variables: " << isolver.getNumVars() << "\n";
             std::cerr << "c total clauses: " << isolver.getNumClauses() << "\n";
+            std::cerr << "c final solve time: " << isolver.getFinalSolveTime() << "\n";
+            std::cerr << "c total solver time: " << isolver.getTotalSolverTime() << "\n";
             isolver.printStatistics();
             return false;
         }
@@ -100,6 +102,8 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
             std::cerr << "c incremental actions: " << actions << "\n";
             std::cerr << "c total variables: " << isolver.getNumVars() << "\n";
             std::cerr << "c total clauses: " << isolver.getNumClauses() << "\n";
+            std::cerr << "c final solve time: " << isolver.getFinalSolveTime() << "\n";
+            std::cerr << "c total solver time: " << isolver.getTotalSolverTime() << "\n";
             isolver.printStatistics();
             return false;
         }
@@ -134,6 +138,8 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                 std::cerr << "c incremental actions: " << actions << "\n";
                 std::cerr << "c total variables: " << isolver.getNumVars() << "\n";
                 std::cerr << "c total clauses: " << isolver.getNumClauses() << "\n";
+                std::cerr << "c final solve time: " << isolver.getFinalSolveTime() << "\n";
+                std::cerr << "c total solver time: " << isolver.getTotalSolverTime() << "\n";
                 isolver.printStatistics();
                 return true;
             } else {
