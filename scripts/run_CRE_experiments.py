@@ -8,7 +8,7 @@ CRE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "refs",
 CADICAL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "refs", "cadical", "build", "cadical")
 HCP_ENCODE = os.path.join(CRE_DIR, "hcp-encode")
 HCP_DECODE = os.path.join(CRE_DIR, "hcp-decode")
-GRAPHS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "graphs")
+GRAPHS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "graphs")
 
 def parse_args():
     import argparse
@@ -39,7 +39,7 @@ def main():
     print(f"{'Graph':<15} | {'Vertices':<9} | {'Cycle':<7} | {'Variables':<10} | {'Clauses':<10} | {'Solve Time (s)':<15} | {'Status':<12} | {'Verified':<10}")
     print("-" * 100)
 
-    log_file = "CRE_sol.log"
+    log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "CRE_sol.log")
     with open(log_file, "w") as log:
         log.write(f"{'Graph':<15} | {'Vertices':<9} | {'Cycle':<7} | {'Variables':<10} | {'Clauses':<10} | {'Solve Time (s)':<15} | {'Status':<12} | {'Verified':<10}\n")
         log.write("-" * 100 + "\n")

@@ -7,10 +7,10 @@ import shutil
 
 def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    # By default, runs in incremental mode. Add --non-incremental to run non-incremental.
     non_incremental = "--non-incremental" in sys.argv
     incremental = not non_incremental
-    graphs_dir = os.path.join(script_dir, "graphs")
+    # Resolve to root-level graphs/
+    graphs_dir = os.path.join(script_dir, "../graphs")
     
     # Build original decoder
     print("c Compiling original hcp-decode...")
@@ -19,8 +19,8 @@ def main():
         check=True
     )
     
-    # Ensure solution_paths directory exists
-    solution_paths_dir = os.path.join(script_dir, "solution_paths")
+    # Ensure root-level solution_paths directory exists
+    solution_paths_dir = os.path.join(script_dir, "../solution_paths")
     if os.path.exists(solution_paths_dir):
         shutil.rmtree(solution_paths_dir)
     os.makedirs(solution_paths_dir)
@@ -36,7 +36,8 @@ def main():
     # CSV Header
     header = "Graph,Total Variables,Total Clauses,Total Runtime (s),Total Solver Time (s),Final Solve Time (s),Status,Verified,Actions,Conflicts,Decisions,Propagations"
     
-    log_file = os.path.join(script_dir, "sol.csv")
+    # Resolve to root-level sol.csv
+    log_file = os.path.join(script_dir, "../sol.csv")
     with open(log_file, "w") as log:
         log.write(header + "\n")
         
@@ -59,18 +60,18 @@ def main():
             propagations = "N/A"
             status = "Unknown"
             verified = "No"
-            temp_stdout = os.path.join(script_dir, "temp_run_stdout.sat")
+            temp_stdout = os.path.join(script_dir, "../src/temp_run_stdout.sat")
             
             if incremental:
                 t_start = time.time()
                 try:
                     proc = subprocess.run(
-                        [os.path.join(script_dir, "hcp-solver"), graph_path, "--incremental", "--time-limit", "600"],
+                        [os.path.join(script_dir, "../src/hcp-solver"), graph_path, "--incremental", "--time-limit", "600"],
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
                         text=True,
                         timeout=610,
-                        cwd=script_dir
+                        cwd=os.path.join(script_dir, "../src")
                     )
                     t_end = time.time()
                     solve_time = t_end - t_start
@@ -129,21 +130,21 @@ def main():
                 if status == "SAT":
                     # Dual Verification
                     try:
-                        sol_path = os.path.join(script_dir, "solution.sat")
+                        sol_path = os.path.join(script_dir, "../src/solution.sat")
                         # Create a clean version of the sat file without stats for the naive C decoder
-                        clean_sat = os.path.join(script_dir, "temp_clean.sat")
+                        clean_sat = os.path.join(script_dir, "../src/temp_clean.sat")
                         with open(sol_path, "r") as infile, open(clean_sat, "w") as outfile:
                             for line in infile:
                                 if line.startswith("s ") or line.startswith("v "):
                                     outfile.write(line)
                                     
                         dec_proc = subprocess.run(
-                            [os.path.join(script_dir, "hcp-solver"), graph_path, "-d", sol_path],
+                            [os.path.join(script_dir, "../src/hcp-solver"), graph_path, "-d", sol_path],
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
                             text=True,
                             timeout=10,
-                            cwd=script_dir
+                            cwd=os.path.join(script_dir, "../src")
                         )
                         orig_dec_proc = subprocess.run(
                             [os.path.join(script_dir, "../refs/ChineseRemainderEncoding/hcp-decode"), graph_path, clean_sat],
@@ -151,12 +152,12 @@ def main():
                             stderr=subprocess.PIPE,
                             text=True,
                             timeout=10,
-                            cwd=script_dir
+                            cwd=os.path.join(script_dir, "../src")
                         )
                         if "VERIFIED" in dec_proc.stdout and "VERIFIED" in orig_dec_proc.stdout:
                             verified = "Yes"
                             # Copy solution.path to solution_paths directory
-                            source_path = os.path.join(script_dir, "solution.path")
+                            source_path = os.path.join(script_dir, "../src/solution.path")
                             dest_path = os.path.join(solution_paths_dir, f"{graph_name}.path")
                             if os.path.exists(source_path):
                                 shutil.copy(source_path, dest_path)
@@ -170,22 +171,22 @@ def main():
                     verified = "N/A"
                 
                 # Clean up solution and clean_sat files
-                sol_path = os.path.join(script_dir, "solution.sat")
-                clean_sat_path = os.path.join(script_dir, "temp_clean.sat")
-                path_file = os.path.join(script_dir, "solution.path")
+                sol_path = os.path.join(script_dir, "../src/solution.sat")
+                clean_sat_path = os.path.join(script_dir, "../src/temp_clean.sat")
+                path_file = os.path.join(script_dir, "../src/solution.path")
                 for f_tmp in [sol_path, clean_sat_path, path_file]:
                     if os.path.exists(f_tmp):
                         os.remove(f_tmp)
                         
             else:
-                temp_cnf = os.path.join(script_dir, "temp_run.cnf")
-                test_sat = os.path.join(script_dir, "temp_run.sat")
+                temp_cnf = os.path.join(script_dir, "../src/temp_run.cnf")
+                test_sat = os.path.join(script_dir, "../src/temp_run.sat")
                 
                 t_start = time.time()
                 # Step 1: Encode
                 try:
                     subprocess.run(
-                        [os.path.join(script_dir, "hcp-solver"), graph_path, "-c", "420"],
+                        [os.path.join(script_dir, "../src/hcp-solver"), graph_path, "-c", "420"],
                         stdout=open(temp_cnf, "w"),
                         stderr=subprocess.PIPE,
                         check=True
@@ -257,19 +258,19 @@ def main():
                 # Step 3: Decode/Verify if SAT
                 if status == "SAT":
                     try:
-                        clean_sat = os.path.join(script_dir, "temp_clean.sat")
+                        clean_sat = os.path.join(script_dir, "../src/temp_clean.sat")
                         with open(test_sat, "r") as infile, open(clean_sat, "w") as outfile:
                             for line in infile:
                                 if line.startswith("s ") or line.startswith("v "):
                                     outfile.write(line)
                                     
                         dec_proc = subprocess.run(
-                            [os.path.join(script_dir, "hcp-solver"), graph_path, "-d", test_sat],
+                            [os.path.join(script_dir, "../src/hcp-solver"), graph_path, "-d", test_sat],
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
                             text=True,
                             timeout=10,
-                            cwd=script_dir
+                            cwd=os.path.join(script_dir, "../src")
                         )
                         orig_dec_proc = subprocess.run(
                             [os.path.join(script_dir, "../refs/ChineseRemainderEncoding/hcp-decode"), graph_path, clean_sat],
@@ -277,12 +278,12 @@ def main():
                             stderr=subprocess.PIPE,
                             text=True,
                             timeout=10,
-                            cwd=script_dir
+                            cwd=os.path.join(script_dir, "../src")
                         )
                         if "VERIFIED" in dec_proc.stdout and "VERIFIED" in orig_dec_proc.stdout:
                             verified = "Yes"
                             # Copy solution.path to solution_paths directory
-                            source_path = os.path.join(script_dir, "solution.path")
+                            source_path = os.path.join(script_dir, "../src/solution.path")
                             dest_path = os.path.join(solution_paths_dir, f"{graph_name}.path")
                             if os.path.exists(source_path):
                                 shutil.copy(source_path, dest_path)
@@ -296,8 +297,8 @@ def main():
                     verified = "N/A"
                     
                 # Clean up temp files
-                clean_sat_path = os.path.join(script_dir, "temp_clean.sat")
-                path_file = os.path.join(script_dir, "solution.path")
+                clean_sat_path = os.path.join(script_dir, "../src/temp_clean.sat")
+                path_file = os.path.join(script_dir, "../src/solution.path")
                 for f_tmp in [temp_cnf, test_sat, clean_sat_path, path_file]:
                     if os.path.exists(f_tmp):
                         os.remove(f_tmp)
