@@ -1,4 +1,4 @@
-# Design Spec: Solution Path Visualization Tool
+# Design Spec: Solution Path Visualization Tool and Repository Reorganization
 
 **Date:** 2026-06-28  
 **Status:** Approved  
@@ -7,48 +7,76 @@
 
 ## 1. Problem Statement
 
-To inspect and verify Hamiltonian Cycle solutions, we need a command-line tool `src/visualize.py` that reads DIMACS graph files (`.edge`) and cycle path sequence files (`.path`), renders the graph, highlights the cycle, and saves the result as a static PNG/SVG image.
+To inspect and verify Hamiltonian Cycle solutions, we need a command-line tool `scripts/visualize.py` that reads DIMACS graph files (`.edge`) and cycle path sequence files (`.path`), renders the graph, highlights the cycle, and saves the result as a static PNG/SVG image.
 
-The tool must handle:
-1. **Large Scale Graphs:** Prevent memory exhaustion and visual clutter by only rendering the cycle path (and skipping background edges) for graphs with more than 1000 nodes.
-2. **Structural Layouts:** Position nodes correctly on a 2D plane for grid graphs and knight-move graphs to make verification visually clear.
-3. **Execution Modes:** Support both batch-processing all solutions and visualizing a single graph.
+Additionally, we need to reorganize the workspace directory structure to separate C++ source code, Python automation scripts, and input/output client data.
 
 ---
 
-## 2. Architecture & Design
+## 2. Directory Reorganization
 
-### 2.1. Dependencies
-Dependencies are declared in `src/requirements.txt`:
+The repository structure will be reorganized as follows:
+
+```
+HCP/
+├── graphs/                      # Client input graphs (*.edge)
+├── solution_paths/              # Output node cycle sequences (*.path)
+├── visualizations/              # Generated visualization PNG/SVG files
+├── sol.csv                      # Experiments results CSV
+├── scripts/                     # Python scripts
+│   ├── run_experiments.py       # Benchmark runner
+│   ├── run_CRE_experiments.py   # Chinese Remainder Encoding benchmark
+│   ├── visualize.py             # New visualization script
+│   └── requirements.txt         # Python dependencies
+├── src/                         # C++ source code and binaries
+│   ├── AtMostOne/               
+│   ├── SymmetryBreaking/        
+│   ├── *.cpp                    
+│   ├── *.hpp                    
+│   ├── Makefile                 
+│   ├── hcp-solver               # Compiled binary
+│   ├── grid-graph               # Compiled binary
+│   └── knight-graph             # Compiled binary
+└── refs/                        # External solver references (CaDiCaL, etc.)
+```
+
+---
+
+## 3. Visualization Design
+
+### 3.1. Dependencies (`scripts/requirements.txt`)
 - `networkx>=3.0`
 - `matplotlib>=3.5`
 
-### 2.2. Inputs and Output Directory
-- Graph files: `src/graphs/<graph_name>.edge`
-- Path files: `src/solution_paths/<graph_name>.path`
-- Visualizations: `src/visualizations/<graph_name>.png`
+### 3.2. CLI Interface
+- **Batch Mode (Default):** Running `python3 scripts/visualize.py` scans `solution_paths/` and generates visualizations in `visualizations/`.
+- **Single-File Mode:**
+  ```bash
+  python3 scripts/visualize.py --graph graphs/graph48.edge --path solution_paths/graph48.path --output graph48.png
+  ```
 
-### 2.3. Layout Logic
-To determine node coordinates:
-1. **Grid detection:** Check if the node count $V$ matches a grid $C \times R$ where edges match grid adjacency. If detected, position node $u$ at:
-   - $x = (u - 1) / R$
-   - $y = R - ((u - 1) \% R)$
-2. **Knight Tour detection:** Check if the node count $V$ is a perfect square $S^2$ matching chessboard coordinate layout:
-   - $x = (u - 1) \% S$
-   - $y = S - ((u - 1) / S)$
-3. **Fallback:** Use `networkx.spring_layout` (force-directed layout).
-
-### 2.4. Drawing Logic
-- Set Matplotlib to non-interactive backend `matplotlib.use('Agg')` on startup.
-- Nodes count $V \leq 1000$: Render all edges in thin light-gray, overlay the cycle in thick red/orange.
-- Nodes count $V > 1000$: Render only the cycle path (nodes and cycle edges) to prevent memory crashes.
+### 3.3. Layout and Rendering Logic
+1. **Headless Execution:** Configure `matplotlib.use('Agg')` immediately on startup.
+2. **Coordinates Layout:**
+   - **Grid detection:** If node count $V = C \times R$ and edge structures match grid neighbors, place node $u$ at:
+     - $x = (u - 1) / R$
+     - $y = R - ((u - 1) \% R)$
+   - **Knight Tour detection:** If node count $V = S^2$, place node $u$ at chessboard coords:
+     - $x = (u - 1) \% S$
+     - $y = S - ((u - 1) / S)$
+   - **Fallback:** Use `networkx.spring_layout`.
+3. **Large Graph Optimization:**
+   - If node count $V > 1000$, do not draw background edges. Only render the cycle path (nodes and cycle edges) to avoid freezing or crashing.
+   - If $V \leq 1000$, draw all background edges in thin light-gray, overlaying the cycle in thick red/orange.
 
 ---
 
-## 3. Test & Verification Plan
+## 4. Test & Verification Plan
 
-1. **Setup:** Install dependencies via `pip install -r src/requirements.txt`.
-2. **Single-Run Test:** Run on `graph48.edge` (338 nodes grid graph) and verify:
-   - Node positioning aligns perfectly as a grid.
-   - Output `graph48.png` is generated and clearly displays the Hamiltonian Cycle.
-3. **Batch-Run Test:** Run `python3 src/visualize.py` to batch-process all 18 solved graphs.
+1. **Reorganization Verification:**
+   - Move directories/files and update path resolutions in `scripts/run_experiments.py` and `scripts/run_CRE_experiments.py`.
+   - Run `python3 scripts/run_experiments.py` to verify the pipeline compiles, executes, and outputs to the new root-level `sol.csv` and `solution_paths/`.
+2. **Dependency Setup:** Run `pip install -r scripts/requirements.txt`.
+3. **Visualizer Validation:**
+   - Run `python3 scripts/visualize.py` to batch-process all solutions.
+   - Verify that `visualizations/graph48.png` correctly plots the 338-node grid graph with no tangles.
