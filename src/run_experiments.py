@@ -172,7 +172,8 @@ def main():
                 # Clean up solution and clean_sat files
                 sol_path = os.path.join(script_dir, "solution.sat")
                 clean_sat_path = os.path.join(script_dir, "temp_clean.sat")
-                for f_tmp in [sol_path, clean_sat_path]:
+                path_file = os.path.join(script_dir, "solution.path")
+                for f_tmp in [sol_path, clean_sat_path, path_file]:
                     if os.path.exists(f_tmp):
                         os.remove(f_tmp)
                         
@@ -296,7 +297,8 @@ def main():
                     
                 # Clean up temp files
                 clean_sat_path = os.path.join(script_dir, "temp_clean.sat")
-                for f_tmp in [temp_cnf, test_sat, clean_sat_path]:
+                path_file = os.path.join(script_dir, "solution.path")
+                for f_tmp in [temp_cnf, test_sat, clean_sat_path, path_file]:
                     if os.path.exists(f_tmp):
                         os.remove(f_tmp)
                         
