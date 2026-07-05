@@ -25,11 +25,18 @@ def main():
         shutil.rmtree(solution_paths_dir)
     os.makedirs(solution_paths_dir)
     
-    # Find all .edge files in graphs/
-    files = [f for f in os.listdir(graphs_dir) if f.endswith(".edge")]
+    # Find all .edge files in graphs/ recursively
+    files = []
+    for root, _, filenames in os.walk(graphs_dir):
+        for f in filenames:
+            if f.endswith(".edge"):
+                rel_path = os.path.relpath(os.path.join(root, f), graphs_dir)
+                files.append(rel_path)
+    
     # Sort files numerically if possible
     def get_num(filename):
-        match = re.search(r'\d+', filename)
+        base = os.path.basename(filename)
+        match = re.search(r'\d+', base)
         return int(match.group()) if match else filename
     files.sort(key=get_num)
     
@@ -159,6 +166,7 @@ def main():
                             # Copy solution.path to solution_paths directory
                             source_path = os.path.join(script_dir, "../src/solution.path")
                             dest_path = os.path.join(solution_paths_dir, f"{graph_name}.path")
+                            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
                             if os.path.exists(source_path):
                                 shutil.copy(source_path, dest_path)
                         else:
@@ -286,6 +294,7 @@ def main():
                             # Copy solution.path to solution_paths directory
                             source_path = os.path.join(script_dir, "../src/solution.path")
                             dest_path = os.path.join(solution_paths_dir, f"{graph_name}.path")
+                            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
                             if os.path.exists(source_path):
                                 shutil.copy(source_path, dest_path)
                         else:
