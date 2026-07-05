@@ -9,6 +9,20 @@ def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     non_incremental = "--non-incremental" in sys.argv
     incremental = not non_incremental
+    
+    # Parse time-limit argument (default: 600)
+    time_limit = 600
+    if "-t" in sys.argv:
+        try:
+            time_limit = int(sys.argv[sys.argv.index("-t") + 1])
+        except (IndexError, ValueError):
+            pass
+    elif "--time-limit" in sys.argv:
+        try:
+            time_limit = int(sys.argv[sys.argv.index("--time-limit") + 1])
+        except (IndexError, ValueError):
+            pass
+
     # Resolve to root-level graphs/
     graphs_dir = os.path.join(script_dir, "../graphs")
     
@@ -91,11 +105,11 @@ def main():
                 t_start = time.time()
                 try:
                     proc = subprocess.run(
-                        [os.path.join(script_dir, "../src/hcp-solver"), graph_path, "--incremental", "--time-limit", "600"],
+                        [os.path.join(script_dir, "../src/hcp-solver"), graph_path, "--incremental", "--time-limit", str(time_limit)],
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
                         text=True,
-                        timeout=610,
+                        timeout=time_limit + 10,
                         cwd=os.path.join(script_dir, "../src")
                     )
                     t_end = time.time()
@@ -147,7 +161,7 @@ def main():
                     else:
                         status = "Unknown"
                 except subprocess.TimeoutExpired:
-                    solve_time = 600.0
+                    solve_time = float(time_limit)
                     status = "Timeout"
                 except Exception as e:
                     status = "SolveErr"
@@ -243,10 +257,10 @@ def main():
                 try:
                     with open(temp_stdout, "w") as out_f:
                         proc = subprocess.run(
-                            [os.path.join(script_dir, "../refs/cadical/build/cadical"), temp_cnf, "-w", test_sat, "-t", "600"],
+                            [os.path.join(script_dir, "../refs/cadical/build/cadical"), temp_cnf, "-w", test_sat, "-t", str(time_limit)],
                             stdout=out_f,
                             stderr=subprocess.DEVNULL,
-                            timeout=610
+                            timeout=time_limit + 10
                         )
                     t_end = time.time()
                     solve_time = t_end - t_start
@@ -277,7 +291,7 @@ def main():
                     else:
                         status = "Timeout"
                 except subprocess.TimeoutExpired:
-                    solve_time = 600.0
+                    solve_time = float(time_limit)
                     status = "Timeout"
                 except Exception as e:
                     status = "SolveErr"
