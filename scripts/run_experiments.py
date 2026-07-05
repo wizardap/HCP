@@ -32,13 +32,31 @@ def main():
             if f.endswith(".edge"):
                 rel_path = os.path.relpath(os.path.join(root, f), graphs_dir)
                 files.append(rel_path)
+                
+    # Filter by graph substring if requested
+    graph_filter = None
+    if "-g" in sys.argv:
+        try:
+            graph_filter = sys.argv[sys.argv.index("-g") + 1]
+        except IndexError:
+            pass
+    elif "--graph" in sys.argv:
+        try:
+            graph_filter = sys.argv[sys.argv.index("--graph") + 1]
+        except IndexError:
+            pass
+            
+    if graph_filter:
+        files = [f for f in files if graph_filter in f]
     
-    # Sort files numerically if possible
-    def get_num(filename):
+    # Sort files by subdirectory, numerically, then by filename string
+    def get_sort_key(filename):
+        subdir = os.path.dirname(filename)
         base = os.path.basename(filename)
         match = re.search(r'\d+', base)
-        return int(match.group()) if match else filename
-    files.sort(key=get_num)
+        num = int(match.group()) if match else float('inf')
+        return (subdir, num, filename)
+    files.sort(key=get_sort_key)
     
     # CSV Header
     header = "Graph,Total Variables,Total Clauses,Total Runtime (s),Total Solver Time (s),Final Solve Time (s),Status,Verified,Actions,Conflicts,Decisions,Propagations"
@@ -49,8 +67,8 @@ def main():
         log.write(header + "\n")
         
         # Print visual table header on console
-        print(f"{'Graph':<15} | {'Variables':<10} | {'Clauses':<10} | {'Total Run (s)':<15} | {'Total Solve (s)':<15} | {'Final Solve (s)':<15} | {'Status':<12} | {'Verified':<10}")
-        print("-" * 115)
+        print(f"{'Graph':<35} | {'Variables':<10} | {'Clauses':<10} | {'Total Run (s)':<15} | {'Total Solve (s)':<15} | {'Final Solve (s)':<15} | {'Status':<12} | {'Verified':<10}")
+        print("-" * 135)
         
         for file in files:
             graph_path = os.path.join(graphs_dir, file)
@@ -206,7 +224,7 @@ def main():
                     msg_csv = f"{file},{n_vars},{n_clauses},{solve_time:.2f},{total_solver_time},{final_solve_time},EncodeErr,{verified},{actions},{conflicts},{decisions},{propagations}"
                     log.write(msg_csv + "\n")
                     log.flush()
-                    print(f"{file:<15} | {'Error':<10} | {'Error':<10} | {'0.00':<15} | {'N/A':<15} | {'N/A':<15} | {'EncodeErr':<12} | {'No':<10}")
+                    print(f"{file:<35} | {'Error':<10} | {'Error':<10} | {'0.00':<15} | {'N/A':<15} | {'N/A':<15} | {'EncodeErr':<12} | {'No':<10}")
                     continue
                     
                 # Extract variables and clauses from temp_cnf
@@ -324,7 +342,7 @@ def main():
             # Print stats on console
             tot_solve_str = f"{total_solver_time:.2f}" if isinstance(total_solver_time, float) else str(total_solver_time)
             fin_solve_str = f"{final_solve_time:.2f}" if isinstance(final_solve_time, float) else str(final_solve_time)
-            print(f"{file:<15} | {n_vars:<10} | {n_clauses:<10} | {solve_time:<15.2f} | {tot_solve_str:<15} | {fin_solve_str:<15} | {status:<12} | {verified:<10}")
+            print(f"{file:<35} | {n_vars:<10} | {n_clauses:<10} | {solve_time:<15.2f} | {tot_solve_str:<15} | {fin_solve_str:<15} | {status:<12} | {verified:<10}")
             
     print(f"\nAll experiments finished. Results saved in CSV format at {log_file}")
 

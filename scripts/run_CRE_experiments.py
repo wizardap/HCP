@@ -31,11 +31,13 @@ def main():
                 rel_path = os.path.relpath(os.path.join(root, f), GRAPHS_DIR)
                 files.append(rel_path)
 
-    def get_num(filename):
+    def get_sort_key(filename):
+        subdir = os.path.dirname(filename)
         base = os.path.basename(filename)
         match = re.search(r'\d+', base)
-        return int(match.group()) if match else filename
-    files.sort(key=get_num)
+        num = int(match.group()) if match else float('inf')
+        return (subdir, num, filename)
+    files.sort(key=get_sort_key)
 
     if args.graph:
         files = [f for f in files if args.graph in f]
@@ -43,13 +45,13 @@ def main():
             print(f"No graphs matching '{args.graph}'")
             return
 
-    print(f"{'Graph':<15} | {'Vertices':<9} | {'Cycle':<7} | {'Variables':<10} | {'Clauses':<10} | {'Solve Time (s)':<15} | {'Status':<12} | {'Verified':<10}")
-    print("-" * 100)
+    print(f"{'Graph':<35} | {'Vertices':<9} | {'Cycle':<7} | {'Variables':<10} | {'Clauses':<10} | {'Solve Time (s)':<15} | {'Status':<12} | {'Verified':<10}")
+    print("-" * 120)
 
     log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "CRE_sol.log")
     with open(log_file, "w") as log:
-        log.write(f"{'Graph':<15} | {'Vertices':<9} | {'Cycle':<7} | {'Variables':<10} | {'Clauses':<10} | {'Solve Time (s)':<15} | {'Status':<12} | {'Verified':<10}\n")
-        log.write("-" * 100 + "\n")
+        log.write(f"{'Graph':<35} | {'Vertices':<9} | {'Cycle':<7} | {'Variables':<10} | {'Clauses':<10} | {'Solve Time (s)':<15} | {'Status':<12} | {'Verified':<10}\n")
+        log.write("-" * 120 + "\n")
 
         for file in files:
             graph_path = os.path.join(GRAPHS_DIR, file)
@@ -96,7 +98,7 @@ def main():
                 if os.path.exists(temp_cnf):
                     os.remove(temp_cnf)
                 cycle_str = str(args.cycle) if args.cycle is not None else "auto"
-                msg = f"{file:<15} | {nNode:<9} | {cycle_str:<7} | {'Error':<10} | {'Error':<10} | {'0.00':<15} | {'EncodeErr':<12} | {'No':<10}"
+                msg = f"{file:<35} | {nNode:<9} | {cycle_str:<7} | {'Error':<10} | {'Error':<10} | {'0.00':<15} | {'EncodeErr':<12} | {'No':<10}"
                 print(msg)
                 log.write(msg + "\n")
                 log.flush()
@@ -165,7 +167,7 @@ def main():
                     os.remove(f_tmp)
 
             cycle_str = str(args.cycle) if args.cycle is not None else "auto"
-            msg = f"{file:<15} | {nNode:<9} | {cycle_str:<7} | {n_vars:<10} | {n_clauses:<10} | {solve_time:<15.2f} | {status:<12} | {verified:<10}"
+            msg = f"{file:<35} | {nNode:<9} | {cycle_str:<7} | {n_vars:<10} | {n_clauses:<10} | {solve_time:<15.2f} | {status:<12} | {verified:<10}"
             print(msg)
             log.write(msg + "\n")
             log.flush()

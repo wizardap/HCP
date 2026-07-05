@@ -43,14 +43,27 @@ def convert_txt(in_path, out_path):
             line = line.strip()
             if not line:
                 continue
+            if line.startswith(('#', 'c', 'C', '*')):
+                continue
             if line.startswith("p edge"):
-                parts = line.split()
-                nNode = int(parts[2])
-                nEdge = int(parts[3])
-            else:
-                parts = line.split()
-                if len(parts) == 2:
+                try:
+                    parts = line.split()
+                    nNode = int(parts[2])
+                    nEdge = int(parts[3])
+                except (ValueError, IndexError):
+                    pass
+                continue
+            
+            parts = line.split()
+            if not parts:
+                continue
+            try:
+                if parts[0] == 'e':
+                    edges.append((int(parts[1]), int(parts[2])))
+                else:
                     edges.append((int(parts[0]), int(parts[1])))
+            except (ValueError, IndexError):
+                pass
     
     if nNode is None or nEdge is None:
         raise ValueError(f"Could not parse 'p edge' header from {in_path}")
@@ -66,6 +79,7 @@ def main():
     data_dir = os.path.join(script_dir, "../data")
     graphs_dir = os.path.join(script_dir, "../graphs")
     
+    force = "--force" in sys.argv
     for root, dirs, files in os.walk(data_dir):
         for file in files:
             in_path = os.path.join(root, file)
@@ -75,6 +89,10 @@ def main():
             base, ext = os.path.splitext(rel_path)
             out_path = os.path.join(graphs_dir, base + ".edge")
             
+            if not force and os.path.exists(out_path) and os.path.getmtime(out_path) > os.path.getmtime(in_path):
+                print(f"Skipping conversion for {rel_path} (target is newer)")
+                continue
+                
             print(f"Converting {rel_path} -> {base}.edge...")
             if file.endswith(".hcp"):
                 convert_hcp(in_path, out_path)
