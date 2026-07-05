@@ -24,10 +24,16 @@ def parse_args():
 def main():
     args = parse_args()
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    files = [f for f in os.listdir(GRAPHS_DIR) if f.endswith(".edge")]
+    files = []
+    for root, _, filenames in os.walk(GRAPHS_DIR):
+        for f in filenames:
+            if f.endswith(".edge"):
+                rel_path = os.path.relpath(os.path.join(root, f), GRAPHS_DIR)
+                files.append(rel_path)
 
     def get_num(filename):
-        match = re.search(r'\d+', filename)
+        base = os.path.basename(filename)
+        match = re.search(r'\d+', base)
         return int(match.group()) if match else filename
     files.sort(key=get_num)
 
