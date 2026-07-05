@@ -1,0 +1,20 @@
+Graph           | Vertices  | Cycle   | Variables  | Clauses    | Solve Time (s)  | Status       | Verified  
+----------------------------------------------------------------------------------------------------
+graph48.edge    | 338       | 420     | 5132       | 53779      | 295.64          | SAT          | Yes       
+graph162.edge   | 909       | 420     | 832196     | 14867635   | 61.93           | SAT          | Yes       
+graph171.edge   | 996       | 420     | 12950      | 101618     | 11.30           | SAT          | Yes       
+graph197.edge   | 1188      | 420     | 15446      | 121202     | 32.23           | SAT          | Yes       
+graph223.edge   | 1386      | 420     | 19068      | 155877     | 34.81           | SAT          | Yes       
+graph237.edge   | 1476      | 420     | 19190      | 150578     | 22.42           | SAT          | Yes       
+graph249.edge   | 1558      | 420     | 20256      | 158942     | 7.32            | SAT          | Yes       
+graph252.edge   | 1572      | 420     | 20438      | 160370     | 29.87           | SAT          | Yes       
+graph254.edge   | 1582      | 420     | 20568      | 161390     | 14.64           | SAT          | Yes       
+graph255.edge   | 1584      | 420     | 22638      | 193057     | 24.62           | SAT          | Yes       
+graph424.edge   | 2466      | 420     | 34186      | 291489     | 1722.39         | SAT          | Yes       
+graph446.edge   | 2557      | 420     | 35048      | 300067     | 2334.92         | SAT          | Yes       
+graph470.edge   | 2740      | 420     | 37060      | 309121     | 2583.10         | SAT          | Yes       
+graph491.edge   | 2844      | 420     | 36974      | 290114     | 96.16           | SAT          | Yes       
+graph506.edge   | 2964      | 420     | 38534      | 302354     | 75.62           | SAT          | Yes       
+graph522.edge   | 3060      | 420     | 39782      | 312146     | 203.97          | SAT          | Yes       
+graph526.edge   | 3108      | 420     | 40406      | 317042     | 297.32          | SAT          | Yes       
+graph529.edge   | 3132      | 420     | 40718      | 319490     | 72.91           | SAT          | Yes       
