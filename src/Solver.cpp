@@ -79,6 +79,9 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
 
     VariableManager vm(2 * g.getEdges() + 1);
     IncrementalSolver isolver(timeLimitMs);
+    if (randomSeed > 0) {
+        std::cerr << "c random seed: " << randomSeed << " (note: CaDiCaL seed not yet forwarded through IncrementalSolver)\n";
+    }
     HcpEncoder encoder(g, cycle, *amo, *sym, sNode, vm);
     encoder.encodeBase(isolver);
 
@@ -216,6 +219,8 @@ void printHelp(const char* progName) {
               << "  --no-symmetry           (Deprecated) Equivalent to -b none\n"
               << "  --incremental           Use incremental SAT solving with subtour detection\n"
               << "  --time-limit <sec>      Set solver time limit in seconds (default: 600)\n"
+              << "  --trajectory <file>     Write per-iteration NDJSON trajectory trace\n"
+              << "  --random <int>          Set random seed for SAT solver\n"
               << "  -h, --help              Show this help\n";
 }
 
@@ -326,6 +331,18 @@ int main(int argc, char** argv) {
                 solver.setTrajectoryFile(argv[++i]);
             } else {
                 std::cerr << "Error: --trajectory requires a filename\n";
+                return 1;
+            }
+        } else if (arg == "--random") {
+            if (i + 1 < argc) {
+                try {
+                    solver.setRandomSeed(std::stoi(argv[++i]));
+                } catch (const std::exception& e) {
+                    std::cerr << "Error: invalid random seed value\n";
+                    return 1;
+                }
+            } else {
+                std::cerr << "Error: --random requires a value\n";
                 return 1;
             }
         }

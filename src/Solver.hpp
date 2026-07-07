@@ -37,13 +37,14 @@ private:
     int specificStartNode;
     std::string satSolverCmd;
     std::string trajectoryFile;
+    int randomSeed;
 
 public:
     Solver(const std::string& gFile) 
         : graphFile(gFile), cycle(2), amoOption(AtMostOneOption::DEFAULT), 
           symOption(SymmetryOption::DEFAULT),
           startNodeOption(StartNodeOption::MIN_DEGREE), specificStartNode(0), 
-          satSolverCmd("glucose") {}
+          satSolverCmd("glucose"), trajectoryFile(""), randomSeed(0) {}
 
     void setCycle(int c) { cycle = c; }
     void setAtMostOneOption(AtMostOneOption opt) { amoOption = opt; }
@@ -54,6 +55,7 @@ public:
     void setSymmetryOption(SymmetryOption opt) { symOption = opt; }
     void setSatSolverCmd(const std::string& cmd) { satSolverCmd = cmd; }
     void setTrajectoryFile(const std::string& f) { trajectoryFile = f; }
+    void setRandomSeed(int seed) { randomSeed = seed; }
 
     bool run();
     bool runIncremental(int64_t timeLimitMs = 600000);

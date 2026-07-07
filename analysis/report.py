@@ -62,7 +62,9 @@ def generate_report(rows, graph_name, n_vertices, n_edges, output_path):
 
     # Exp 1: Vertex frequency
     vf = vertex_frequency(rows, n_vertices)
-    gini = 1 - np.sum((vf / (np.sum(vf) + 1e-10)) ** 2) * 2 / (1 - 1 / len(vf))
+    sorted_vf = np.sort(vf)
+    n = len(vf)
+    gini = (2 * np.sum((np.arange(1, n + 1)) * sorted_vf)) / (n * np.sum(vf) + 1e-10) - (n + 1) / n
     h1 = hypothesis_test_uniformity(vf)
     lines.append(f"Exp 1 - Vertex Frequency: Gini={gini:.3f}, Chi2 reject H0={h1['reject_H0']}")
     lines.append(f"  Top 5 vertices: {np.argsort(vf)[-5:][::-1].tolist()}")
