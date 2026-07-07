@@ -34,8 +34,8 @@ def hypothesis_test_edge_asymmetry(transitions, alpha=0.01):
     n_total = n_pos + n_neg
     if n_total == 0:
         return {"p_value": 1.0, "reject_H0": False, "median_net": 0.0}
-    from scipy.stats import binom_test
-    p = binom_test(min(n_pos, n_neg), n_total, 0.5, alternative="two-sided")
+    from scipy.stats import binomtest
+    p = binomtest(min(n_pos, n_neg), n_total, 0.5, alternative="two-sided").pvalue
     return {"p_value": float(p), "reject_H0": bool(p < alpha),
             "n_pos": int(n_pos), "n_neg": int(n_neg), "median_net": float(np.median(net))}
 
@@ -49,7 +49,7 @@ def hypothesis_test_correlation(component_sizes, solve_times, alpha=0.01):
 
 def generate_report(rows, graph_name, n_vertices, n_edges, output_path):
     """Generate full statistical report for one graph."""
-    from compute_metrics import (
+    from analysis.compute_metrics import (
         vertex_frequency, edge_frequency, consecutive_jaccard,
         edge_transitions, solver_trajectory, core_sizes_by_threshold
     )

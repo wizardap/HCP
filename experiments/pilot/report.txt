@@ -1,0 +1,13 @@
+=== Subtour Trajectory Report: fhcppp_graph48 ===
+Iterations: 62
+Vertices: 338, Edges: 2090
+
+Exp 1 - Vertex Frequency: Gini=0.994, Chi2 reject H0=False
+  Top 5 vertices: [0, 337, 336, 335, 334]
+Exp 3 - Consecutive Jaccard: mean=0.984, d=6.90, reject H0=True
+Exp 5 - Core sizes (k=1..10): [338, 338, 338, 338, 338, 338, 338, 338, 338, 338]
+Exp 8 - Edge transitions: median_net=0.0, reject H0=False
+  Added: 269.1/iter, Removed: 269.1/iter
+Exp 9 - Max component vs solve time: Spearman rho=-0.122, reject H0=False
+
+==================================================

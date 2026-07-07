@@ -1,0 +1,141 @@
+c --- [ run-time profiling ] -------------------------------------------------
+c 
+c process time taken by individual solving procedures
+c (percentage relative to process time for solving)
+c 
+c        17.11   81.91% search
+c        10.73   51.35% unstable
+c         6.04   28.91% stable
+c         3.77   18.03% simplify
+c         1.49    7.15% subsume
+c         0.57    2.74% vivify
+c         0.40    1.93% factor
+c         0.34    1.63% lucky
+c         0.31    1.48% sweep
+c         0.23    1.12% elim
+c         0.13    0.64% congruence
+c         0.12    0.58% probe
+c         0.07    0.34% backbone
+c         0.05    0.26% ternary
+c         0.04    0.18% preprocess
+c         0.01    0.04% restore
+c         0.01    0.03% fastelim
+c         0.00    0.00% parse
+c   =================================
+c        20.89   99.75% solve
+c 
+c last line shows process time for solving
+c (percentage relative to total process time)
+c 
+c --- [ statistics ] ---------------------------------------------------------
+c 
+c chronological:             66373        12.86 %  of conflicts
+c conflicts:                516110     24701.50    per second
+c backbone:                 838084     28057.72 %  of vars
+c decisions:               1640505     78516.07    per second
+c eliminated:                  938        31.40 %  of all variables
+c factored:                    608        22.54 %  of variables
+c fixed:                        45         1.51 %  of all variables
+c learned:                  508224        98.47 %  per conflict
+c learned_lits:           10328877       100.00 %  learned literals
+c minimized:                     0         0.00 %  learned literals
+c shrunken:                1655094        16.02 %  learned literals
+c minishrunken:            1840396        17.82 %  learned literals
+c otfs:                       2620         0.51 %  of conflict
+c propagations:           27962228         1.34 M  per second
+c reactivated:                 518        17.34 %  of all variables
+c reduced:                  385471        74.69 %  per conflict
+c rephased:                     51     10119.80    interval
+c restarts:                  20957        24.63    interval
+c restored:                   2788        65.31 %  per weakened
+c substituted:                   4         0.13 %  of all variables
+c sweep equivs:                  2         0.12 %  of swept variables
+c subsumed:                  62573        11.71 %  of all clauses
+c strengthened:              39754         7.44 %  of all clauses
+c ticks:                 361318129        13.33    propagation
+c vivified:                   3460         0.65 %  of all clauses
+c weakened:                   4269         5.07    average size
+c congruence:                   10     51611.00    interval
+c 
+c seconds are measured in process time for solving
+c 
+c --- [ glue usage ] ---------------------------------------------------------
+c 
+c focused glue 1 used 2161 clauses 52.13% accumulated 52.13% tier1
+c focused glue 2 used 1081 clauses 26.07% accumulated 78.21% tier2
+c 
+c stable glue 2 used 0 clauses 0.000% accumulated 0.000% tier1
+c stable glue 3 used 0 clauses 0.000% accumulated 0.000%
+c stable glue 4 used 0 clauses 0.000% accumulated 0.000%
+c stable glue 5 used 0 clauses 0.000% accumulated 0.000%
+c stable glue 6 used 0 clauses 0.000% accumulated 0.000% tier2
+c 
+c total variables: 2090
+c total clauses: 9038
+c Iteration: found 58 components, added 116 SEC clauses
+c Iteration: found 73 components, added 146 SEC clauses
+c Iteration: found 38 components, added 76 SEC clauses
+c Iteration: found 26 components, added 52 SEC clauses
+c Iteration: found 24 components, added 48 SEC clauses
+c Iteration: found 30 components, added 60 SEC clauses
+c Iteration: found 35 components, added 70 SEC clauses
+c Iteration: found 33 components, added 66 SEC clauses
+c Iteration: found 29 components, added 58 SEC clauses
+c Iteration: found 24 components, added 48 SEC clauses
+c Iteration: found 25 components, added 50 SEC clauses
+c Iteration: found 23 components, added 46 SEC clauses
+c Iteration: found 30 components, added 60 SEC clauses
+c Iteration: found 28 components, added 56 SEC clauses
+c Iteration: found 27 components, added 54 SEC clauses
+c Iteration: found 22 components, added 44 SEC clauses
+c Iteration: found 16 components, added 32 SEC clauses
+c Iteration: found 19 components, added 38 SEC clauses
+c Iteration: found 22 components, added 44 SEC clauses
+c Iteration: found 20 components, added 40 SEC clauses
+c Iteration: found 18 components, added 36 SEC clauses
+c Iteration: found 17 components, added 34 SEC clauses
+c Iteration: found 17 components, added 34 SEC clauses
+c Iteration: found 10 components, added 20 SEC clauses
+c Iteration: found 18 components, added 36 SEC clauses
+c Iteration: found 16 components, added 32 SEC clauses
+c Iteration: found 20 components, added 40 SEC clauses
+c Iteration: found 12 components, added 24 SEC clauses
+c Iteration: found 17 components, added 34 SEC clauses
+c Iteration: found 11 components, added 22 SEC clauses
+c Iteration: found 13 components, added 26 SEC clauses
+c Iteration: found 10 components, added 20 SEC clauses
+c Iteration: found 8 components, added 16 SEC clauses
+c Iteration: found 15 components, added 30 SEC clauses
+c Iteration: found 13 components, added 26 SEC clauses
+c Iteration: found 8 components, added 16 SEC clauses
+c Iteration: found 17 components, added 34 SEC clauses
+c Iteration: found 10 components, added 20 SEC clauses
+c Iteration: found 10 components, added 20 SEC clauses
+c Iteration: found 8 components, added 16 SEC clauses
+c Iteration: found 7 components, added 14 SEC clauses
+c Iteration: found 6 components, added 12 SEC clauses
+c Iteration: found 3 components, added 6 SEC clauses
+c Iteration: found 7 components, added 14 SEC clauses
+c Iteration: found 10 components, added 20 SEC clauses
+c Iteration: found 6 components, added 12 SEC clauses
+c Iteration: found 8 components, added 16 SEC clauses
+c Iteration: found 8 components, added 16 SEC clauses
+c Iteration: found 9 components, added 18 SEC clauses
+c Iteration: found 7 components, added 14 SEC clauses
+c Iteration: found 10 components, added 20 SEC clauses
+c Iteration: found 7 components, added 14 SEC clauses
+c Iteration: found 12 components, added 24 SEC clauses
+c Iteration: found 7 components, added 14 SEC clauses
+c Iteration: found 3 components, added 6 SEC clauses
+c Iteration: found 4 components, added 8 SEC clauses
+c Iteration: found 3 components, added 6 SEC clauses
+c Iteration: found 5 components, added 10 SEC clauses
+c Iteration: found 4 components, added 8 SEC clauses
+c Iteration: found 5 components, added 10 SEC clauses
+c Iteration: found 2 components, added 4 SEC clauses
+c HAMILTONIAN found
+c incremental actions: 62
+c total variables: 2090
+c total clauses: 11044
+c final solve time: 0.0657406
+c total solver time: 20.8986
