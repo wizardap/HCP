@@ -385,7 +385,9 @@ void printHelp(const char* progName) {
               << "  --incremental           Use incremental SAT solving with subtour detection\n"
               << "  --time-limit <sec>      Set solver time limit in seconds (default: 600)\n"
               << "  --trajectory <file>     Write per-iteration NDJSON trajectory trace\n"
-              << "  --random <int>          Set random seed for SAT solver\n"
+               << "  --random <int>          Set random seed for SAT solver\n"
+              << "  --stagnation-k <int>    Stagnation threshold (default: 3, 0=disable)\n"
+              << "  --stagnation-strategy <opt>  Escalation: greedy (default)\n"
               << "  -h, --help              Show this help\n";
 }
 
@@ -508,6 +510,26 @@ int main(int argc, char** argv) {
                 }
             } else {
                 std::cerr << "Error: --random requires a value\n";
+                return 1;
+            }
+        } else if (arg == "--stagnation-k") {
+            if (i + 1 < argc) {
+                try {
+                    int k = std::stoi(argv[++i]);
+                    solver.setStagnationK(k);
+                } catch (const std::exception& e) {
+                    std::cerr << "Error: invalid stagnation-k value \"" << argv[i] << "\"\n";
+                    return 1;
+                }
+            } else {
+                std::cerr << "Error: --stagnation-k requires an integer\n";
+                return 1;
+            }
+        } else if (arg == "--stagnation-strategy") {
+            if (i + 1 < argc) {
+                solver.setStagnationStrategy(argv[++i]);
+            } else {
+                std::cerr << "Error: --stagnation-strategy requires a value\n";
                 return 1;
             }
         }
