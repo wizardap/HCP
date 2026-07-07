@@ -16,6 +16,7 @@
 #include "VariableManager.hpp"
 #include "TrajectoryLogger.hpp"
 #include <sstream>
+#include <algorithm>
 
 bool Solver::run() {
     Graph g;
@@ -48,6 +49,34 @@ bool Solver::run() {
     encoder.encode();
 
     return true;
+}
+
+// Canonical fingerprint: sorted vector of sorted vertex vectors
+static std::vector<std::vector<int>> computeFingerprint(
+    const std::vector<Component>& components
+) {
+    std::vector<std::vector<int>> vertexSets;
+    vertexSets.reserve(components.size());
+    for (const auto& comp : components) {
+        auto vs = comp.vertices;
+        std::sort(vs.begin(), vs.end());
+        vertexSets.push_back(std::move(vs));
+    }
+    std::sort(vertexSets.begin(), vertexSets.end());
+    return vertexSets;
+}
+
+// True if partition changed between fingerprints
+static bool partitionChanged(
+    const std::vector<std::vector<int>>& prevFingerprint,
+    const std::vector<Component>& components
+) {
+    auto current = computeFingerprint(components);
+    if (current.size() != prevFingerprint.size()) return true;
+    for (size_t i = 0; i < current.size(); ++i) {
+        if (current[i] != prevFingerprint[i]) return true;
+    }
+    return false;
 }
 
 bool Solver::runIncremental(int64_t timeLimitMs) {
