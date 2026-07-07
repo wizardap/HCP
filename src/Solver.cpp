@@ -79,6 +79,81 @@ static bool partitionChanged(
     return false;
 }
 
+// Try blocking each component one-at-a-time via assumption-based SAT.
+// Returns true if partition was forced to change.
+// Returns false if all components failed (no single-component block forced change).
+static bool runGreedyBlocking(
+    const std::vector<Component>& components,
+    IncrementalSolver& isolver,
+    const Graph& g,
+    std::vector<std::vector<int>>& prevFingerprint,
+    std::vector<int>& prevBlockedComponentIds
+) {
+    std::vector<int> skipVars;
+    skipVars.reserve(components.size());
+    for (const auto& comp : components) {
+        int skipVar = isolver.declareVariable();
+        skipVars.push_back(skipVar);
+        std::vector<int> clause;
+        clause.push_back(-skipVar);
+        for (int e : comp.edges) {
+            clause.push_back(-e);
+        }
+        isolver.addClause(clause);
+    }
+
+    std::vector<int> compOrder(components.size());
+    for (size_t i = 0; i < components.size(); ++i) compOrder[i] = i;
+    std::sort(compOrder.begin(), compOrder.end(),
+        [&](int a, int b) {
+            return components[a].vertices.size() < components[b].vertices.size();
+        });
+
+    for (int compIdx : compOrder) {
+        isolver.addAssumption(-skipVars[compIdx]);
+        for (int j : compOrder) {
+            if (j != compIdx) {
+                isolver.addAssumption(skipVars[j]);
+            }
+        }
+
+        auto innerResult = isolver.solve();
+
+        if (innerResult == IncrementalSolver::Result::TIMEOUT) {
+            std::cerr << "c TIMEOUT during greedy escalation\n";
+            return false;
+        }
+
+        if (innerResult == IncrementalSolver::Result::SAT) {
+            auto innerModel = isolver.getModel();
+            auto innerComps = SubtourDetector::detect(innerModel, g);
+
+            if (partitionChanged(prevFingerprint, innerComps)) {
+                std::cerr << "c Stagnation: component " << compIdx
+                          << " (size " << components[compIdx].vertices.size()
+                          << ") forced partition change\n";
+
+                prevBlockedComponentIds.clear();
+                for (size_t i = 0; i < innerComps.size(); ++i) {
+                    prevBlockedComponentIds.push_back(static_cast<int>(i));
+                }
+
+                SecEncoder secEncoder(g);
+                auto secClauses = secEncoder.encodeSecs(innerComps);
+                for (const auto& clause : secClauses) {
+                    isolver.addClause(clause);
+                }
+                std::cerr << "c Iteration: found " << innerComps.size()
+                          << " components (greedy), added " << secClauses.size() << " SEC clauses\n";
+                return true;
+            }
+        }
+    }
+
+    std::cerr << "c Stagnation: greedy escalation failed, falling back to normal SEC\n";
+    return false;
+}
+
 bool Solver::runIncremental(int64_t timeLimitMs) {
     Graph g;
     if (!g.loadFromFile(graphFile, true)) { // Pass true for directed edge indices mapping
