@@ -177,8 +177,33 @@ def main():
                                 if line.startswith("s ") or line.startswith("v "):
                                     outfile.write(line)
                                     
+                        # Create a clean version of the graph file without duplicate edges
+                        clean_graph_path = os.path.join(script_dir, "../src/temp_clean_graph.edge")
+                        edges_seen = set()
+                        unique_edges = []
+                        n_nodes_found = 0
+                        
+                        with open(graph_path, "r") as gf:
+                            for line in gf:
+                                stripped = line.strip()
+                                if stripped.startswith("p edge"):
+                                    parts = stripped.split()
+                                    n_nodes_found = int(parts[2])
+                                elif stripped.startswith("e ") or stripped.startswith("E "):
+                                    parts = stripped.split()
+                                    u, v = int(parts[1]), int(parts[2])
+                                    edge_key = tuple(sorted((u, v)))
+                                    if edge_key not in edges_seen:
+                                        edges_seen.add(edge_key)
+                                        unique_edges.append((u, v))
+                                        
+                        with open(clean_graph_path, "w") as cgf:
+                            cgf.write(f"p edge {n_nodes_found} {len(unique_edges)}\n")
+                            for u, v in unique_edges:
+                                cgf.write(f"e {u} {v}\n")
+
                         dec_proc = subprocess.run(
-                            [os.path.join(script_dir, "../src/hcp-solver"), graph_path, "-d", sol_path],
+                            [os.path.join(script_dir, "../src/hcp-solver"), clean_graph_path, "-d", sol_path],
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
                             text=True,
@@ -186,7 +211,7 @@ def main():
                             cwd=os.path.join(script_dir, "../src")
                         )
                         orig_dec_proc = subprocess.run(
-                            [os.path.join(script_dir, "../refs/ChineseRemainderEncoding/hcp-decode"), graph_path, clean_sat],
+                            [os.path.join(script_dir, "../refs/ChineseRemainderEncoding/hcp-decode"), clean_graph_path, clean_sat],
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
                             text=True,
@@ -210,11 +235,12 @@ def main():
                 else:
                     verified = "N/A"
                 
-                # Clean up solution and clean_sat files
+                # Clean up solution, clean_sat, clean_graph, and path files
                 sol_path = os.path.join(script_dir, "../src/solution.sat")
                 clean_sat_path = os.path.join(script_dir, "../src/temp_clean.sat")
+                clean_graph_path = os.path.join(script_dir, "../src/temp_clean_graph.edge")
                 path_file = os.path.join(script_dir, "../src/solution.path")
-                for f_tmp in [sol_path, clean_sat_path, path_file]:
+                for f_tmp in [sol_path, clean_sat_path, clean_graph_path, path_file]:
                     if os.path.exists(f_tmp):
                         os.remove(f_tmp)
                         

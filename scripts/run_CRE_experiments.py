@@ -79,21 +79,37 @@ def main():
             n_vars = 0
             n_clauses = 0
             try:
-                with open(temp_cnf, "w") as f:
-                    proc = subprocess.run(
-                        cmd,
-                        stdout=f,
-                        stderr=subprocess.PIPE,
-                        check=True
-                    )
+                proc = subprocess.run(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=True
+                )
+                raw_out = proc.stdout.decode()
 
-                # Parse header
-                with open(temp_cnf, "r") as f:
-                    first_line = f.readline()
-                    if first_line.startswith("p cnf"):
-                        parts = first_line.split()
+                # Parse the raw output lines and rewrite header
+                lines = raw_out.splitlines()
+                cnf_lines = []
+                actual_n_clauses = 0
+                header_index = -1
+
+                for i, line in enumerate(lines):
+                    stripped = line.strip()
+                    if stripped.startswith("p cnf"):
+                        header_index = i
+                        parts = stripped.split()
                         n_vars = int(parts[2])
-                        n_clauses = int(parts[3])
+                    elif stripped and not stripped.startswith("c"):
+                        actual_n_clauses += 1
+                    cnf_lines.append(line)
+
+                if header_index != -1:
+                    cnf_lines[header_index] = f"p cnf {n_vars} {actual_n_clauses}"
+                    n_clauses = actual_n_clauses
+
+                with open(temp_cnf, "w") as f:
+                    f.write("\n".join(cnf_lines) + "\n")
+
             except Exception as e:
                 if os.path.exists(temp_cnf):
                     os.remove(temp_cnf)
