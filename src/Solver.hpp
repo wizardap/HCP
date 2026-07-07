@@ -36,6 +36,7 @@ private:
     StartNodeOption startNodeOption;
     int specificStartNode;
     std::string satSolverCmd;
+    std::string trajectoryFile;
 
 public:
     Solver(const std::string& gFile) 
@@ -52,6 +53,7 @@ public:
     }
     void setSymmetryOption(SymmetryOption opt) { symOption = opt; }
     void setSatSolverCmd(const std::string& cmd) { satSolverCmd = cmd; }
+    void setTrajectoryFile(const std::string& f) { trajectoryFile = f; }
 
     bool run();
     bool runIncremental(int64_t timeLimitMs = 600000);

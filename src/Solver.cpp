@@ -14,6 +14,8 @@
 #include "SubtourDetector.hpp"
 #include "SecEncoder.hpp"
 #include "VariableManager.hpp"
+#include "TrajectoryLogger.hpp"
+#include <sstream>
 
 bool Solver::run() {
     Graph g;
@@ -83,10 +85,21 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
     std::cerr << "c total variables: " << isolver.getNumVars() << "\n";
     std::cerr << "c total clauses: " << isolver.getNumClauses() << "\n";
 
+    std::unique_ptr<TrajectoryLogger> tracer;
+    if (!trajectoryFile.empty()) {
+        tracer.reset(new TrajectoryLogger(trajectoryFile));
+    }
+
     int actions = 0;
+    std::vector<int> prevBlockedComponentIds;
+    auto startTime = std::chrono::steady_clock::now();
+
     while (true) {
         actions++;
         auto result = isolver.solve();
+        auto now = std::chrono::steady_clock::now();
+        double totalTime = std::chrono::duration<double>(now - startTime).count();
+
         if (result == IncrementalSolver::Result::UNSAT) {
             std::cerr << "c UNSAT\n";
             std::cerr << "c incremental actions: " << actions << "\n";
@@ -110,6 +123,20 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
         if (result == IncrementalSolver::Result::SAT) {
             auto model = isolver.getModel();
             auto components = SubtourDetector::detect(model, g);
+
+            if (tracer) {
+                std::vector<int> modelEdgeVars;
+                int numVars = isolver.getNumVars();
+                for (int v = 1; v <= numVars; ++v) {
+                    if (isolver.getModelValue(v) > 0) {
+                        modelEdgeVars.push_back(v);
+                    }
+                }
+                tracer->logIteration(actions, actions, isolver.getFinalSolveTime(),
+                                     totalTime, 0, 0, 0,
+                                     components, modelEdgeVars, prevBlockedComponentIds);
+            }
+
             if (components.empty()) {
                 std::cerr << "c HAMILTONIAN found\n";
                 std::string solFile = "solution.sat";
@@ -135,6 +162,24 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                 }
                 solOut.close();
 
+                if (tracer) {
+                    std::vector<int> cycle;
+                    // Reconstruct cycle from model for the trace
+                    Graph& rg = g;
+                    int n = rg.getNodes();
+                    int first = 0;
+                    for (int i = 0; i < n; ++i) {
+                        cycle.push_back(first);
+                        for (auto& [next, edgeIdx] : rg.getNeighbors(first)) {
+                            if (edgeIdx < static_cast<int>(model.size()) && model[edgeIdx] > 0) {
+                                first = next;
+                                break;
+                            }
+                        }
+                    }
+                    tracer->logHamiltonian(cycle);
+                }
+
                 std::cerr << "c incremental actions: " << actions << "\n";
                 std::cerr << "c total variables: " << isolver.getNumVars() << "\n";
                 std::cerr << "c total clauses: " << isolver.getNumClauses() << "\n";
@@ -143,12 +188,18 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                 isolver.printStatistics();
                 return true;
             } else {
+                std::vector<int> currentComponentIds;
+                for (size_t i = 0; i < components.size(); ++i) {
+                    currentComponentIds.push_back(static_cast<int>(i));
+                }
+                prevBlockedComponentIds = std::move(currentComponentIds);
+
                 SecEncoder secEncoder(g);
                 auto secClauses = secEncoder.encodeSecs(components);
                 for (const auto& clause : secClauses) {
                     isolver.addClause(clause);
                 }
-                std::cerr << "c Iteration: found " << components.size() 
+                std::cerr << "c Iteration: found " << components.size()
                           << " components, added " << secClauses.size() << " SEC clauses\n";
             }
         }
@@ -269,6 +320,13 @@ int main(int argc, char** argv) {
         } else if (arg == "-d" || arg == "--decode") {
             if (i + 1 < argc) {
                 solFile = argv[++i];
+            }
+        } else if (arg == "--trajectory") {
+            if (i + 1 < argc) {
+                solver.setTrajectoryFile(argv[++i]);
+            } else {
+                std::cerr << "Error: --trajectory requires a filename\n";
+                return 1;
             }
         }
     }
