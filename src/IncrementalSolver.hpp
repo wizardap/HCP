@@ -64,6 +64,16 @@ public:
     // NEW: Print CaDiCaL statistics
     void printStatistics() const;
 
+    // Add an assumption literal for the next solve call.
+    void addAssumption(int lit);
+
+    // After solve returned UNSAT, check if a specific assumption caused it.
+    // Returns true if the assumption literal was the reason for UNSAT.
+    bool didAssumptionFail(int lit) const;
+
+    // Declare one fresh variable, returns its index. Updates max_var.
+    int declareVariable();
+
     // Sets the execution time limit in milliseconds.
     void setTimeLimit(int64_t ms);
 

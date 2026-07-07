@@ -162,6 +162,20 @@ void IncrementalSolver::printStatistics() const {
     ccadical_print_statistics(solver);
 }
 
+void IncrementalSolver::addAssumption(int lit) {
+    ccadical_assume(solver, lit);
+}
+
+bool IncrementalSolver::didAssumptionFail(int lit) const {
+    return ccadical_failed(solver, lit) != 0;
+}
+
+int IncrementalSolver::declareVariable() {
+    int newVar = ccadical_declare_one_more_variable(solver);
+    max_var = newVar;
+    return newVar;
+}
+
 void IncrementalSolver::setTimeLimit(int64_t ms) {
     timeLimitMs = ms;
 }
