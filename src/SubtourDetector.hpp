@@ -6,6 +6,7 @@ class Graph;
 
 struct Component {
     std::vector<int> vertices;  // 0-indexed vertex IDs
+    std::vector<int> edges;     // 1-indexed directed edge variables selected within this component
     
     bool operator<(const Component& other) const {
         return vertices.size() < other.vertices.size();

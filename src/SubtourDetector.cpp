@@ -55,25 +55,32 @@ std::vector<Component> SubtourDetector::detect(
         }
     }
 
-    // Group vertices by their root representative
     std::vector<std::vector<int>> groups(n);
-    for (int i = 0; i < n; ++i) {
-        groups[uf.find(i)].push_back(i);
-    }
-
-    // Create components and filter
-    std::vector<Component> components;
-    for (int i = 0; i < n; ++i) {
-        if (!groups[i].empty()) {
-            // Trivial component filtering: only keep components of size < graph.getNodes()
-            if (groups[i].size() < static_cast<size_t>(n)) {
-                components.push_back({std::move(groups[i])});
+    std::vector<std::vector<int>> groupEdges(n);
+    for (int u = 0; u < n; ++u) {
+        int root = uf.find(u);
+        groups[root].push_back(u);
+        for (auto& [v, edgeVar] : graph.getNeighbors(u)) {
+            if (edgeVar > 0 && edgeVar < static_cast<int>(model.size()) && model[edgeVar] > 0) {
+                if (uf.find(v) == root) {
+                    groupEdges[root].push_back(edgeVar);
+                }
             }
         }
     }
 
-    // Sort components by size (smallest first)
-    std::sort(components.begin(), components.end());
+    std::vector<Component> components;
+    for (int i = 0; i < n; ++i) {
+        if (!groups[i].empty()) {
+            if (groups[i].size() < static_cast<size_t>(n)) {
+                // Deduplicate edges (each undirected edge appears twice in directed representation)
+                std::sort(groupEdges[i].begin(), groupEdges[i].end());
+                groupEdges[i].erase(std::unique(groupEdges[i].begin(), groupEdges[i].end()), groupEdges[i].end());
+                components.push_back({std::move(groups[i]), std::move(groupEdges[i])});
+            }
+        }
+    }
 
+    std::sort(components.begin(), components.end());
     return components;
 }
