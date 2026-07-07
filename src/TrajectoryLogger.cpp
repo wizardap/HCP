@@ -52,7 +52,11 @@ void TrajectoryLogger::logIteration(int iteration, int action, double solveTimeS
                                      int64_t conflicts, int64_t decisions, int64_t propagations,
                                      const std::vector<Component>& components,
                                      const std::vector<int>& modelEdgeVars,
-                                     const std::vector<int>& blockedComponentIds) {
+                                     const std::vector<int>& blockedComponentIds,
+                                     int stagnationCount,
+                                     bool escalated,
+                                     const std::string& escalationStrategy,
+                                     const std::string& escalationResult) {
     if (!file_.is_open()) return;
 
     std::ostringstream row;
@@ -69,6 +73,12 @@ void TrajectoryLogger::logIteration(int iteration, int action, double solveTimeS
     writeJsonIntArray(row, modelEdgeVars);
     row << ",\"blocked_component_ids\":";
     writeJsonIntArray(row, blockedComponentIds);
+    row << ",\"stagnation_count\":" << stagnationCount
+        << ",\"escalated\":" << (escalated ? "true" : "false")
+        << ",\"escalation_strategy\":";
+    writeJsonString(row, escalationStrategy);
+    row << ",\"escalation_result\":";
+    writeJsonString(row, escalationResult);
     row << "}\n";
 
     file_ << row.str();

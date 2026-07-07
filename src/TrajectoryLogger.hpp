@@ -15,7 +15,11 @@ public:
                       int64_t conflicts, int64_t decisions, int64_t propagations,
                       const std::vector<Component>& components,
                       const std::vector<int>& modelEdgeVars,
-                      const std::vector<int>& blockedComponentIds);
+                      const std::vector<int>& blockedComponentIds,
+                      int stagnationCount = 0,
+                      bool escalated = false,
+                      const std::string& escalationStrategy = "",
+                      const std::string& escalationResult = "");
 
     void logHamiltonian(const std::vector<int>& cycle);
 
