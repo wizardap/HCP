@@ -201,6 +201,12 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
     std::vector<int> prevBlockedComponentIds;
     auto startTime = std::chrono::steady_clock::now();
 
+    std::vector<std::vector<int>> prevFingerprint;
+    int stagnationCount = 0;
+    bool escalated = false;
+    std::string escalationResult = "";
+    std::string stagnationStrategy = this->stagnationStrategy;
+
     while (true) {
         actions++;
         auto result = isolver.solve();
@@ -231,6 +237,58 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
             auto model = isolver.getModel();
             auto components = SubtourDetector::detect(model, g);
 
+            // ----- STAGNATION DETECTION -----
+            if (stagnationK > 0 && !components.empty()) {
+                bool changed = prevFingerprint.empty() || partitionChanged(prevFingerprint, components);
+
+                if (changed) {
+                    prevFingerprint = computeFingerprint(components);
+                    stagnationCount = 0;
+                    escalated = false;
+                    escalationResult = "";
+                } else {
+                    stagnationCount++;
+                    std::cerr << "c Stagnation count: " << stagnationCount
+                              << "/" << stagnationK << "\n";
+
+                    if (stagnationCount >= stagnationK && !escalated) {
+                        escalated = true;
+                        std::cerr << "c Stagnation detected! Escalating with strategy: "
+                                  << stagnationStrategy << "\n";
+
+                        if (runGreedyBlocking(components, isolver, g,
+                                              prevFingerprint, prevBlockedComponentIds)) {
+                            escalationResult = "partition_changed";
+                            // Greedy blocking changed partition and added SEC clauses
+                            // Log iteration with success result before continuing
+                            if (tracer) {
+                                std::vector<int> modelEdgeVars;
+                                int numVars = isolver.getNumVars();
+                                for (int v = 1; v <= numVars; ++v) {
+                                    if (isolver.getModelValue(v) > 0) {
+                                        modelEdgeVars.push_back(v);
+                                    }
+                                }
+                                tracer->logIteration(actions, actions, isolver.getFinalSolveTime(),
+                                                     totalTime, 0, 0, 0,
+                                                     components, modelEdgeVars, prevBlockedComponentIds,
+                                                     stagnationCount, escalated,
+                                                     stagnationStrategy, escalationResult);
+                            }
+                            continue;  // Skip normal SEC addition (already added by greedy)
+                        } else {
+                            escalationResult = "failed";
+                        }
+                    }
+                }
+            } else {
+                // Initialize fingerprint on first iteration (or when stagnation disabled)
+                if (!components.empty() && prevFingerprint.empty()) {
+                    prevFingerprint = computeFingerprint(components);
+                }
+            }
+
+            // ----- TRACER LOG -----
             if (tracer) {
                 std::vector<int> modelEdgeVars;
                 int numVars = isolver.getNumVars();
@@ -241,10 +299,14 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                 }
                 tracer->logIteration(actions, actions, isolver.getFinalSolveTime(),
                                      totalTime, 0, 0, 0,
-                                     components, modelEdgeVars, prevBlockedComponentIds);
+                                     components, modelEdgeVars, prevBlockedComponentIds,
+                                     stagnationCount, escalated,
+                                     stagnationStrategy, escalationResult);
             }
 
+            // ----- HAMILTONIAN CHECK / SEC ADDITION -----
             if (components.empty()) {
+                // HAMILTONIAN found — unchanged from original
                 std::cerr << "c HAMILTONIAN found\n";
                 std::string solFile = "solution.sat";
                 std::ofstream solOut(solFile);
@@ -271,7 +333,6 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
 
                 if (tracer) {
                     std::vector<int> cycle;
-                    // Reconstruct cycle from model for the trace
                     Graph& rg = g;
                     int n = rg.getNodes();
                     int first = 0;
