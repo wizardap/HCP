@@ -286,14 +286,16 @@ def frequent_vertex_patterns(rows, min_support=0.3, n_perm=200):
     all_vertices = list(set().union(*transactions))
     perm_max_support = []
     for _ in range(n_perm):
-        shuffled = all_vertices.copy()
-        np.random.shuffle(shuffled)
-        mapping = dict(zip(all_vertices, shuffled))
-        
         perm_trans = []
         for t in transactions:
-            perm_trans.append(frozenset(mapping.get(v, v) for v in t))
-            
+            sz = len(t)
+            if sz > 0:
+                # Randomly sample vertices to break co-occurrence correlations
+                shuffled_t = np.random.choice(all_vertices, size=sz, replace=False)
+                perm_trans.append(frozenset(shuffled_t))
+            else:
+                perm_trans.append(frozenset())
+                
         _, perm_pairs = frequent_pairs(perm_trans, threshold)
         if perm_pairs:
             perm_max_support.append(max(perm_pairs.values()))
