@@ -9,6 +9,7 @@
 #include "SecEncoder.hpp"
 #include "VariableManager.hpp"
 #include "Graph.hpp"
+#include "GraphPreprocessor.hpp"
 
 #define TEST_ASSERT(cond) \
     do { \
@@ -114,11 +115,67 @@ void testSubtourDetectorAndSecEncoder() {
     std::cout << "SubtourDetector and SecEncoder passed!\n";
 }
 
+void testGraphPreprocessor() {
+    std::cout << "Testing GraphPreprocessor...\n";
+
+    // Test 1: DetectsBridgeOnPathGraph
+    {
+        // Path: 0-1-2  (bridge at every edge)
+        Graph g(3, 2);
+        g.addEdge(0, 1); g.addEdge(1, 0);
+        g.addEdge(1, 2); g.addEdge(2, 1);
+        GraphPreprocessor pp(g);
+        TEST_ASSERT(pp.hasBridge());
+        TEST_ASSERT(pp.getTwoEdgeCuts().empty());
+        TEST_ASSERT(pp.getDegree2Vertices().size() == 1u);
+        TEST_ASSERT(pp.getDegree2Vertices()[0] == 1);
+    }
+
+    // Test 2: DetectsDegree2OnCycle
+    {
+        // 4-cycle: 0-1-2-3-0, every vertex has degree 2
+        Graph g(4, 4);
+        g.addEdge(0, 1); g.addEdge(1, 0);
+        g.addEdge(1, 2); g.addEdge(2, 1);
+        g.addEdge(2, 3); g.addEdge(3, 2);
+        g.addEdge(3, 0); g.addEdge(0, 3);
+        GraphPreprocessor pp(g);
+        TEST_ASSERT(!pp.hasBridge());
+        TEST_ASSERT(pp.getDegree2Vertices().size() == 4u);
+    }
+
+    // Test 3: Detects2EdgeCutOnDumbbellGraph
+    {
+        // theta graph: vertices 0,1,2,3: paths 0-1-2, 0-3-2, and direct edge 0-2
+        // Edges: {0,1},{1,2},{0,3},{3,2},{0,2}
+        // Removing {0,1} and {0,3} disconnects vertex 0 from rest -- that's a 2-edge-cut
+        Graph g(4, 5);
+        g.addEdge(0, 1); g.addEdge(1, 0);
+        g.addEdge(1, 2); g.addEdge(2, 1);
+        g.addEdge(0, 3); g.addEdge(3, 0);
+        g.addEdge(3, 2); g.addEdge(2, 3);
+        g.addEdge(1, 3); g.addEdge(3, 1);
+        GraphPreprocessor pp(g);
+        TEST_ASSERT(!pp.hasBridge());
+        bool found = false;
+        for (const auto& ep : pp.getTwoEdgeCuts()) {
+            bool e1 = (ep.u1==0&&ep.v1==1)||(ep.u1==1&&ep.v1==0)||
+                      (ep.u1==0&&ep.v1==3)||(ep.u1==3&&ep.v1==0);
+            bool e2 = (ep.u2==0&&ep.v2==1)||(ep.u2==1&&ep.v2==0)||
+                      (ep.u2==0&&ep.v2==3)||(ep.u2==3&&ep.v2==0);
+            if (e1 && e2) found = true;
+        }
+        TEST_ASSERT(found);
+    }
+    std::cout << "GraphPreprocessor passed!\n";
+}
+
 int main() {
     testVariableManager();
     testIncrementalSolverBasic();
     testIncrementalSolverTimeout();
     testSubtourDetectorAndSecEncoder();
+    testGraphPreprocessor();
     std::cout << "All unit tests passed successfully!\n";
     return 0;
 }
