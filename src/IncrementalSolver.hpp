@@ -67,12 +67,21 @@ public:
     // Add an assumption literal for the next solve call.
     void addAssumption(int lit);
 
+    // Set the preferred phase of a literal.
+    void phase(int lit);
+
+    // Clear the preferred phase of a literal.
+    void unphase(int lit);
+
     // After solve returned UNSAT, check if a specific assumption caused it.
     // Returns true if the assumption literal was the reason for UNSAT.
     bool didAssumptionFail(int lit) const;
 
     // Declare one fresh variable, returns its index. Updates max_var.
     int declareVariable();
+
+    // Pre-declare multiple fresh variables. Updates max_var.
+    void declareVariables(int count);
 
     // Sets the execution time limit in milliseconds.
     void setTimeLimit(int64_t ms);

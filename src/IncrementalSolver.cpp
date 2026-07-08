@@ -13,6 +13,7 @@ IncrementalSolver::IncrementalSolver(int64_t timeLimitMs) : timeLimitMs(timeLimi
     if (!solver) {
         throw std::runtime_error("Failed to initialize CaDiCaL solver: ccadical_init returned nullptr");
     }
+    ccadical_set_option(solver, "factor", 0);
     max_var = 0;
     state = SolverState::UNSOLVED;
 }
@@ -166,6 +167,14 @@ void IncrementalSolver::addAssumption(int lit) {
     ccadical_assume(solver, lit);
 }
 
+void IncrementalSolver::phase(int lit) {
+    ccadical_phase(solver, lit);
+}
+
+void IncrementalSolver::unphase(int lit) {
+    ccadical_unphase(solver, lit);
+}
+
 bool IncrementalSolver::didAssumptionFail(int lit) const {
     return ccadical_failed(solver, lit) != 0;
 }
@@ -174,6 +183,12 @@ int IncrementalSolver::declareVariable() {
     int newVar = ccadical_declare_one_more_variable(solver);
     max_var = newVar;
     return newVar;
+}
+
+void IncrementalSolver::declareVariables(int count) {
+    if (count <= 0) return;
+    int newMax = ccadical_declare_more_variables(solver, count);
+    max_var = newMax;
 }
 
 void IncrementalSolver::setTimeLimit(int64_t ms) {

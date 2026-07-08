@@ -88,12 +88,20 @@ static bool runGreedyBlocking(
     IncrementalSolver& isolver,
     const Graph& g,
     std::vector<std::vector<int>>& prevFingerprint,
-    std::vector<int>& prevBlockedComponentIds
+    std::vector<int>& prevBlockedComponentIds,
+    int& usedSkipVars,
+    int skipVarStart,
+    int maxSkipVars
 ) {
     std::vector<int> skipVars;
     skipVars.reserve(components.size());
     for (const auto& comp : components) {
-        int skipVar = isolver.declareVariable();
+        if (usedSkipVars >= maxSkipVars) {
+            std::cerr << "c Error: Skip variables pool exhausted (" << usedSkipVars << "/" << maxSkipVars << ")\n";
+            return false;
+        }
+        int skipVar = skipVarStart + usedSkipVars;
+        usedSkipVars++;
         skipVars.push_back(skipVar);
         std::vector<int> clause;
         clause.push_back(-skipVar);
@@ -192,6 +200,13 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
 
     std::cerr << "c total variables: " << isolver.getNumVars() << "\n";
     std::cerr << "c total clauses: " << isolver.getNumClauses() << "\n";
+
+    // Reserve a pool of skip variables to avoid dynamic declaration clashes with CaDiCaL's BVA
+    int baseVars = isolver.getNumVars();
+    int maxSkipVars = g.getNodes() * 15;
+    isolver.declareVariables(maxSkipVars);
+    int skipVarStart = baseVars + 1;
+    int usedSkipVars = 0;
 
     std::unique_ptr<TrajectoryLogger> tracer;
     if (!trajectoryFile.empty()) {
@@ -362,7 +377,8 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                         }
                         else {
                             // Fallback to greedy blocking
-                            if (runGreedyBlocking(components, isolver, g, prevFingerprint, prevBlockedComponentIds)) {
+                            if (runGreedyBlocking(components, isolver, g, prevFingerprint, prevBlockedComponentIds,
+                                                  usedSkipVars, skipVarStart, maxSkipVars)) {
                                 escalationResult = "partition_changed";
                                 if (tracer) {
                                     std::vector<int> modelEdgeVars;
@@ -464,6 +480,30 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
 
                 SecEncoder secEncoder(g);
                 auto secClauses = secEncoder.encodeSecs(components);
+
+                // Algorithmic Improvement: Add union SECs for the smallest components in every iteration
+                // to force faster component merging and reduce total iterations.
+                std::vector<Component> sortedComps = components;
+                std::sort(sortedComps.begin(), sortedComps.end(), [](const Component& a, const Component& b) {
+                    return a.vertices.size() < b.vertices.size();
+                });
+                
+                int P = std::min(4, static_cast<int>(sortedComps.size()));
+                for (int a = 0; a < P; ++a) {
+                    for (int b = a + 1; b < P; ++b) {
+                        Component unionComp;
+                        unionComp.vertices = sortedComps[a].vertices;
+                        unionComp.vertices.insert(unionComp.vertices.end(), 
+                                                  sortedComps[b].vertices.begin(), 
+                                                  sortedComps[b].vertices.end());
+                        
+                        if (unionComp.vertices.size() >= static_cast<size_t>(g.getNodes())) continue;
+                        
+                        auto unionClauses = secEncoder.encodeSecs({unionComp});
+                        secClauses.insert(secClauses.end(), unionClauses.begin(), unionClauses.end());
+                    }
+                }
+
                 for (const auto& clause : secClauses) {
                     isolver.addClause(clause);
                 }
