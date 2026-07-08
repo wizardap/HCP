@@ -164,7 +164,8 @@ def all_consecutive_metrics(rows, n_vars=None):
     Returns list of dicts, one per consecutive pair.
     """
     if n_vars is None:
-        n_vars = max(max(r["model_edge_vars"]) for r in rows) if rows else 0
+        valid_maxes = [max(r["model_edge_vars"]) for r in rows if r.get("model_edge_vars")]
+        n_vars = max(valid_maxes) if valid_maxes else 0
 
     results = []
     for i in range(len(rows) - 1):
@@ -282,14 +283,17 @@ def frequent_vertex_patterns(rows, min_support=0.3, n_perm=200):
     
     freq_items, freq_pairs = frequent_pairs(transactions, threshold)
     
-    # Permutation test: shuffle vertex IDs per transaction
+    all_vertices = list(set().union(*transactions))
     perm_max_support = []
     for _ in range(n_perm):
+        shuffled = all_vertices.copy()
+        np.random.shuffle(shuffled)
+        mapping = dict(zip(all_vertices, shuffled))
+        
         perm_trans = []
         for t in transactions:
-            tlist = list(t)
-            np.random.shuffle(tlist)
-            perm_trans.append(frozenset(tlist))
+            perm_trans.append(frozenset(mapping.get(v, v) for v in t))
+            
         _, perm_pairs = frequent_pairs(perm_trans, threshold)
         if perm_pairs:
             perm_max_support.append(max(perm_pairs.values()))
