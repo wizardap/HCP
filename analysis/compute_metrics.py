@@ -154,6 +154,62 @@ def edge_transitions(rows):
     return results
 
 
+# --- Metric 15: All 4 iteration-to-iteration metrics ---
+
+def all_consecutive_metrics(rows, n_vars=None):
+    """Compute Vertex Jaccard, Edge Jaccard, Edge Hamming, Assignment Hamming.
+    
+    n_vars: total number of CNF variables. If None, inferred from max(model_edge_vars).
+    
+    Returns list of dicts, one per consecutive pair.
+    """
+    if n_vars is None:
+        n_vars = max(max(r["model_edge_vars"]) for r in rows) if rows else 0
+
+    results = []
+    for i in range(len(rows) - 1):
+        r0, r1 = rows[i], rows[i + 1]
+
+        # Vertex sets
+        v0 = component_vertex_set(r0)
+        v1 = component_vertex_set(r1)
+
+        # Edge sets from components
+        ec0 = component_edge_set(r0)
+        ec1 = component_edge_set(r1)
+
+        # Full model: all positively-assigned variables
+        m0 = set(r0["model_edge_vars"])
+        m1 = set(r1["model_edge_vars"])
+
+        # Vertex Jaccard
+        vj = jaccard(v0, v1)
+
+        # Edge Jaccard (from component edges)
+        ej = jaccard(ec0, ec1)
+
+        # Edge Hamming = component edge vars that differ
+        edge_hamming = len(ec0 ^ ec1)
+
+        # Assignment Hamming = all literals that flip sign
+        assignment_hamming = len(m0 ^ m1)
+
+        # Percentages
+        n_comp_edges = len(ec0 | ec1)
+        assignment_pct = (assignment_hamming / n_vars * 100) if n_vars > 0 else 0.0
+        edge_pct = (edge_hamming / n_comp_edges * 100) if n_comp_edges > 0 else 0.0
+
+        results.append({
+            "vertex_jaccard": float(vj),
+            "edge_jaccard": float(ej),
+            "edge_hamming": edge_hamming,
+            "assignment_hamming": assignment_hamming,
+            "assignment_pct": float(assignment_pct),
+            "edge_pct": float(edge_pct),
+        })
+    return results
+
+
 # --- Experiment 9: Solver trajectory ---
 
 def solver_trajectory(rows):
@@ -184,29 +240,76 @@ def graph_similarity_profile(rows):
     }
 
 
-# --- Experiment 11: Frequent pattern mining (simplified Apriori) ---
+# --- Experiment 11: Frequent pattern mining (pairwise + permutation test) ---
 
-def frequent_vertex_patterns(rows, min_support=0.3):
-    """Simple frequent pattern mining: find vertices co-occurring above threshold."""
-    n = len(rows)
-    threshold = min_support * n
-    vertex_iterations = {}
-    for idx, row in enumerate(rows):
+def get_transactions(rows):
+    """Each iteration -> set of vertices in all components."""
+    transactions = []
+    for row in rows:
+        verts = set()
         for comp in row["components"]:
-            for v in comp["vertices"]:
-                if v not in vertex_iterations:
-                    vertex_iterations[v] = set()
-                vertex_iterations[v].add(idx)
+            verts.update(comp["vertices"])
+        transactions.append(frozenset(verts))
+    return transactions
 
-    # Pairs that co-occur above threshold
-    vertices = list(vertex_iterations.keys())
-    frequent_pairs = []
-    for i, j in combinations(range(len(vertices)), 2):
-        intersection = vertex_iterations[vertices[i]] & vertex_iterations[vertices[j]]
-        if len(intersection) >= threshold:
-            frequent_pairs.append((vertices[i], vertices[j], len(intersection)))
-    return {"frequent_vertices": {v: len(s) for v, s in vertex_iterations.items() if len(s) >= threshold},
-            "frequent_pairs": frequent_pairs}
+def frequent_pairs(transactions, min_support_abs):
+    """Find frequent size-1 and size-2 itemsets efficiently."""
+    item_counts = Counter()
+    pair_counts = Counter()
+    
+    for t in transactions:
+        items = list(t)
+        for v in items:
+            item_counts[v] += 1
+        for i in range(len(items)):
+            for j in range(i + 1, len(items)):
+                a, b = (items[i], items[j]) if items[i] < items[j] else (items[j], items[i])
+                pair_counts[(a, b)] += 1
+    
+    freq_items = {item for item, cnt in item_counts.items() if cnt >= min_support_abs}
+    freq_pairs = {pair: cnt for pair, cnt in pair_counts.items() if cnt >= min_support_abs
+                  and pair[0] in freq_items and pair[1] in freq_items}
+    
+    return freq_items, freq_pairs
+
+def frequent_vertex_patterns(rows, min_support=0.3, n_perm=200):
+    """Frequent vertex pairs with permutation significance test."""
+    n = len(rows)
+    if n < 10:
+        return {"n_transactions": n, "error": "too few iterations"}
+    threshold = max(2, int(np.ceil(min_support * n)))
+    transactions = get_transactions(rows)
+    
+    freq_items, freq_pairs = frequent_pairs(transactions, threshold)
+    
+    # Permutation test: shuffle vertex IDs per transaction
+    perm_max_support = []
+    for _ in range(n_perm):
+        perm_trans = []
+        for t in transactions:
+            tlist = list(t)
+            np.random.shuffle(tlist)
+            perm_trans.append(frozenset(tlist))
+        _, perm_pairs = frequent_pairs(perm_trans, threshold)
+        if perm_pairs:
+            perm_max_support.append(max(perm_pairs.values()))
+    
+    perm_95 = np.percentile(perm_max_support, 95) if perm_max_support else 0
+    
+    significant = {pair: cnt for pair, cnt in freq_pairs.items() if cnt >= perm_95}
+    
+    return {
+        "n_transactions": n,
+        "threshold": threshold,
+        "n_vertices_in_components": len(freq_items),
+        "n_frequent_pairs": len(freq_pairs),
+        "n_significant_pairs": len(significant),
+        "permutation_95p": int(perm_95),
+        "significant_pairs": [{"u": int(u), "v": int(v), "support": int(c)}
+                               for (u, v), c in sorted(significant.items(), key=lambda x: -x[1])[:30]],
+        "top_pairs": [{"u": int(u), "v": int(v), "support": int(c)}
+                      for (u, v), c in sorted(freq_pairs.items(), key=lambda x: -x[1])[:10]],
+    }
 
 
 # --- Experiment 13: Seed sensitivity ---
@@ -253,3 +356,40 @@ def family_aggregate(trajectory_map):
             "count": len(metrics),
         }
     return families
+
+
+if __name__ == "__main__":
+    import sys, re, os
+    if len(sys.argv) < 2:
+        print("Usage: python3 analysis/compute_metrics.py <trajectory.ndjson> [trajectory2.ndjson ...]")
+        print("Computes: vertex_jaccard, edge_jaccard, edge_hamming, assignment_hamming (+ %)")
+        sys.exit(1)
+
+    for path in sys.argv[1:]:
+        if not path.endswith(".ndjson"):
+            continue
+        try:
+            rows, hamiltonian = load_trajectory(path)
+            if len(rows) < 2:
+                print(f"{path}: only {len(rows)} iteration(s), skipping")
+                continue
+
+            # Try to get total vars from corresponding .log file
+            log_path = path.replace(".ndjson", ".log")
+            n_vars = None
+            if os.path.exists(log_path):
+                m = re.search(r"total variables:\s*(\d+)", open(log_path).read())
+                if m:
+                    n_vars = int(m.group(1))
+
+            metrics = all_consecutive_metrics(rows, n_vars=n_vars)
+            vj = np.mean([m["vertex_jaccard"] for m in metrics])
+            ej = np.mean([m["edge_jaccard"] for m in metrics])
+            eh = np.mean([m["edge_hamming"] for m in metrics])
+            ah = np.mean([m["assignment_hamming"] for m in metrics])
+            ap = np.mean([m["assignment_pct"] for m in metrics])
+            ep = np.mean([m["edge_pct"] for m in metrics])
+            name = path.split("/")[-1].replace("_seed0.ndjson", "")
+            print(f"{name:45s} VJ={vj:.4f}  EJ={ej:.4f}  EH={eh:4.0f}({ep:.1f}%)  AH={ah:5.0f}({ap:.1f}%)  iters={len(rows)}")
+        except Exception as e:
+            print(f"{path}: ERROR {e}")

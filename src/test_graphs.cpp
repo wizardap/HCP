@@ -15,6 +15,7 @@
 #include "SymmetryBreaking/DefaultSymmetryBreaker.hpp"
 #include "IncrementalSolver.hpp"
 #include "VariableManager.hpp"
+#include "Solver.hpp"
 
 #define TEST_ASSERT(cond) \
     do { \
@@ -202,11 +203,44 @@ void testTimingMeasurement() {
     std::cout << "  Tested " << tested << " graphs, timing OK\n";
 }
 
+void testStagnationStrategies() {
+    std::cout << "Testing stagnation strategies on small.edge...\n";
+    auto graphs = discoverGraphs();
+    std::string smallEdgePath = "";
+    for (const auto& gf : graphs) {
+        if (gf.name == "small.edge") {
+            smallEdgePath = gf.path;
+            break;
+        }
+    }
+    TEST_ASSERT(!smallEdgePath.empty());
+
+    std::vector<std::string> strategies = {"dfj", "union", "both", "greedy"};
+    for (const auto& strat : strategies) {
+        Solver solver(smallEdgePath);
+        solver.setStagnationK(2);
+        solver.setStagnationStrategy(strat);
+        
+        std::stringstream outputCapture;
+        std::streambuf* oldCerr = std::cerr.rdbuf(outputCapture.rdbuf());
+        std::streambuf* oldCout = std::cout.rdbuf(outputCapture.rdbuf());
+        
+        bool ok = solver.runIncremental(5000); // 5s timeout
+        
+        std::cerr.rdbuf(oldCerr);
+        std::cout.rdbuf(oldCout);
+        
+        TEST_ASSERT(ok == true);
+    }
+    std::cout << "  Stagnation strategies tested successfully!\n";
+}
+
 int main() {
     testGraphFileExists();
     testEncodingProducesValidCnf();
     testIncrementalVsNonIncrementalCountsMatch();
     testTimingMeasurement();
+    testStagnationStrategies();
     std::cout << "All graph tests passed successfully!\n";
     return 0;
 }

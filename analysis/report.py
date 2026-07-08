@@ -51,7 +51,8 @@ def generate_report(rows, graph_name, n_vertices, n_edges, output_path):
     """Generate full statistical report for one graph."""
     from analysis.compute_metrics import (
         vertex_frequency, edge_frequency, consecutive_jaccard,
-        edge_transitions, solver_trajectory, core_sizes_by_threshold
+        edge_transitions, solver_trajectory, core_sizes_by_threshold,
+        all_consecutive_metrics
     )
 
     lines = []
@@ -69,10 +70,24 @@ def generate_report(rows, graph_name, n_vertices, n_edges, output_path):
     lines.append(f"Exp 1 - Vertex Frequency: Gini={gini:.3f}, Chi2 reject H0={h1['reject_H0']}")
     lines.append(f"  Top 5 vertices: {np.argsort(vf)[-5:][::-1].tolist()}")
 
-    # Exp 3: Consecutive Jaccard
+    # Exp 3: Consecutive Jaccard (Vertex)
     jac = consecutive_jaccard(rows)
     h3 = hypothesis_test_jaccard(jac)
-    lines.append(f"Exp 3 - Consecutive Jaccard: mean={h3['mean']:.3f}, d={h3['cohens_d']:.2f}, reject H0={h3['reject_H0']}")
+    lines.append(f"Exp 3 - Vertex Jaccard: mean={h3['mean']:.3f}, d={h3['cohens_d']:.2f}, reject H0={h3['reject_H0']}")
+
+    # All 4 iteration-to-iteration metrics
+    metrics = all_consecutive_metrics(rows)
+    if metrics:
+        vj = [m["vertex_jaccard"] for m in metrics]
+        ej = [m["edge_jaccard"] for m in metrics]
+        eh = [m["edge_hamming"] for m in metrics]
+        ah = [m["assignment_hamming"] for m in metrics]
+        lines.append("")
+        lines.append("--- 4 Consecutive Metrics ---")
+        lines.append(f"  Vertex Jaccard:     mean={np.mean(vj):.4f}  min={min(vj):.4f}  max={max(vj):.4f}")
+        lines.append(f"  Edge Jaccard:       mean={np.mean(ej):.4f}  min={min(ej):.4f}  max={max(ej):.4f}")
+        lines.append(f"  Edge Hamming:       mean={np.mean(eh):.1f}  min={min(eh)}  max={max(eh)}")
+        lines.append(f"  Assignment Hamming: mean={np.mean(ah):.1f}  min={min(ah)}  max={max(ah)}")
 
     # Exp 5: Core sizes
     core_sizes = core_sizes_by_threshold(rows, n_vertices, max_k=min(10, len(rows)))

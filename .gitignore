@@ -38,6 +38,7 @@ src/hcp-decode
 src/grid-graph
 src/knight-graph
 src/test_incremental_solver
+src/test_graphs
 
 # Generated/temporary graph and solution files
 src/*.edge

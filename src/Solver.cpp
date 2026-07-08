@@ -491,6 +491,7 @@ void printHelp(const char* progName) {
               << "  -h, --help              Show this help\n";
 }
 
+#ifndef TESTING
 int main(int argc, char** argv) {
     if (argc < 2) {
         printHelp(argv[0]);
@@ -653,3 +654,4 @@ int main(int argc, char** argv) {
 
     return 0;
 }
+#endif

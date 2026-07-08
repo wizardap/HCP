@@ -24,7 +24,7 @@ test: test_incremental_solver test_graphs
 test_incremental_solver: test_incremental_solver.cpp IncrementalSolver.cpp IncrementalSolver.hpp SubtourDetector.cpp SubtourDetector.hpp SecEncoder.cpp SecEncoder.hpp VariableManager.cpp VariableManager.hpp Graph.hpp
 	$(CXX) $(CXXFLAGS) -I../refs/cadical/src test_incremental_solver.cpp IncrementalSolver.cpp SubtourDetector.cpp SecEncoder.cpp VariableManager.cpp -o test_incremental_solver -L../refs/cadical/build -lcadical -L../refs/pblib/build -lpb
 
-test_graphs: test_graphs.cpp IncrementalSolver.cpp IncrementalSolver.hpp SubtourDetector.cpp SubtourDetector.hpp SecEncoder.cpp SecEncoder.hpp VariableManager.cpp VariableManager.hpp Graph.hpp HcpEncoder.hpp AtMostOne/IAtMostOne.hpp AtMostOne/DefaultAtMostOne.hpp SymmetryBreaking/ISymmetryBreaker.hpp SymmetryBreaking/DefaultSymmetryBreaker.hpp
-	$(CXX) $(CXXFLAGS) -I../refs/cadical/src test_graphs.cpp IncrementalSolver.cpp SubtourDetector.cpp SecEncoder.cpp VariableManager.cpp -o test_graphs -L../refs/cadical/build -lcadical
+test_graphs: test_graphs.cpp Solver.cpp Solver.hpp IncrementalSolver.cpp IncrementalSolver.hpp SubtourDetector.cpp SubtourDetector.hpp SecEncoder.cpp SecEncoder.hpp VariableManager.cpp VariableManager.hpp TrajectoryLogger.cpp TrajectoryLogger.hpp Graph.hpp HcpEncoder.hpp AtMostOne/IAtMostOne.hpp AtMostOne/DefaultAtMostOne.hpp AtMostOne/PbLibAtMostOne.hpp SymmetryBreaking/ISymmetryBreaker.hpp SymmetryBreaking/DefaultSymmetryBreaker.hpp
+	$(CXX) $(CXXFLAGS) -DTESTING -I../refs/cadical/src test_graphs.cpp Solver.cpp IncrementalSolver.cpp SubtourDetector.cpp SecEncoder.cpp VariableManager.cpp TrajectoryLogger.cpp -o test_graphs -L../refs/cadical/build -lcadical -L../refs/pblib/build -lpb
 
 

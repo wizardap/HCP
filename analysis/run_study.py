@@ -54,6 +54,8 @@ def main():
                         help="Run only graphs matching substring")
     parser.add_argument("--seeds", type=int, default=1,
                         help="Number of random seeds per graph (default: 1)")
+    parser.add_argument("--seed", type=int, default=0,
+                        help="Specific CaDiCaL random seed (default: 0 = solver default)")
     args = parser.parse_args()
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -90,8 +92,9 @@ def main():
 
             print(f"  RUN: {trace_name}")
             try:
+                effective_seed = args.seed if args.seed > 0 else (seed if args.seeds > 1 else None)
                 rc, stdout, stderr = run_solver(solver, graph_path, args.time_limit,
-                                                trace_path, seed=seed if args.seeds > 1 else None)
+                                                trace_path, seed=effective_seed)
                 # Save solver output alongside trace
                 log_path = trace_path.replace(".ndjson", ".log")
                 with open(log_path, "w") as f:
