@@ -1,0 +1,7 @@
+graph,none_wall,none_actions,none_status,none_solver_time,dfj_wall,dfj_actions,dfj_status,dfj_solver_time,union_wall,union_actions,union_status,union_solver_time,both_wall,both_actions,both_status,both_solver_time,mincut_wall,mincut_actions,mincut_status,mincut_solver_time
+fhcpcs/graph4,0.115,37,SAT,0.0958685,0.109,37,SAT,0.0970616,0.074,37,SAT,0.0614634,0.106,37,SAT,0.0844387,0.07,37,SAT,0.0591878
+fhcppp/graph48,10.251,54,SAT,10.1837,9.991,54,SAT,9.94087,9.747,54,SAT,9.69395,9.924,54,SAT,9.87251,9.984,54,SAT,9.93226
+fhcppp/graph424,91.786,388,SAT,90.0599,87.617,232,SAT,86.1578,84.257,137,SAT,83.0282,89.707,344,SAT,88.0987,84.566,137,SAT,83.3402
+fhcppp/graph446,85.497,103,SAT,84.3291,85.735,103,SAT,84.5248,85.498,103,SAT,84.3101,86.417,103,SAT,85.2951,85.342,103,SAT,84.1295
+fhcppp/graph470,120,N/A,Timeout,N/A,120,N/A,Timeout,N/A,120,N/A,Timeout,N/A,120,N/A,Timeout,N/A,120,N/A,Timeout,N/A
+fhcppp/graph491,15.174,51,SAT,14.1808,15.17,51,SAT,14.2742,15.086,51,SAT,14.1421,15.566,51,SAT,14.6504,15.141,51,SAT,14.2418
