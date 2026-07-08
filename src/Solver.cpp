@@ -16,6 +16,7 @@
 #include "VariableManager.hpp"
 #include "TrajectoryLogger.hpp"
 #include "GraphPreprocessor.hpp"
+#include "ContractedMinCut.hpp"
 #include <sstream>
 #include <algorithm>
 #include <iterator>
@@ -433,6 +434,56 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                             stagnationCount = 0;
                             escalated = false;
                         }
+                        else if (stagnationStrategy == "mincut") {
+                            MinCutResult mcr = computeComponentMinCut(components, g);
+                            int addedCount = 0;
+
+                            if (!mcr.sideA_vertices.empty()) {
+                                // Build a synthetic Component for SecEncoder
+                                Component cutComp;
+                                cutComp.vertices = mcr.sideA_vertices;
+                                // Edges field not needed for encodeSecs (only vertices used for cut-set)
+
+                                SecEncoder secEncoder(g);
+                                auto secClauses = secEncoder.encodeSecs({cutComp});
+                                for (const auto& clause : secClauses) {
+                                    isolver.addClause(clause);
+                                    addedCount++;
+                                }
+                                std::cerr << "c Escalation (MinCut): cut size " << mcr.cutSize
+                                          << ", added " << addedCount << " SEC clauses for "
+                                          << mcr.sideA_vertices.size() << " vertices\n";
+                                escalationResult = "mincut_added";
+                                stagnationCount = 0;
+                                escalated = false;
+                            } else {
+                                std::cerr << "c Escalation (MinCut): no useful cut found, falling back\n";
+                                // Fall through to greedy below
+                                if (runGreedyBlocking(components, isolver, g, prevFingerprint,
+                                                      prevBlockedComponentIds, usedSkipVars,
+                                                      skipVarStart, maxSkipVars)) {
+                                    escalationResult = "partition_changed";
+                                    if (tracer) {
+                                        std::vector<int> modelEdgeVars;
+                                        int numVars = isolver.getNumVars();
+                                        for (int v = 1; v <= numVars; ++v) {
+                                            if (isolver.getModelValue(v) > 0) {
+                                                modelEdgeVars.push_back(v);
+                                            }
+                                        }
+                                        tracer->logIteration(actions, actions, isolver.getFinalSolveTime(),
+                                                             totalTime, 0, 0, 0,
+                                                             components, modelEdgeVars, prevBlockedComponentIds,
+                                                             stagnationCount, escalated,
+                                                             stagnationStrategy, escalationResult);
+                                    }
+                                    prevEdges = std::move(currEdges);
+                                    continue;
+                                } else {
+                                    escalationResult = "failed";
+                                }
+                            }
+                        }
                         else {
                             // Fallback to greedy blocking
                             if (runGreedyBlocking(components, isolver, g, prevFingerprint, prevBlockedComponentIds,
@@ -587,7 +638,7 @@ void printHelp(const char* progName) {
               << "  --trajectory <file>     Write per-iteration NDJSON trajectory trace\n"
                << "  --random <int>          Set random seed for SAT solver\n"
               << "  --stagnation-k <int>    Stagnation threshold (default: 3, 0=disable)\n"
-              << "  --stagnation-strategy <opt>  Escalation: greedy (default), dfj, union, both\n"
+              << "  --stagnation-strategy <opt>  Escalation: greedy (default), dfj, union, both, mincut\n"
               << "  --preprocess            Enable forced-edge preprocessing (degree-2 and 2-edge-cuts)\n"
               << "  -h, --help              Show this help\n";
 }
