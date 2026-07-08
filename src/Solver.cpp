@@ -245,7 +245,6 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                 currEdges.insert(currEdges.end(), comp.edges.begin(), comp.edges.end());
             }
             std::sort(currEdges.begin(), currEdges.end());
-            currEdges.erase(std::unique(currEdges.begin(), currEdges.end()), currEdges.end());
 
             double jaccardSim = 0.0;
             if (!prevEdges.empty() && !currEdges.empty()) {
@@ -293,22 +292,23 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                             std::cerr << "c Escalation (DFJ): Added " << addedCount << " cycle-blocking clauses\n";
                             escalationResult = "dfj_added";
                             stagnationCount = 0;
+                            escalated = false;
                         } 
                         else if (stagnationStrategy == "union") {
                             int addedCount = 0;
                             SecEncoder secEncoder(g);
-                            std::vector<Component> sortedComps = components;
-                            std::sort(sortedComps.begin(), sortedComps.end());
                             
-                            int P = std::min(3, static_cast<int>(sortedComps.size()));
+                            int P = std::min(3, static_cast<int>(components.size()));
                             for (int a = 0; a < P; ++a) {
                                 for (int b = a + 1; b < P; ++b) {
                                     Component unionComp;
-                                    unionComp.vertices = sortedComps[a].vertices;
+                                    unionComp.vertices = components[a].vertices;
                                     unionComp.vertices.insert(unionComp.vertices.end(), 
-                                                              sortedComps[b].vertices.begin(), 
-                                                              sortedComps[b].vertices.end());
+                                                              components[b].vertices.begin(), 
+                                                              components[b].vertices.end());
                                     
+                                    if (unionComp.vertices.size() >= static_cast<size_t>(g.getNodes())) continue;
+
                                     auto unionClauses = secEncoder.encodeSecs({unionComp});
                                     for (const auto& clause : unionClauses) {
                                         isolver.addClause(clause);
@@ -319,6 +319,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                             std::cerr << "c Escalation (Union): Added " << addedCount << " union SEC clauses\n";
                             escalationResult = "union_added";
                             stagnationCount = 0;
+                            escalated = false;
                         }
                         else if (stagnationStrategy == "both") {
                             int addedDfj = 0;
@@ -335,18 +336,18 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                             
                             int addedUnion = 0;
                             SecEncoder secEncoder(g);
-                            std::vector<Component> sortedComps = components;
-                            std::sort(sortedComps.begin(), sortedComps.end());
                             
-                            int P = std::min(3, static_cast<int>(sortedComps.size()));
+                            int P = std::min(3, static_cast<int>(components.size()));
                             for (int a = 0; a < P; ++a) {
                                 for (int b = a + 1; b < P; ++b) {
                                     Component unionComp;
-                                    unionComp.vertices = sortedComps[a].vertices;
+                                    unionComp.vertices = components[a].vertices;
                                     unionComp.vertices.insert(unionComp.vertices.end(), 
-                                                              sortedComps[b].vertices.begin(), 
-                                                              sortedComps[b].vertices.end());
+                                                              components[b].vertices.begin(), 
+                                                              components[b].vertices.end());
                                     
+                                    if (unionComp.vertices.size() >= static_cast<size_t>(g.getNodes())) continue;
+
                                     auto unionClauses = secEncoder.encodeSecs({unionComp});
                                     for (const auto& clause : unionClauses) {
                                         isolver.addClause(clause);
@@ -357,6 +358,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                             std::cerr << "c Escalation (Both): Added " << addedDfj << " DFJ and " << addedUnion << " union SEC clauses\n";
                             escalationResult = "both_added";
                             stagnationCount = 0;
+                            escalated = false;
                         }
                         else {
                             // Fallback to greedy blocking
@@ -487,7 +489,7 @@ void printHelp(const char* progName) {
               << "  --trajectory <file>     Write per-iteration NDJSON trajectory trace\n"
                << "  --random <int>          Set random seed for SAT solver\n"
               << "  --stagnation-k <int>    Stagnation threshold (default: 3, 0=disable)\n"
-              << "  --stagnation-strategy <opt>  Escalation: greedy (default)\n"
+              << "  --stagnation-strategy <opt>  Escalation: greedy (default), dfj, union, both\n"
               << "  -h, --help              Show this help\n";
 }
 

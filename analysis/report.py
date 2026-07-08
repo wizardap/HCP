@@ -1,7 +1,7 @@
 """Statistical report generation."""
 
 import numpy as np
-from scipy.stats import ttest_1samp, chi2_contingency, mannwhitneyu, kruskal, spearmanr
+from scipy.stats import ttest_1samp, chisquare, mannwhitneyu, kruskal, spearmanr
 from scipy.spatial.distance import pdist
 
 
@@ -12,7 +12,7 @@ def hypothesis_test_uniformity(frequencies, alpha=0.01):
     mask = expected > 0
     if np.sum(mask) < 2:
         return {"statistic": float("nan"), "p_value": 1.0, "reject_H0": False}
-    stat, p = chi2_contingency([frequencies[mask], expected[mask]])[0:2]
+    stat, p = chisquare(f_obs=frequencies[mask], f_exp=expected[mask])
     return {"statistic": float(stat), "p_value": float(p), "reject_H0": bool(p < alpha)}
 
 
