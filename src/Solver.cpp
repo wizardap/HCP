@@ -17,6 +17,7 @@
 #include "TrajectoryLogger.hpp"
 #include <sstream>
 #include <algorithm>
+#include <iterator>
 
 bool Solver::run() {
     Graph g;
@@ -199,7 +200,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
 
     int actions = 0;
     std::vector<int> prevBlockedComponentIds;
-    std::vector<Component> prevComponents;
+    std::vector<int> prevEdges;
     auto startTime = std::chrono::steady_clock::now();
 
     std::vector<std::vector<int>> prevFingerprint;
@@ -239,22 +240,15 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
             auto components = SubtourDetector::detect(model, g);
 
             // Compute edge Jaccard similarity
+            std::vector<int> currEdges;
+            for (const auto& comp : components) {
+                currEdges.insert(currEdges.end(), comp.edges.begin(), comp.edges.end());
+            }
+            std::sort(currEdges.begin(), currEdges.end());
+            currEdges.erase(std::unique(currEdges.begin(), currEdges.end()), currEdges.end());
+
             double jaccardSim = 0.0;
-            if (!prevComponents.empty() && !components.empty()) {
-                std::vector<int> prevEdges;
-                for (const auto& comp : prevComponents) {
-                    prevEdges.insert(prevEdges.end(), comp.edges.begin(), comp.edges.end());
-                }
-                std::sort(prevEdges.begin(), prevEdges.end());
-                prevEdges.erase(std::unique(prevEdges.begin(), prevEdges.end()), prevEdges.end());
-
-                std::vector<int> currEdges;
-                for (const auto& comp : components) {
-                    currEdges.insert(currEdges.end(), comp.edges.begin(), comp.edges.end());
-                }
-                std::sort(currEdges.begin(), currEdges.end());
-                currEdges.erase(std::unique(currEdges.begin(), currEdges.end()), currEdges.end());
-
+            if (!prevEdges.empty() && !currEdges.empty()) {
                 std::vector<int> intersectionEdges;
                 std::set_intersection(prevEdges.begin(), prevEdges.end(),
                                       currEdges.begin(), currEdges.end(),
@@ -268,7 +262,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
 
             // ----- STAGNATION DETECTION -----
             if (stagnationK > 0 && !components.empty()) {
-                bool isStagnant = !prevComponents.empty() && (jaccardSim >= 0.85);
+                bool isStagnant = !prevEdges.empty() && (jaccardSim >= 0.85);
 
                 if (!isStagnant) {
                     stagnationCount = 0;
@@ -283,7 +277,111 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                         escalated = true;
                         std::cerr << "c Stagnation detected! Escalating with strategy: "
                                   << stagnationStrategy << "\n";
-                        // Escalation actions to be implemented in Task 2
+
+                        if (stagnationStrategy == "dfj") {
+                            int addedCount = 0;
+                            for (const auto& comp : components) {
+                                if (comp.edges.empty()) continue;
+                                std::vector<int> clause;
+                                clause.reserve(comp.edges.size());
+                                for (int e : comp.edges) {
+                                    clause.push_back(-e);
+                                }
+                                isolver.addClause(clause);
+                                addedCount++;
+                            }
+                            std::cerr << "c Escalation (DFJ): Added " << addedCount << " cycle-blocking clauses\n";
+                            escalationResult = "dfj_added";
+                            stagnationCount = 0;
+                        } 
+                        else if (stagnationStrategy == "union") {
+                            int addedCount = 0;
+                            SecEncoder secEncoder(g);
+                            std::vector<Component> sortedComps = components;
+                            std::sort(sortedComps.begin(), sortedComps.end());
+                            
+                            int P = std::min(3, static_cast<int>(sortedComps.size()));
+                            for (int a = 0; a < P; ++a) {
+                                for (int b = a + 1; b < P; ++b) {
+                                    Component unionComp;
+                                    unionComp.vertices = sortedComps[a].vertices;
+                                    unionComp.vertices.insert(unionComp.vertices.end(), 
+                                                              sortedComps[b].vertices.begin(), 
+                                                              sortedComps[b].vertices.end());
+                                    
+                                    auto unionClauses = secEncoder.encodeSecs({unionComp});
+                                    for (const auto& clause : unionClauses) {
+                                        isolver.addClause(clause);
+                                        addedCount++;
+                                    }
+                                }
+                            }
+                            std::cerr << "c Escalation (Union): Added " << addedCount << " union SEC clauses\n";
+                            escalationResult = "union_added";
+                            stagnationCount = 0;
+                        }
+                        else if (stagnationStrategy == "both") {
+                            int addedDfj = 0;
+                            for (const auto& comp : components) {
+                                if (comp.edges.empty()) continue;
+                                std::vector<int> clause;
+                                clause.reserve(comp.edges.size());
+                                for (int e : comp.edges) {
+                                    clause.push_back(-e);
+                                }
+                                isolver.addClause(clause);
+                                addedDfj++;
+                            }
+                            
+                            int addedUnion = 0;
+                            SecEncoder secEncoder(g);
+                            std::vector<Component> sortedComps = components;
+                            std::sort(sortedComps.begin(), sortedComps.end());
+                            
+                            int P = std::min(3, static_cast<int>(sortedComps.size()));
+                            for (int a = 0; a < P; ++a) {
+                                for (int b = a + 1; b < P; ++b) {
+                                    Component unionComp;
+                                    unionComp.vertices = sortedComps[a].vertices;
+                                    unionComp.vertices.insert(unionComp.vertices.end(), 
+                                                              sortedComps[b].vertices.begin(), 
+                                                              sortedComps[b].vertices.end());
+                                    
+                                    auto unionClauses = secEncoder.encodeSecs({unionComp});
+                                    for (const auto& clause : unionClauses) {
+                                        isolver.addClause(clause);
+                                        addedUnion++;
+                                    }
+                                }
+                            }
+                            std::cerr << "c Escalation (Both): Added " << addedDfj << " DFJ and " << addedUnion << " union SEC clauses\n";
+                            escalationResult = "both_added";
+                            stagnationCount = 0;
+                        }
+                        else {
+                            // Fallback to greedy blocking
+                            if (runGreedyBlocking(components, isolver, g, prevFingerprint, prevBlockedComponentIds)) {
+                                escalationResult = "partition_changed";
+                                if (tracer) {
+                                    std::vector<int> modelEdgeVars;
+                                    int numVars = isolver.getNumVars();
+                                    for (int v = 1; v <= numVars; ++v) {
+                                        if (isolver.getModelValue(v) > 0) {
+                                            modelEdgeVars.push_back(v);
+                                        }
+                                    }
+                                    tracer->logIteration(actions, actions, isolver.getFinalSolveTime(),
+                                                         totalTime, 0, 0, 0,
+                                                         components, modelEdgeVars, prevBlockedComponentIds,
+                                                         stagnationCount, escalated,
+                                                         stagnationStrategy, escalationResult);
+                                }
+                                prevEdges = std::move(currEdges);
+                                continue; 
+                            } else {
+                                escalationResult = "failed";
+                            }
+                        }
                     }
                 }
             }
@@ -369,7 +467,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                 }
                 std::cerr << "c Iteration: found " << components.size()
                           << " components, added " << secClauses.size() << " SEC clauses\n";
-                prevComponents = components;
+                prevEdges = std::move(currEdges);
                 prevFingerprint = computeFingerprint(components);
             }
         }

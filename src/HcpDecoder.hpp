@@ -48,14 +48,9 @@ private:
         if (!sol.is_open()) return false;
 
         std::string line;
-        bool isSat = false;
         while (std::getline(sol, line)) {
             if (line.empty()) continue;
             if (line[0] == 'c') continue; // Skip comment lines completely
-            
-            if (line.find("SATISFIABLE") != std::string::npos) {
-                isSat = true;
-            }
             
             std::stringstream ss(line);
             std::string prefix;
