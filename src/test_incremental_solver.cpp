@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <sstream>
+#include <fstream>
 #include <chrono>
 #include <thread>
 #include <cstdlib>
@@ -10,6 +11,7 @@
 #include "VariableManager.hpp"
 #include "Graph.hpp"
 #include "GraphPreprocessor.hpp"
+#include "Solver.hpp"
 
 #define TEST_ASSERT(cond) \
     do { \
@@ -170,12 +172,28 @@ void testGraphPreprocessor() {
     std::cout << "GraphPreprocessor passed!\n";
 }
 
+void testSolverPreprocessing() {
+    std::cout << "Testing Solver Preprocessing...\n";
+    // 4-cycle is Hamiltonian; every vertex has degree 2
+    // After preprocessing, all 8 directed edge vars are constrained
+    // We just verify it still finds HC and doesn't crash
+    std::ofstream f("/tmp/test_cycle4.edge");
+    f << "p edge 4 4\ne 1 2\ne 2 3\ne 3 4\ne 4 1\n";
+    f.close();
+
+    Solver s2("/tmp/test_cycle4.edge");
+    s2.setPreprocess(true);
+    TEST_ASSERT(s2.runIncremental(5000)); // 5s time limit, must find HC
+    std::cout << "Solver Preprocessing passed!\n";
+}
+
 int main() {
     testVariableManager();
     testIncrementalSolverBasic();
     testIncrementalSolverTimeout();
     testSubtourDetectorAndSecEncoder();
     testGraphPreprocessor();
+    testSolverPreprocessing();
     std::cout << "All unit tests passed successfully!\n";
     return 0;
 }

@@ -40,6 +40,7 @@ private:
     int randomSeed;
     int stagnationK;
     std::string stagnationStrategy;
+    bool preprocess_;
 
 public:
     Solver(const std::string& gFile) 
@@ -47,13 +48,13 @@ public:
           symOption(SymmetryOption::DEFAULT),
           startNodeOption(StartNodeOption::MIN_DEGREE), specificStartNode(0), 
           satSolverCmd("glucose"), trajectoryFile(""), randomSeed(0),
-          stagnationK(3), stagnationStrategy("greedy") {}
+          stagnationK(3), stagnationStrategy("greedy"), preprocess_(false) {}
 
     void setCycle(int c) { cycle = c; }
     void setAtMostOneOption(AtMostOneOption opt) { amoOption = opt; }
     void setStartNodeOption(StartNodeOption opt, int node = 0) { 
         startNodeOption = opt; 
-        specificStartNode = node; 
+            specificStartNode = node; 
     }
     void setSymmetryOption(SymmetryOption opt) { symOption = opt; }
     void setSatSolverCmd(const std::string& cmd) { satSolverCmd = cmd; }
@@ -61,6 +62,7 @@ public:
     void setRandomSeed(int seed) { randomSeed = seed; }
     void setStagnationK(int k) { stagnationK = k; }
     void setStagnationStrategy(const std::string& s) { stagnationStrategy = s; }
+    void setPreprocess(bool v) { preprocess_ = v; }
 
     bool run();
     bool runIncremental(int64_t timeLimitMs = 600000);
