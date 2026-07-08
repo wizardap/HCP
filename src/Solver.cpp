@@ -199,6 +199,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
 
     int actions = 0;
     std::vector<int> prevBlockedComponentIds;
+    std::vector<Component> prevComponents;
     auto startTime = std::chrono::steady_clock::now();
 
     std::vector<std::vector<int>> prevFingerprint;
@@ -237,54 +238,53 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
             auto model = isolver.getModel();
             auto components = SubtourDetector::detect(model, g);
 
+            // Compute edge Jaccard similarity
+            double jaccardSim = 0.0;
+            if (!prevComponents.empty() && !components.empty()) {
+                std::vector<int> prevEdges;
+                for (const auto& comp : prevComponents) {
+                    prevEdges.insert(prevEdges.end(), comp.edges.begin(), comp.edges.end());
+                }
+                std::sort(prevEdges.begin(), prevEdges.end());
+                prevEdges.erase(std::unique(prevEdges.begin(), prevEdges.end()), prevEdges.end());
+
+                std::vector<int> currEdges;
+                for (const auto& comp : components) {
+                    currEdges.insert(currEdges.end(), comp.edges.begin(), comp.edges.end());
+                }
+                std::sort(currEdges.begin(), currEdges.end());
+                currEdges.erase(std::unique(currEdges.begin(), currEdges.end()), currEdges.end());
+
+                std::vector<int> intersectionEdges;
+                std::set_intersection(prevEdges.begin(), prevEdges.end(),
+                                      currEdges.begin(), currEdges.end(),
+                                      std::back_inserter(intersectionEdges));
+
+                size_t unionSize = prevEdges.size() + currEdges.size() - intersectionEdges.size();
+                if (unionSize > 0) {
+                    jaccardSim = static_cast<double>(intersectionEdges.size()) / unionSize;
+                }
+            }
+
             // ----- STAGNATION DETECTION -----
             if (stagnationK > 0 && !components.empty()) {
-                bool changed = prevFingerprint.empty() || partitionChanged(prevFingerprint, components);
+                bool isStagnant = !prevComponents.empty() && (jaccardSim >= 0.85);
 
-                if (changed) {
-                    prevFingerprint = computeFingerprint(components);
+                if (!isStagnant) {
                     stagnationCount = 0;
                     escalated = false;
                     escalationResult = "";
                 } else {
                     stagnationCount++;
                     std::cerr << "c Stagnation count: " << stagnationCount
-                              << "/" << stagnationK << "\n";
+                              << "/" << stagnationK << " (Jaccard: " << jaccardSim << ")\n";
 
                     if (stagnationCount >= stagnationK && !escalated) {
                         escalated = true;
                         std::cerr << "c Stagnation detected! Escalating with strategy: "
                                   << stagnationStrategy << "\n";
-
-                        if (runGreedyBlocking(components, isolver, g,
-                                              prevFingerprint, prevBlockedComponentIds)) {
-                            escalationResult = "partition_changed";
-                            // Greedy blocking changed partition and added SEC clauses
-                            // Log iteration with success result before continuing
-                            if (tracer) {
-                                std::vector<int> modelEdgeVars;
-                                int numVars = isolver.getNumVars();
-                                for (int v = 1; v <= numVars; ++v) {
-                                    if (isolver.getModelValue(v) > 0) {
-                                        modelEdgeVars.push_back(v);
-                                    }
-                                }
-                                tracer->logIteration(actions, actions, isolver.getFinalSolveTime(),
-                                                     totalTime, 0, 0, 0,
-                                                     components, modelEdgeVars, prevBlockedComponentIds,
-                                                     stagnationCount, escalated,
-                                                     stagnationStrategy, escalationResult);
-                            }
-                            continue;  // Skip normal SEC addition (already added by greedy)
-                        } else {
-                            escalationResult = "failed";
-                        }
+                        // Escalation actions to be implemented in Task 2
                     }
-                }
-            } else {
-                // Initialize fingerprint on first iteration (or when stagnation disabled)
-                if (!components.empty() && prevFingerprint.empty()) {
-                    prevFingerprint = computeFingerprint(components);
                 }
             }
 
@@ -369,6 +369,8 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                 }
                 std::cerr << "c Iteration: found " << components.size()
                           << " components, added " << secClauses.size() << " SEC clauses\n";
+                prevComponents = components;
+                prevFingerprint = computeFingerprint(components);
             }
         }
     }
