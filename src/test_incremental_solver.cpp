@@ -12,6 +12,7 @@
 #include "Graph.hpp"
 #include "GraphPreprocessor.hpp"
 #include "Solver.hpp"
+#include "ContractedMinCut.hpp"
 
 #define TEST_ASSERT(cond) \
     do { \
@@ -187,6 +188,29 @@ void testSolverPreprocessing() {
     std::cout << "Solver Preprocessing passed!\n";
 }
 
+void testContractedMinCut() {
+    std::cout << "Testing ContractedMinCut...\n";
+    // Graph: two triangles (0-1-2) and (3-4-5) connected by two edges: 2-3, 0-5.
+    // Vertices: 0,1,2 in triangle A; 3,4,5 in triangle B
+    // Edges: {0,1},{1,2},{2,0},{3,4},{4,5},{5,3},{2,3},{0,5}
+    Graph g(6, 8);
+    g.addEdge(0,1); g.addEdge(1,2); g.addEdge(2,0);
+    g.addEdge(3,4); g.addEdge(4,5); g.addEdge(5,3);
+    g.addEdge(2,3); g.addEdge(0,5);
+
+    // Simulate two components: C0={0,1,2}, C1={3,4,5}
+    Component c0; c0.vertices = {0,1,2};
+    Component c1; c1.vertices = {3,4,5};
+
+    MinCutResult res = computeComponentMinCut({c0, c1}, g);
+
+    // The min cut between C0 and C1 is 2 (edges 2-3 and 0-5)
+    TEST_ASSERT(res.cutSize == 2);
+    // sideA should contain all of {0,1,2} or all of {3,4,5}
+    TEST_ASSERT(res.sideA_vertices.size() == 3u);
+    std::cout << "ContractedMinCut passed!\n";
+}
+
 int main() {
     testVariableManager();
     testIncrementalSolverBasic();
@@ -194,6 +218,7 @@ int main() {
     testSubtourDetectorAndSecEncoder();
     testGraphPreprocessor();
     testSolverPreprocessing();
+    testContractedMinCut();
     std::cout << "All unit tests passed successfully!\n";
     return 0;
 }
