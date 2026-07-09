@@ -14,14 +14,6 @@
         } \
     } while (0)
 
-static bool hasClauseContaining(const std::vector<std::vector<int>>& clauses,
-                                 int lit) {
-    for (const auto& c : clauses)
-        for (int l : c)
-            if (l == lit) return true;
-    return false;
-}
-
 static int countUnitClauses(const std::vector<std::vector<int>>& clauses) {
     int cnt = 0;
     for (const auto& c : clauses)
@@ -63,12 +55,13 @@ void testVertexBoundaryCardinality() {
     SecEncoder enc(g);
     auto clauses = enc.encodeSecs(components, true, 4);
 
-    TEST_ASSERT(clauses.size() >= 3);
-    int unitCount = countUnitClauses(clauses);
-    TEST_ASSERT(unitCount >= 1);
+    // For n=2 literals, sequential counter produces ~11 clauses
+    // Plus no disjoint clauses (|S|=1, not 2)
+    TEST_ASSERT(clauses.size() >= 10);
+    TEST_ASSERT(clauses.size() <= 14);
 
     std::cout << "testVertexBoundaryCardinality PASS (clauses="
-              << clauses.size() << ", unit=" << unitCount << ")\n";
+              << clauses.size() << ")\n";
 }
 
 void testVertexDisjoint() {
@@ -84,7 +77,11 @@ void testVertexDisjoint() {
     SecEncoder enc(g2);
     auto clauses = enc.encodeSecs(components, true, 4);
 
-    TEST_ASSERT(clauses.size() > 2);
+    bool hasBinaryClause = false;
+    for (const auto& c : clauses) {
+        if (c.size() == 2) { hasBinaryClause = true; break; }
+    }
+    TEST_ASSERT(hasBinaryClause);
 
     std::cout << "testVertexDisjoint PASS (clauses=" << clauses.size() << ")\n";
 }
