@@ -11,6 +11,7 @@ std::vector<std::vector<int>> SecEncoder::encodeSecs(
     std::vector<std::vector<int>> clauses;
     int numNodes = graph_.getNodes();
 
+    int globalAuxBase = 1;
     for (const auto& component : components) {
         std::vector<int> outgoing = getOutgoingLiterals(component);
         std::vector<int> incoming = getIncomingLiterals(component);
@@ -53,9 +54,8 @@ std::vector<std::vector<int>> SecEncoder::encodeSecs(
             int n = (int)allBoundary.size();
 
             // Sequential counter: sum(allBoundary) >= 2
-            int maxLit = 0;
-            for (int l : allBoundary) if (l > maxLit) maxLit = l;
-            int auxBase = maxLit + 1;
+            int auxBase = globalAuxBase;
+            globalAuxBase = auxBase + n * 2;
             auto s = [&](int i, int j) { return auxBase + i * 2 + j; };
 
             // Base: i=0
@@ -68,13 +68,13 @@ std::vector<std::vector<int>> SecEncoder::encodeSecs(
                 // s[i][0] <-> (s[i-1][0] OR allBoundary[i])
                 clauses.push_back({-s(i-1,0), s(i,0)});
                 clauses.push_back({-allBoundary[i], s(i,0)});
-                clauses.push_back({s(i,0), -allBoundary[i], -s(i-1,0)});
+                clauses.push_back({-s(i,0), s(i-1,0), allBoundary[i]});
 
                 // s[i][1] <-> (s[i-1][1] OR (s[i-1][0] AND allBoundary[i]))
                 clauses.push_back({-s(i-1,1), s(i,1)});
                 clauses.push_back({-s(i-1,0), -allBoundary[i], s(i,1)});
-                clauses.push_back({s(i,1), -s(i-1,1), -s(i-1,0)});
-                clauses.push_back({-s(i,1), s(i-1,0), allBoundary[i]});
+                clauses.push_back({-s(i,1), s(i-1,1), s(i-1,0)});
+                clauses.push_back({-s(i,1), s(i-1,1), allBoundary[i]});
             }
 
             // Enforce sum >= 2
