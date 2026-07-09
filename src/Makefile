@@ -15,11 +15,15 @@ grid-graph: GridGraphGenerator.cpp
 .PHONY: all clean test
 
 clean:
-	rm -f hcp-solver knight-graph grid-graph test_incremental_solver test_graphs *.o
+	rm -f hcp-solver knight-graph grid-graph test_incremental_solver test_graphs test_vertex_separator *.o
 
-test: test_incremental_solver test_graphs
+test: test_incremental_solver test_graphs test_vertex_separator
 	./test_incremental_solver
 	./test_graphs
+	./test_vertex_separator
+
+test_vertex_separator: test_vertex_separator.cpp SecEncoder.cpp SecEncoder.hpp SubtourDetector.cpp SubtourDetector.hpp Graph.hpp
+	$(CXX) $(CXXFLAGS) test_vertex_separator.cpp SecEncoder.cpp SubtourDetector.cpp -o test_vertex_separator
 
 test_incremental_solver: test_incremental_solver.cpp Solver.cpp Solver.hpp IncrementalSolver.cpp IncrementalSolver.hpp SubtourDetector.cpp SubtourDetector.hpp SecEncoder.cpp SecEncoder.hpp VariableManager.cpp VariableManager.hpp Graph.hpp GraphPreprocessor.cpp GraphPreprocessor.hpp TrajectoryLogger.cpp TrajectoryLogger.hpp ContractedMinCut.cpp ContractedMinCut.hpp
 	$(CXX) $(CXXFLAGS) -DTESTING -I../refs/cadical/src test_incremental_solver.cpp Solver.cpp IncrementalSolver.cpp SubtourDetector.cpp SecEncoder.cpp VariableManager.cpp TrajectoryLogger.cpp GraphPreprocessor.cpp ContractedMinCut.cpp -o test_incremental_solver -L../refs/cadical/build -lcadical -L../refs/pblib/build -lpb
