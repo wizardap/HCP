@@ -14,13 +14,6 @@
         } \
     } while (0)
 
-static int countUnitClauses(const std::vector<std::vector<int>>& clauses) {
-    int cnt = 0;
-    for (const auto& c : clauses)
-        if (c.size() == 1) cnt++;
-    return cnt;
-}
-
 void testDefaultBehavior() {
     Graph g(4, 4);
     g.addEdge(0, 1, 1); g.addEdge(1, 0, 2);
