@@ -373,7 +373,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                         } 
                         else if (stagnationStrategy == "union") {
                             int addedCount = 0;
-                            SecEncoder secEncoder(g);
+                            iterationSecEncoder.startAuxAt(isolver.getNumVars() + 1);
                             
                             int P = std::min(3, static_cast<int>(components.size()));
                             for (int a = 0; a < P; ++a) {
@@ -386,7 +386,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                                     
                                     if (unionComp.vertices.size() >= static_cast<size_t>(g.getNodes())) continue;
 
-                                    auto unionClauses = secEncoder.encodeSecs({unionComp});
+                                    auto unionClauses = iterationSecEncoder.encodeSecs({unionComp}, useVertexSep_, vtxSepThreshold_);
                                     for (const auto& clause : unionClauses) {
                                         isolver.addClause(clause);
                                         addedCount++;
@@ -412,7 +412,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                             }
                             
                             int addedUnion = 0;
-                            SecEncoder secEncoder(g);
+                            iterationSecEncoder.startAuxAt(isolver.getNumVars() + 1);
                             
                             int P = std::min(3, static_cast<int>(components.size()));
                             for (int a = 0; a < P; ++a) {
@@ -425,7 +425,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                                     
                                     if (unionComp.vertices.size() >= static_cast<size_t>(g.getNodes())) continue;
 
-                                    auto unionClauses = secEncoder.encodeSecs({unionComp});
+                                    auto unionClauses = iterationSecEncoder.encodeSecs({unionComp}, useVertexSep_, vtxSepThreshold_);
                                     for (const auto& clause : unionClauses) {
                                         isolver.addClause(clause);
                                         addedUnion++;
@@ -447,8 +447,8 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                                 cutComp.vertices = mcr.sideA_vertices;
                                 // Edges field not needed for encodeSecs (only vertices used for cut-set)
 
-                                SecEncoder secEncoder(g);
-                                auto secClauses = secEncoder.encodeSecs({cutComp});
+                                iterationSecEncoder.startAuxAt(isolver.getNumVars() + 1);
+                                auto secClauses = iterationSecEncoder.encodeSecs({cutComp}, useVertexSep_, vtxSepThreshold_);
                                 for (const auto& clause : secClauses) {
                                     isolver.addClause(clause);
                                     addedCount++;
