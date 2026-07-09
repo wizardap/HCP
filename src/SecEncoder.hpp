@@ -10,8 +10,14 @@ class SecEncoder {
 public:
     explicit SecEncoder(const Graph& graph);
     
-    // Returns SEC clauses for all components (2 clauses per component)
-    std::vector<std::vector<int>> encodeSecs(const std::vector<Component>& components);
+    // Returns SEC clauses for all components.
+    // If useVertexSep, applies cardinality encoding for components
+    // with small vertex boundary (|S| <= vtxSepThreshold).
+    std::vector<std::vector<int>> encodeSecs(
+        const std::vector<Component>& components,
+        bool useVertexSep = false,
+        int vtxSepThreshold = 4
+    );
     
 private:
     const Graph& graph_;
