@@ -1,7 +1,11 @@
 #include "SecEncoder.hpp"
 #include "Graph.hpp"
 
-SecEncoder::SecEncoder(const Graph& graph) : graph_(graph) {}
+SecEncoder::SecEncoder(const Graph& graph) : graph_(graph), nextAuxBase_(0) {}
+
+void SecEncoder::startAuxAt(int base) {
+    nextAuxBase_ = base;
+}
 
 std::vector<std::vector<int>> SecEncoder::encodeSecs(
     const std::vector<Component>& components,
@@ -11,7 +15,10 @@ std::vector<std::vector<int>> SecEncoder::encodeSecs(
     std::vector<std::vector<int>> clauses;
     int numNodes = graph_.getNodes();
 
-    int globalAuxBase = 1;
+    if (nextAuxBase_ <= 0) {
+        nextAuxBase_ = graph_.getEdges() * 2 + 2;
+    }
+    int& globalAuxBase = nextAuxBase_;
     for (const auto& component : components) {
         std::vector<int> outgoing = getOutgoingLiterals(component);
         std::vector<int> incoming = getIncomingLiterals(component);

@@ -283,6 +283,9 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
     std::string escalationResult = "";
     std::string stagnationStrategy = this->stagnationStrategy;
 
+    SecEncoder iterationSecEncoder(g);
+    iterationSecEncoder.startAuxAt(isolver.getNumVars() + 1);
+
     while (true) {
         actions++;
         auto result = isolver.solve();
@@ -587,8 +590,8 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                 }
                 prevBlockedComponentIds = std::move(currentComponentIds);
 
-                SecEncoder secEncoder(g);
-                auto secClauses = secEncoder.encodeSecs(components, useVertexSep_, vtxSepThreshold_);
+                iterationSecEncoder.startAuxAt(isolver.getNumVars() + 1);
+                auto secClauses = iterationSecEncoder.encodeSecs(components, useVertexSep_, vtxSepThreshold_);
 
                 // Algorithmic Improvement: Add union SECs for the smallest components in every iteration
                 // to force faster component merging and reduce total iterations.
@@ -608,7 +611,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                         
                         if (unionComp.vertices.size() >= static_cast<size_t>(g.getNodes())) continue;
                         
-                        auto unionClauses = secEncoder.encodeSecs({unionComp});
+                        auto unionClauses = iterationSecEncoder.encodeSecs({unionComp});
                         secClauses.insert(secClauses.end(), unionClauses.begin(), unionClauses.end());
                     }
                 }
