@@ -41,6 +41,8 @@ private:
     int stagnationK;
     std::string stagnationStrategy;
     bool preprocess_;
+    bool useVertexSep_;
+    int vtxSepThreshold_;
 
 public:
     Solver(const std::string& gFile) 
@@ -48,7 +50,8 @@ public:
           symOption(SymmetryOption::DEFAULT),
           startNodeOption(StartNodeOption::MIN_DEGREE), specificStartNode(0), 
           satSolverCmd("glucose"), trajectoryFile(""), randomSeed(0),
-          stagnationK(3), stagnationStrategy("greedy"), preprocess_(false) {}
+          stagnationK(3), stagnationStrategy("greedy"), preprocess_(false),
+          useVertexSep_(false), vtxSepThreshold_(4) {}
 
     void setCycle(int c) { cycle = c; }
     void setAtMostOneOption(AtMostOneOption opt) { amoOption = opt; }
@@ -63,6 +66,8 @@ public:
     void setStagnationK(int k) { stagnationK = k; }
     void setStagnationStrategy(const std::string& s) { stagnationStrategy = s; }
     void setPreprocess(bool v) { preprocess_ = v; }
+    void setVertexSep(bool v) { useVertexSep_ = v; }
+    void setVtxSepThreshold(int t) { vtxSepThreshold_ = t; }
 
     bool run();
     bool runIncremental(int64_t timeLimitMs = 600000);

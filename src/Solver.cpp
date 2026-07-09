@@ -588,7 +588,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                 prevBlockedComponentIds = std::move(currentComponentIds);
 
                 SecEncoder secEncoder(g);
-                auto secClauses = secEncoder.encodeSecs(components);
+                auto secClauses = secEncoder.encodeSecs(components, useVertexSep_, vtxSepThreshold_);
 
                 // Algorithmic Improvement: Add union SECs for the smallest components in every iteration
                 // to force faster component merging and reduce total iterations.
@@ -640,6 +640,8 @@ void printHelp(const char* progName) {
               << "  --stagnation-k <int>    Stagnation threshold (default: 3, 0=disable)\n"
               << "  --stagnation-strategy <opt>  Escalation: greedy (default), dfj, union, both, mincut\n"
               << "  --preprocess            Enable forced-edge preprocessing (degree-2 and 2-edge-cuts)\n"
+              << "  --vertex-sep            Enable vertex-separator SEC (cardinality + vertex-disjoint)\n"
+              << "  --vtx-sep-threshold <int>  |S| threshold for cardinality encoding (default: 4)\n"
               << "  -h, --help              Show this help\n";
 }
 
@@ -787,6 +789,17 @@ int main(int argc, char** argv) {
             }
         } else if (arg == "--preprocess") {
             solver.setPreprocess(true);
+        } else if (arg == "--vertex-sep") {
+            solver.setVertexSep(true);
+        } else if (arg == "--vtx-sep-threshold") {
+            if (i + 1 < argc) {
+                solver.setVtxSepThreshold(std::stoi(argv[++i]));
+            } else {
+                std::cerr << "Error: --vtx-sep-threshold requires a value\n";
+                return 1;
+            }
+        } else if (arg == "--vtx-sep-card-only") {
+            solver.setVertexSep(true);
         }
     }
 
