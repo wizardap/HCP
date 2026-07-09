@@ -43,6 +43,7 @@ private:
     bool preprocess_;
     bool useVertexSep_;
     int vtxSepThreshold_;
+    bool skipVertexDisjoint_;
 
 public:
     Solver(const std::string& gFile) 
@@ -51,7 +52,7 @@ public:
           startNodeOption(StartNodeOption::MIN_DEGREE), specificStartNode(0), 
           satSolverCmd("glucose"), trajectoryFile(""), randomSeed(0),
           stagnationK(3), stagnationStrategy("greedy"), preprocess_(false),
-          useVertexSep_(false), vtxSepThreshold_(4) {}
+          useVertexSep_(false), vtxSepThreshold_(4), skipVertexDisjoint_(false) {}
 
     void setCycle(int c) { cycle = c; }
     void setAtMostOneOption(AtMostOneOption opt) { amoOption = opt; }
@@ -68,6 +69,7 @@ public:
     void setPreprocess(bool v) { preprocess_ = v; }
     void setVertexSep(bool v) { useVertexSep_ = v; }
     void setVtxSepThreshold(int t) { vtxSepThreshold_ = t; }
+    void setSkipVertexDisjoint(bool v) { skipVertexDisjoint_ = v; }
 
     bool run();
     bool runIncremental(int64_t timeLimitMs = 600000);

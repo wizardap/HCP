@@ -93,7 +93,10 @@ static bool runGreedyBlocking(
     std::vector<int>& prevBlockedComponentIds,
     int& usedSkipVars,
     int skipVarStart,
-    int maxSkipVars
+    int maxSkipVars,
+    SecEncoder& iterationSecEncoder,
+    bool useVertexSep,
+    int vtxSepThreshold
 ) {
     std::vector<int> skipVars;
     skipVars.reserve(components.size());
@@ -149,8 +152,8 @@ static bool runGreedyBlocking(
                     prevBlockedComponentIds.push_back(static_cast<int>(i));
                 }
 
-                SecEncoder secEncoder(g);
-                auto secClauses = secEncoder.encodeSecs(innerComps);
+                iterationSecEncoder.startAuxAt(isolver.getNumVars() + 1);
+                auto secClauses = iterationSecEncoder.encodeSecs(innerComps, useVertexSep, vtxSepThreshold, false);
                 for (const auto& clause : secClauses) {
                     isolver.addClause(clause);
                 }
@@ -386,7 +389,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                                     
                                     if (unionComp.vertices.size() >= static_cast<size_t>(g.getNodes())) continue;
 
-                                    auto unionClauses = iterationSecEncoder.encodeSecs({unionComp}, useVertexSep_, vtxSepThreshold_);
+                                    auto unionClauses = iterationSecEncoder.encodeSecs({unionComp}, useVertexSep_, vtxSepThreshold_, skipVertexDisjoint_);
                                     for (const auto& clause : unionClauses) {
                                         isolver.addClause(clause);
                                         addedCount++;
@@ -425,7 +428,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                                     
                                     if (unionComp.vertices.size() >= static_cast<size_t>(g.getNodes())) continue;
 
-                                    auto unionClauses = iterationSecEncoder.encodeSecs({unionComp}, useVertexSep_, vtxSepThreshold_);
+                                    auto unionClauses = iterationSecEncoder.encodeSecs({unionComp}, useVertexSep_, vtxSepThreshold_, skipVertexDisjoint_);
                                     for (const auto& clause : unionClauses) {
                                         isolver.addClause(clause);
                                         addedUnion++;
@@ -448,7 +451,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                                 // Edges field not needed for encodeSecs (only vertices used for cut-set)
 
                                 iterationSecEncoder.startAuxAt(isolver.getNumVars() + 1);
-                                auto secClauses = iterationSecEncoder.encodeSecs({cutComp}, useVertexSep_, vtxSepThreshold_);
+                                auto secClauses = iterationSecEncoder.encodeSecs({cutComp}, useVertexSep_, vtxSepThreshold_, skipVertexDisjoint_);
                                 for (const auto& clause : secClauses) {
                                     isolver.addClause(clause);
                                     addedCount++;
@@ -464,7 +467,8 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                                 // Fall through to greedy below
                                 if (runGreedyBlocking(components, isolver, g, prevFingerprint,
                                                       prevBlockedComponentIds, usedSkipVars,
-                                                      skipVarStart, maxSkipVars)) {
+                                                      skipVarStart, maxSkipVars,
+                                                      iterationSecEncoder, useVertexSep_, vtxSepThreshold_)) {
                                     escalationResult = "partition_changed";
                                     if (tracer) {
                                         std::vector<int> modelEdgeVars;
@@ -490,7 +494,8 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                         else {
                             // Fallback to greedy blocking
                             if (runGreedyBlocking(components, isolver, g, prevFingerprint, prevBlockedComponentIds,
-                                                  usedSkipVars, skipVarStart, maxSkipVars)) {
+                                                  usedSkipVars, skipVarStart, maxSkipVars,
+                                                  iterationSecEncoder, useVertexSep_, vtxSepThreshold_)) {
                                 escalationResult = "partition_changed";
                                 if (tracer) {
                                     std::vector<int> modelEdgeVars;
@@ -591,7 +596,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                 prevBlockedComponentIds = std::move(currentComponentIds);
 
                 iterationSecEncoder.startAuxAt(isolver.getNumVars() + 1);
-                auto secClauses = iterationSecEncoder.encodeSecs(components, useVertexSep_, vtxSepThreshold_);
+                auto secClauses = iterationSecEncoder.encodeSecs(components, useVertexSep_, vtxSepThreshold_, skipVertexDisjoint_);
 
                 // Algorithmic Improvement: Add union SECs for the smallest components in every iteration
                 // to force faster component merging and reduce total iterations.
@@ -611,7 +616,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                         
                         if (unionComp.vertices.size() >= static_cast<size_t>(g.getNodes())) continue;
                         
-                        auto unionClauses = iterationSecEncoder.encodeSecs({unionComp});
+                        auto unionClauses = iterationSecEncoder.encodeSecs({unionComp}, useVertexSep_, vtxSepThreshold_, skipVertexDisjoint_);
                         secClauses.insert(secClauses.end(), unionClauses.begin(), unionClauses.end());
                     }
                 }
@@ -645,6 +650,7 @@ void printHelp(const char* progName) {
               << "  --preprocess            Enable forced-edge preprocessing (degree-2 and 2-edge-cuts)\n"
               << "  --vertex-sep            Enable vertex-separator SEC (cardinality + vertex-disjoint)\n"
               << "  --vtx-sep-threshold <int>  |S| threshold for cardinality encoding (default: 4)\n"
+              << "  --vtx-sep-card-only     Like --vertex-sep but skip vertex-disjoint clauses\n"
               << "  -h, --help              Show this help\n";
 }
 
@@ -803,6 +809,7 @@ int main(int argc, char** argv) {
             }
         } else if (arg == "--vtx-sep-card-only") {
             solver.setVertexSep(true);
+            solver.setSkipVertexDisjoint(true);
         }
     }
 

@@ -10,7 +10,8 @@ void SecEncoder::startAuxAt(int base) {
 std::vector<std::vector<int>> SecEncoder::encodeSecs(
     const std::vector<Component>& components,
     bool useVertexSep,
-    int vtxSepThreshold)
+    int vtxSepThreshold,
+    bool skipVertexDisjoint)
 {
     std::vector<std::vector<int>> clauses;
     int numNodes = graph_.getNodes();
@@ -88,7 +89,7 @@ std::vector<std::vector<int>> SecEncoder::encodeSecs(
             clauses.push_back({s(n-1,1)});
 
             // Cross-direction vertex-disjoint for |S| = 2
-            if (sSize == 2 && n >= 4) {
+            if (sSize == 2 && n >= 4 && !skipVertexDisjoint) {
                 for (int bv : boundaryVertices) {
                     std::vector<int> edgesOut;
                     for (int u : component.vertices) {

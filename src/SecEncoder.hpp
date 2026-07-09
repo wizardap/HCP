@@ -17,7 +17,8 @@ public:
     std::vector<std::vector<int>> encodeSecs(
         const std::vector<Component>& components,
         bool useVertexSep = false,
-        int vtxSepThreshold = 4
+        int vtxSepThreshold = 4,
+        bool skipVertexDisjoint = false
     );
     
     // Reset internal aux variable counter (call when solver's max_var has been updated)
