@@ -212,51 +212,8 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
             return false;
         }
 
-        int forcedClauses = 0;
-
-        // Degree-2 vertices: both incident undirected edges must be selected
-        for (int u : pp.getDegree2Vertices()) {
-            for (auto& [v, _] : g.getNeighbors(u)) {
-                int fwd = g.getAdj(u, v);
-                int bwd = g.getAdj(v, u);
-                if (fwd > 0 && bwd > 0) {
-                    isolver.addClause({fwd, bwd}); // one of the two directions must be used
-                    forcedClauses++;
-                }
-            }
-        }
-
-        // 2-edge-cuts: both edges must be selected, and directions must be opposite
-        for (const auto& ep : pp.getTwoEdgeCuts()) {
-            // Force edge 1: one direction must be used
-            int fwd1 = g.getAdj(ep.u1, ep.v1);
-            int bwd1 = g.getAdj(ep.v1, ep.u1);
-            // Force edge 2: one direction must be used
-            int fwd2 = g.getAdj(ep.u2, ep.v2);
-            int bwd2 = g.getAdj(ep.v2, ep.u2);
-
-            if (fwd1 <= 0 || bwd1 <= 0 || fwd2 <= 0 || bwd2 <= 0) continue;
-
-            isolver.addClause({fwd1, bwd1});   // edge1 must be selected
-            isolver.addClause({fwd2, bwd2});   // edge2 must be selected
-
-            // Opposite directions: fwd1 ↔ bwd2, bwd1 ↔ fwd2
-            // (fwd1 → bwd2): ¬fwd1 ∨ bwd2
-            isolver.addClause({-fwd1, bwd2});
-            // (bwd2 → fwd1): ¬bwd2 ∨ fwd1
-            isolver.addClause({-bwd2, fwd1});
-            // (bwd1 → fwd2): ¬bwd1 ∨ fwd2
-            isolver.addClause({-bwd1, fwd2});
-            // (fwd2 → bwd1): ¬fwd2 ∨ bwd1
-            isolver.addClause({-fwd2, bwd1});
-
-            forcedClauses += 6;
-        }
-
-        std::cerr << "c Preprocessing: added " << forcedClauses
-                  << " forced clauses ("
-                  << pp.getDegree2Vertices().size() << " deg-2 vertices, "
-                  << pp.getTwoEdgeCuts().size() << " 2-edge-cuts)\n";
+        std::cerr << "c Preprocessing: graph has " << pp.getDegree2Vertices().size()
+                  << " deg-2 vertices, " << pp.getTwoEdgeCuts().size() << " 2-edge-cuts\n";
     }
     // ---- END PREPROCESSING ----
 
@@ -647,7 +604,7 @@ void printHelp(const char* progName) {
                << "  --random <int>          Set random seed for SAT solver\n"
               << "  --stagnation-k <int>    Stagnation threshold (default: 3, 0=disable)\n"
               << "  --stagnation-strategy <opt>  Escalation: greedy (default), dfj, union, both, mincut\n"
-              << "  --preprocess            Enable forced-edge preprocessing (degree-2 and 2-edge-cuts)\n"
+              << "  --preprocess            Enable preprocessing (bridge detection)\n"
               << "  --vertex-sep            Enable vertex-separator SEC (cardinality + vertex-disjoint)\n"
               << "  --vtx-sep-threshold <int>  |S| threshold for cardinality encoding (default: 4)\n"
               << "  --vtx-sep-card-only     Like --vertex-sep but skip vertex-disjoint clauses\n"
