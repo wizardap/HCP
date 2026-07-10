@@ -204,6 +204,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
     encoder.encodeBase(isolver);
 
     // ---- PREPROCESSING: Forced edges from degree-2 vertices and 2-edge-cuts ----
+    int forcedClauses = 0;
     if (preprocess_) {
         GraphPreprocessor pp(g);
 
@@ -212,8 +213,37 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
             return false;
         }
 
+        // Degree-2 vertices: both incident undirected edges must be selected
+        for (int u : pp.getDegree2Vertices()) {
+            for (auto& [v, _] : g.getNeighbors(u)) {
+                int fwd = g.getAdj(u, v);
+                int bwd = g.getAdj(v, u);
+                if (fwd > 0 && bwd > 0) {
+                    isolver.addClause({fwd, bwd});
+                    forcedClauses++;
+                }
+            }
+        }
+
+        // 2-edge-cuts: both edges forced, opposite directions
+        for (const auto& ep : pp.getTwoEdgeCuts()) {
+            int f1 = g.getAdj(ep.u1, ep.v1);
+            int b1 = g.getAdj(ep.v1, ep.u1);
+            int f2 = g.getAdj(ep.u2, ep.v2);
+            int b2 = g.getAdj(ep.v2, ep.u2);
+            if (f1 <= 0 || b1 <= 0 || f2 <= 0 || b2 <= 0) continue;
+
+            isolver.addClause({f1, b1}); forcedClauses++;
+            isolver.addClause({f2, b2}); forcedClauses++;
+            isolver.addClause({-f1, b2}); forcedClauses++;
+            isolver.addClause({-b2, f1}); forcedClauses++;
+            isolver.addClause({-b1, f2}); forcedClauses++;
+            isolver.addClause({-f2, b1}); forcedClauses++;
+        }
+
         std::cerr << "c Preprocessing: graph has " << pp.getDegree2Vertices().size()
-                  << " deg-2 vertices, " << pp.getTwoEdgeCuts().size() << " 2-edge-cuts\n";
+                  << " deg-2 vertices, " << pp.getTwoEdgeCuts().size()
+                  << " 2-edge-cuts, added " << forcedClauses << " forced clauses\n";
     }
     // ---- END PREPROCESSING ----
 
@@ -222,7 +252,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
 
     // Reserve a pool of skip variables to avoid dynamic declaration clashes with CaDiCaL's BVA
     int baseVars = isolver.getNumVars();
-    int maxSkipVars = g.getNodes() * 15;
+    int maxSkipVars = g.getNodes();
     isolver.declareVariables(maxSkipVars);
     int skipVarStart = baseVars + 1;
     int usedSkipVars = 0;
@@ -242,6 +272,8 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
     bool escalated = false;
     std::string escalationResult = "";
     std::string stagnationStrategy = this->stagnationStrategy;
+    int lowCompCount = 0;
+    int prevComps = 0;
 
     SecEncoder iterationSecEncoder(g);
     iterationSecEncoder.startAuxAt(isolver.getNumVars() + 1);
@@ -298,7 +330,10 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
 
             // ----- STAGNATION DETECTION -----
             if (stagnationK > 0 && !components.empty()) {
-                bool isStagnant = !prevEdges.empty() && (jaccardSim >= 0.85);
+                // Near convergence (<=2 comps): high Jaccard means steady progress,
+                // not stagnation. Greedy escalation breaks the 2-comp pattern and
+                // triggers 4↔2 oscillation on 3-regular graphs. Let SECs converge.
+                bool isStagnant = !prevEdges.empty() && (components.size() > 4) && (jaccardSim >= 0.85);
 
                 if (!isStagnant) {
                     stagnationCount = 0;
@@ -330,6 +365,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                             escalationResult = "dfj_added";
                             stagnationCount = 0;
                             escalated = false;
+                            continue;
                         } 
                         else if (stagnationStrategy == "union") {
                             int addedCount = 0;
@@ -357,6 +393,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                             escalationResult = "union_added";
                             stagnationCount = 0;
                             escalated = false;
+                            continue;
                         }
                         else if (stagnationStrategy == "both") {
                             int addedDfj = 0;
@@ -396,6 +433,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                             escalationResult = "both_added";
                             stagnationCount = 0;
                             escalated = false;
+                            continue;
                         }
                         else if (stagnationStrategy == "mincut") {
                             MinCutResult mcr = computeComponentMinCut(components, g);
@@ -419,25 +457,19 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                                 escalationResult = "mincut_added";
                                 stagnationCount = 0;
                                 escalated = false;
+                                continue;
                             } else {
                                 std::cerr << "c Escalation (MinCut): no useful cut found, falling back\n";
                                 // Fall through to greedy below
                                 if (runGreedyBlocking(components, isolver, g, prevFingerprint,
                                                       prevBlockedComponentIds, usedSkipVars,
                                                       skipVarStart, maxSkipVars,
-                                                      iterationSecEncoder, useVertexSep_, vtxSepThreshold_)) {
+                                                       iterationSecEncoder, useVertexSep_, vtxSepThreshold_)) {
                                     escalationResult = "partition_changed";
                                     if (tracer) {
-                                        std::vector<int> modelEdgeVars;
-                                        int numVars = isolver.getNumVars();
-                                        for (int v = 1; v <= numVars; ++v) {
-                                            if (isolver.getModelValue(v) > 0) {
-                                                modelEdgeVars.push_back(v);
-                                            }
-                                        }
                                         tracer->logIteration(actions, actions, isolver.getFinalSolveTime(),
                                                              totalTime, 0, 0, 0,
-                                                             components, modelEdgeVars, prevBlockedComponentIds,
+                                                             components, std::vector<int>(), prevBlockedComponentIds,
                                                              stagnationCount, escalated,
                                                              stagnationStrategy, escalationResult);
                                     }
@@ -455,16 +487,9 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                                                   iterationSecEncoder, useVertexSep_, vtxSepThreshold_)) {
                                 escalationResult = "partition_changed";
                                 if (tracer) {
-                                    std::vector<int> modelEdgeVars;
-                                    int numVars = isolver.getNumVars();
-                                    for (int v = 1; v <= numVars; ++v) {
-                                        if (isolver.getModelValue(v) > 0) {
-                                            modelEdgeVars.push_back(v);
-                                        }
-                                    }
                                     tracer->logIteration(actions, actions, isolver.getFinalSolveTime(),
                                                          totalTime, 0, 0, 0,
-                                                         components, modelEdgeVars, prevBlockedComponentIds,
+                                                         components, std::vector<int>(), prevBlockedComponentIds,
                                                          stagnationCount, escalated,
                                                          stagnationStrategy, escalationResult);
                                 }
@@ -555,32 +580,62 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                 iterationSecEncoder.startAuxAt(isolver.getNumVars() + 1);
                 auto secClauses = iterationSecEncoder.encodeSecs(components, useVertexSep_, vtxSepThreshold_, skipVertexDisjoint_);
 
-                // Algorithmic Improvement: Add union SECs for the smallest components in every iteration
-                // to force faster component merging and reduce total iterations.
-                std::vector<Component> sortedComps = components;
-                std::sort(sortedComps.begin(), sortedComps.end(), [](const Component& a, const Component& b) {
-                    return a.vertices.size() < b.vertices.size();
-                });
-                
-                int P = std::min(4, static_cast<int>(sortedComps.size()));
-                for (int a = 0; a < P; ++a) {
-                    for (int b = a + 1; b < P; ++b) {
-                        Component unionComp;
-                        unionComp.vertices = sortedComps[a].vertices;
-                        unionComp.vertices.insert(unionComp.vertices.end(), 
-                                                  sortedComps[b].vertices.begin(), 
-                                                  sortedComps[b].vertices.end());
-                        
-                        if (unionComp.vertices.size() >= static_cast<size_t>(g.getNodes())) continue;
-                        
-                        auto unionClauses = iterationSecEncoder.encodeSecs({unionComp}, useVertexSep_, vtxSepThreshold_, skipVertexDisjoint_);
-                        secClauses.insert(secClauses.end(), unionClauses.begin(), unionClauses.end());
+                // Algorithmic Improvement: Add union SECs for the smallest components to
+                // force faster component merging. Only applies when many components remain;
+                // near convergence (<=10 comps) union SECs cause oscillation between
+                // component counts (e.g. 4↔2 cycle on 3-regular graphs).
+                if (components.size() > 10) {
+                    std::vector<Component> sortedComps = components;
+                    std::sort(sortedComps.begin(), sortedComps.end(), [](const Component& a, const Component& b) {
+                        return a.vertices.size() < b.vertices.size();
+                    });
+                    int P = std::min(4, static_cast<int>(sortedComps.size()));
+                    for (int a = 0; a < P; ++a) {
+                        for (int b = a + 1; b < P; ++b) {
+                            Component unionComp;
+                            unionComp.vertices = sortedComps[a].vertices;
+                            unionComp.vertices.insert(unionComp.vertices.end(), 
+                                                      sortedComps[b].vertices.begin(), 
+                                                      sortedComps[b].vertices.end());
+                            if (unionComp.vertices.size() >= static_cast<size_t>(g.getNodes())) continue;
+                            auto unionClauses = iterationSecEncoder.encodeSecs({unionComp}, useVertexSep_, vtxSepThreshold_, skipVertexDisjoint_);
+                            secClauses.insert(secClauses.end(), unionClauses.begin(), unionClauses.end());
+                        }
                     }
                 }
 
                 for (const auto& clause : secClauses) {
                     isolver.addClause(clause);
                 }
+
+                // ----- LOW-COMPONENT DFJ PUSH (Phase B) -----
+                {
+                    int curComps = static_cast<int>(components.size());
+                    if (curComps <= 4) {
+                        if (curComps == prevComps) {
+                            lowCompCount++;
+                        } else {
+                            lowCompCount = 0;
+                        }
+                        if (lowCompCount > 0 && lowCompCount % 10 == 0) {
+                            for (const auto& comp : components) {
+                                if (comp.edges.empty()) continue;
+                                std::vector<int> dfjClause;
+                                dfjClause.reserve(comp.edges.size());
+                                for (int e : comp.edges) {
+                                    dfjClause.push_back(-e);
+                                }
+                                isolver.addClause(dfjClause);
+                            }
+                            std::cerr << "c Low-comp DFJ push at count=" << lowCompCount
+                                      << ", comps=" << curComps << "\n";
+                        }
+                    } else {
+                        lowCompCount = 0;
+                    }
+                    prevComps = curComps;
+                }
+
                 std::cerr << "c Iteration: found " << components.size()
                           << " components, added " << secClauses.size() << " SEC clauses\n";
                 prevEdges = std::move(currEdges);

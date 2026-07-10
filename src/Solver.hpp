@@ -51,8 +51,8 @@ public:
           symOption(SymmetryOption::DEFAULT),
           startNodeOption(StartNodeOption::MIN_DEGREE), specificStartNode(0), 
           satSolverCmd("glucose"), trajectoryFile(""), randomSeed(0),
-          stagnationK(3), stagnationStrategy("greedy"), preprocess_(false),
-          useVertexSep_(false), vtxSepThreshold_(4), skipVertexDisjoint_(false) {}
+          stagnationK(3), stagnationStrategy("dfj"), preprocess_(true),
+          useVertexSep_(true), vtxSepThreshold_(4), skipVertexDisjoint_(false) {}
 
     void setCycle(int c) { cycle = c; }
     void setAtMostOneOption(AtMostOneOption opt) { amoOption = opt; }
