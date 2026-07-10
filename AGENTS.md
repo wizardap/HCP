@@ -68,13 +68,22 @@ Solver options:
 **Phase B:** Add component-count tracking and periodic DFJ clause injection every 10th iteration when components ≤ 4. Breaks local-minimum stall at 2 components by forcing partition changes.
 
 **Results:**
+- II_3972: SOLVED 79.2s (was TIMEOUT at 600s) — DFJ push + vertex-sep converge
+- graph424: SOLVED 76.9s (was TIMEOUT at 120s)
+- graph446: SOLVED 73.0s (was TIMEOUT at 120s)
 - GPN_998: SOLVED 93.6s (was TIMEOUT at 120s) — DFJ push breaks the 2-comp stall
 - FLS_845: SOLVED 45.5s (was 85.7s) — vertex-sep + dfj strategies converge faster
 - GPN_482: 16.5s (was 5.2s) — still well within limits
 - FLS_1014: 112.6s (was 91.8s) — slight overhead from new defaults
-- v-1000-5: still TIMEOUT — oscillates at 17-57 components, never reaches ≤4 for DFJ push
+- graph162: TIMEOUT
+- graph470: TIMEOUT
+- graph180: TIMEOUT
+- II_7932: TIMEOUT (21302 forced clauses from 2667 2-edge-cuts bloat formula to 193K clauses; only 1 iteration in 120s)
+- v-800-5: TIMEOUT
+- v-900-5: TIMEOUT
+- v-1000-5: TIMEOUT (oscillates at 17-57 components, never ≤4 for DFJ push)
 
-**Limitation:** DFJ push only fires at ≤4 components. Some graphs oscillate at higher component counts and need combined min-cut + DFJ approach.
+**Limitation:** DFJ push only fires at ≤4 components. Some graphs oscillate at higher component counts and need combined min-cut + DFJ approach. Preprocessing forced clauses can bloat formula for graphs with many 2-edge-cuts, slowing the SAT solver.
 
 ## Key Features
 
