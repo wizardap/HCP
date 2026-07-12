@@ -668,6 +668,42 @@ Solver::SolveResult Solver::runIncremental(int64_t timeLimitMs) {
                 }
                 prevBlockedComponentIds = std::move(currentComponentIds);
 
+                // ---- Phase 1: oscillation-guided cut escalation ----
+                {
+                    OscillationTracker oscillationTracker_(oscillationWindow_, cutThreshold_, 10);
+                    int oscClausesAdded = 0;
+                    for (const auto& comp : components) {
+                        if ((int)comp.vertices.size() < oscillationTracker_.minCutThreshold)
+                            continue;
+
+                        uint64_t hash = 0;
+                        for (int v : comp.vertices) {
+                            hash ^= std::hash<int>{}(v) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+                        }
+
+                        if (oscillationTracker_.isOscillating(hash, actions)) {
+                            const int maxFlowVertLimit = 2000;
+                            auto mcr = computeInternalMinCut(comp, g, maxFlowVertLimit);
+                            if (mcr.cutSize >= 2 && mcr.cutSize <= oscillationTracker_.maxCutSize
+                                && !mcr.sideA_vertices.empty()
+                                && (int)mcr.sideA_vertices.size() < (int)comp.vertices.size())
+                            {
+                                auto clause = buildBoundaryClause(mcr.sideA_vertices, g);
+                                if ((int)clause.size() >= 2) {
+                                    isolver.addClause(clause);
+                                    oscClausesAdded++;
+                                }
+                            }
+                        }
+
+                        oscillationTracker_.record(hash, actions);
+                    }
+                    if (oscClausesAdded > 0) {
+                        std::cerr << "c Iteration: oscillation cut added for "
+                                  << oscClausesAdded << " components\n";
+                    }
+                }
+
                 iterationSecEncoder.startAuxAt(isolver.getNumVars() + 1);
                 auto secClauses = iterationSecEncoder.encodeSecs(components, useVertexSep_, vtxSepThreshold_, skipVertexDisjoint_);
 

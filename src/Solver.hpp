@@ -78,6 +78,8 @@ private:
     int vtxSepThreshold_;
     bool skipVertexDisjoint_;
     bool precomputeBlocks_;
+    int oscillationWindow_ = 10;
+    int cutThreshold_ = 100;
 
 public:
     Solver(const std::string& gFile) 
@@ -107,6 +109,8 @@ public:
     void setVtxSepThreshold(int t) { vtxSepThreshold_ = t; }
     void setSkipVertexDisjoint(bool v) { skipVertexDisjoint_ = v; }
     void setPrecomputeBlocks(bool b) { precomputeBlocks_ = b; }
+    void setOscillationWindow(int w) { oscillationWindow_ = w; }
+    void setCutThreshold(int t) { cutThreshold_ = t; }
 
     bool run();
     SolveResult runIncremental(int64_t timeLimitMs = 600000);
