@@ -178,14 +178,10 @@ static bool runGreedyBlocking(
 
 std::vector<int> buildBoundaryClause(
     const std::vector<int>& sideA_vertices,
-    const Component& fullComponent,
     const Graph& graph)
 {
     std::vector<bool> inSideA(graph.getNodes(), false);
     for (int v : sideA_vertices) inSideA[v] = true;
-
-    std::vector<bool> inFullComp(graph.getNodes(), false);
-    for (int v : fullComponent.vertices) inFullComp[v] = true;
 
     std::vector<int> clause;
     for (int u : sideA_vertices) {

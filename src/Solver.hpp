@@ -31,11 +31,8 @@ struct OscillationTracker {
     }
 };
 
-struct Component;
-
 std::vector<int> buildBoundaryClause(
     const std::vector<int>& sideA_vertices,
-    const Component& fullComponent,
     const Graph& graph);
 
 class Solver {

@@ -330,7 +330,8 @@ static void testBuildBoundaryClause() {
     fullComp.vertices = {0, 1, 2};
     fullComp.edges = {10, 11, 12, 13, 14, 15};
 
-    auto clause = buildBoundaryClause({0}, fullComp, g);
+    (void)fullComp; // kept for documentation
+    auto clause = buildBoundaryClause({0}, g);
     TEST_ASSERT(clause.size() == 2);
     TEST_ASSERT(std::find(clause.begin(), clause.end(), -10) != clause.end());
     TEST_ASSERT(std::find(clause.begin(), clause.end(), -15) != clause.end());
