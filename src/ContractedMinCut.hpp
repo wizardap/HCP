@@ -17,3 +17,13 @@ MinCutResult computeComponentMinCut(
     const std::vector<Component>& components,
     const Graph& graph
 );
+
+// Find the minimum edge cut within a single component.
+// Used to split a large component when stagnation occurs at moderate count.
+// Returns the cut edges (global edge indices) and the vertices on one side.
+// Returns empty vectors if no useful cut found.
+MinCutResult computeInternalMinCut(
+    const Component& component,
+    const Graph& graph,
+    int maxFlowVertLimit = 500
+);

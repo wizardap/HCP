@@ -86,6 +86,9 @@ public:
     // Sets the execution time limit in milliseconds.
     void setTimeLimit(int64_t ms);
 
+    // Reset: release the old solver and create a fresh one (all clauses lost).
+    void reset(int64_t timeLimitMs = 0);
+
     // Callback helper for timeout (exposed for C-linkage callback)
     static int terminateCallback(void* state);
 

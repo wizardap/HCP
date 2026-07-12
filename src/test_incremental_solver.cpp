@@ -184,7 +184,7 @@ void testSolverPreprocessing() {
 
     Solver s2("/tmp/test_cycle4.edge");
     s2.setPreprocess(true);
-    TEST_ASSERT(s2.runIncremental(5000)); // 5s time limit, must find HC
+    TEST_ASSERT(s2.runIncremental(5000) == Solver::SolveResult::HAMILTONIAN); // 5s time limit, must find HC
     std::cout << "Solver Preprocessing passed!\n";
 }
 

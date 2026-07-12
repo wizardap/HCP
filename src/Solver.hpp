@@ -11,6 +11,13 @@ class IncrementalSolver;
 
 class Solver {
 public:
+    enum class SolveResult {
+        HAMILTONIAN,
+        UNSAT,
+        TIMEOUT,
+        ERROR
+    };
+
     enum class AtMostOneOption {
         DEFAULT,
         PBLIB
@@ -55,6 +62,7 @@ public:
           useVertexSep_(true), vtxSepThreshold_(4), skipVertexDisjoint_(false) {}
 
     void setCycle(int c) { cycle = c; }
+    int getCycle() const { return cycle; }
     void setAtMostOneOption(AtMostOneOption opt) { amoOption = opt; }
     void setStartNodeOption(StartNodeOption opt, int node = 0) { 
         startNodeOption = opt; 
@@ -72,7 +80,7 @@ public:
     void setSkipVertexDisjoint(bool v) { skipVertexDisjoint_ = v; }
 
     bool run();
-    bool runIncremental(int64_t timeLimitMs = 600000);
+    SolveResult runIncremental(int64_t timeLimitMs = 600000);
 };
 
 #endif

@@ -42,6 +42,12 @@ void GraphPreprocessor::compute() {
     }
 
     // --- 2-edge-cut detection ---
+    // O(E) per edge — bail out for large graphs
+    if (graph_.getEdges() > 10000) {
+        std::cerr << "c Preprocessing: graph has " << graph_.getEdges()
+                  << " edges, skipping expensive 2-edge-cut detection\n";
+        return;
+    }
     for (int u = 0; u < n; ++u) {
         for (auto& [v, _] : graph_.getNeighbors(u)) {
             if (v <= u) continue; // undirected: process each edge once

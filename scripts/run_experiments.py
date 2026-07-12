@@ -105,7 +105,7 @@ def main():
                 t_start = time.time()
                 try:
                     proc = subprocess.run(
-                        [os.path.join(script_dir, "../src/hcp-solver"), graph_path, "--incremental", "--time-limit", str(time_limit)],
+                        [os.path.join(script_dir, "../src/hcp-solver"), graph_path, "--incremental", "--cycle", "auto", "--time-limit", str(time_limit)],
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
                         text=True,

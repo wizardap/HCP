@@ -225,12 +225,12 @@ void testStagnationStrategies() {
         std::streambuf* oldCerr = std::cerr.rdbuf(outputCapture.rdbuf());
         std::streambuf* oldCout = std::cout.rdbuf(outputCapture.rdbuf());
         
-        bool ok = solver.runIncremental(5000); // 5s timeout
+        auto result = solver.runIncremental(5000); // 5s timeout
         
         std::cerr.rdbuf(oldCerr);
         std::cout.rdbuf(oldCout);
         
-        TEST_ASSERT(ok == true);
+        TEST_ASSERT(result == Solver::SolveResult::HAMILTONIAN);
     }
     std::cout << "  Stagnation strategies tested successfully!\n";
 }

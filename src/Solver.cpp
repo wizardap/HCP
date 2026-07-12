@@ -20,6 +20,7 @@
 #include <sstream>
 #include <algorithm>
 #include <iterator>
+#include <climits>
 
 bool Solver::run() {
     Graph g;
@@ -168,11 +169,11 @@ static bool runGreedyBlocking(
     return false;
 }
 
-bool Solver::runIncremental(int64_t timeLimitMs) {
+Solver::SolveResult Solver::runIncremental(int64_t timeLimitMs) {
     Graph g;
     if (!g.loadFromFile(graphFile, true)) { // Pass true for directed edge indices mapping
         std::cerr << "c Error: could not open graph file " << graphFile << "\n";
-        return false;
+        return SolveResult::ERROR;
     }
 
     std::unique_ptr<IAtMostOne> amo;
@@ -204,13 +205,14 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
     encoder.encodeBase(isolver);
 
     // ---- PREPROCESSING: Forced edges from degree-2 vertices and 2-edge-cuts ----
-    int forcedClauses = 0;
+    std::vector<std::vector<int>> forcedClausesVec;
+    int forcedClausesCount = 0;
     if (preprocess_) {
         GraphPreprocessor pp(g);
 
         if (pp.hasBridge()) {
             std::cerr << "c Preprocessing: graph has a bridge — no Hamiltonian Cycle possible\n";
-            return false;
+            return SolveResult::UNSAT;
         }
 
         // Degree-2 vertices: both incident undirected edges must be selected
@@ -219,8 +221,10 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                 int fwd = g.getAdj(u, v);
                 int bwd = g.getAdj(v, u);
                 if (fwd > 0 && bwd > 0) {
-                    isolver.addClause({fwd, bwd});
-                    forcedClauses++;
+                    std::vector<int> clause = {fwd, bwd};
+                    isolver.addClause(clause);
+                    forcedClausesVec.push_back(std::move(clause));
+                    forcedClausesCount++;
                 }
             }
         }
@@ -233,17 +237,47 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
             int b2 = g.getAdj(ep.v2, ep.u2);
             if (f1 <= 0 || b1 <= 0 || f2 <= 0 || b2 <= 0) continue;
 
-            isolver.addClause({f1, b1}); forcedClauses++;
-            isolver.addClause({f2, b2}); forcedClauses++;
-            isolver.addClause({-f1, b2}); forcedClauses++;
-            isolver.addClause({-b2, f1}); forcedClauses++;
-            isolver.addClause({-b1, f2}); forcedClauses++;
-            isolver.addClause({-f2, b1}); forcedClauses++;
+            {
+                std::vector<int> clause = {f1, b1};
+                isolver.addClause(clause);
+                forcedClausesVec.push_back(std::move(clause));
+                forcedClausesCount++;
+            }
+            {
+                std::vector<int> clause = {f2, b2};
+                isolver.addClause(clause);
+                forcedClausesVec.push_back(std::move(clause));
+                forcedClausesCount++;
+            }
+            {
+                std::vector<int> clause = {-f1, b2};
+                isolver.addClause(clause);
+                forcedClausesVec.push_back(std::move(clause));
+                forcedClausesCount++;
+            }
+            {
+                std::vector<int> clause = {-b2, f1};
+                isolver.addClause(clause);
+                forcedClausesVec.push_back(std::move(clause));
+                forcedClausesCount++;
+            }
+            {
+                std::vector<int> clause = {-b1, f2};
+                isolver.addClause(clause);
+                forcedClausesVec.push_back(std::move(clause));
+                forcedClausesCount++;
+            }
+            {
+                std::vector<int> clause = {-f2, b1};
+                isolver.addClause(clause);
+                forcedClausesVec.push_back(std::move(clause));
+                forcedClausesCount++;
+            }
         }
 
         std::cerr << "c Preprocessing: graph has " << pp.getDegree2Vertices().size()
                   << " deg-2 vertices, " << pp.getTwoEdgeCuts().size()
-                  << " 2-edge-cuts, added " << forcedClauses << " forced clauses\n";
+                   << " 2-edge-cuts, added " << forcedClausesCount << " forced clauses\n";
     }
     // ---- END PREPROCESSING ----
 
@@ -279,6 +313,20 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
     iterationSecEncoder.startAuxAt(isolver.getNumVars() + 1);
 
     while (true) {
+        {
+            auto now = std::chrono::steady_clock::now();
+            double totalTime = std::chrono::duration<double>(now - startTime).count();
+            if (totalTime * 1000 >= timeLimitMs) {
+                std::cerr << "c TIMEOUT (total)\n";
+                std::cerr << "c incremental actions: " << actions << "\n";
+                std::cerr << "c total variables: " << isolver.getNumVars() << "\n";
+                std::cerr << "c total clauses: " << isolver.getNumClauses() << "\n";
+                std::cerr << "c final solve time: " << isolver.getFinalSolveTime() << "\n";
+                std::cerr << "c total solver time: " << isolver.getTotalSolverTime() << "\n";
+                isolver.printStatistics();
+                return SolveResult::TIMEOUT;
+            }
+        }
         actions++;
         auto result = isolver.solve();
         auto now = std::chrono::steady_clock::now();
@@ -292,7 +340,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
             std::cerr << "c final solve time: " << isolver.getFinalSolveTime() << "\n";
             std::cerr << "c total solver time: " << isolver.getTotalSolverTime() << "\n";
             isolver.printStatistics();
-            return false;
+            return SolveResult::UNSAT;
         }
         if (result == IncrementalSolver::Result::TIMEOUT) {
             std::cerr << "c TIMEOUT\n";
@@ -302,7 +350,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
             std::cerr << "c final solve time: " << isolver.getFinalSolveTime() << "\n";
             std::cerr << "c total solver time: " << isolver.getTotalSolverTime() << "\n";
             isolver.printStatistics();
-            return false;
+            return SolveResult::TIMEOUT;
         }
         if (result == IncrementalSolver::Result::SAT) {
             auto model = isolver.getModel();
@@ -344,8 +392,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                     std::cerr << "c Stagnation count: " << stagnationCount
                               << "/" << stagnationK << " (Jaccard: " << jaccardSim << ")\n";
 
-                    if (stagnationCount >= stagnationK && !escalated) {
-                        escalated = true;
+                    if (stagnationCount >= stagnationK) {
                         std::cerr << "c Stagnation detected! Escalating with strategy: "
                                   << stagnationStrategy << "\n";
 
@@ -364,8 +411,6 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                             std::cerr << "c Escalation (DFJ): Added " << addedCount << " cycle-blocking clauses\n";
                             escalationResult = "dfj_added";
                             stagnationCount = 0;
-                            escalated = false;
-                            continue;
                         } 
                         else if (stagnationStrategy == "union") {
                             int addedCount = 0;
@@ -392,8 +437,6 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                             std::cerr << "c Escalation (Union): Added " << addedCount << " union SEC clauses\n";
                             escalationResult = "union_added";
                             stagnationCount = 0;
-                            escalated = false;
-                            continue;
                         }
                         else if (stagnationStrategy == "both") {
                             int addedDfj = 0;
@@ -432,8 +475,6 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                             std::cerr << "c Escalation (Both): Added " << addedDfj << " DFJ and " << addedUnion << " union SEC clauses\n";
                             escalationResult = "both_added";
                             stagnationCount = 0;
-                            escalated = false;
-                            continue;
                         }
                         else if (stagnationStrategy == "mincut") {
                             MinCutResult mcr = computeComponentMinCut(components, g);
@@ -456,8 +497,6 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                                           << mcr.sideA_vertices.size() << " vertices\n";
                                 escalationResult = "mincut_added";
                                 stagnationCount = 0;
-                                escalated = false;
-                                continue;
                             } else {
                                 std::cerr << "c Escalation (MinCut): no useful cut found, falling back\n";
                                 // Fall through to greedy below
@@ -527,7 +566,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                 std::ofstream solOut(solFile);
                 if (!solOut.is_open() || solOut.fail()) {
                     std::cerr << "c Error: Could not write solution to " << solFile << "\n";
-                    return false;
+                    return SolveResult::ERROR;
                 }
                 solOut << "s SATISFIABLE\nv ";
                 for (int var = 1; var <= isolver.getNumVars(); ++var) {
@@ -542,7 +581,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                 if (solOut.fail()) {
                     std::cerr << "c Error: Failed while writing solution to " << solFile << "\n";
                     solOut.close();
-                    return false;
+                    return SolveResult::ERROR;
                 }
                 solOut.close();
 
@@ -569,7 +608,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                 std::cerr << "c final solve time: " << isolver.getFinalSolveTime() << "\n";
                 std::cerr << "c total solver time: " << isolver.getTotalSolverTime() << "\n";
                 isolver.printStatistics();
-                return true;
+                return SolveResult::HAMILTONIAN;
             } else {
                 std::vector<int> currentComponentIds;
                 for (size_t i = 0; i < components.size(); ++i) {
@@ -609,29 +648,42 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
                 }
 
                 // ----- LOW-COMPONENT DFJ PUSH (Phase B) -----
+                // Only for small components (≤3 vertices): their DFJ clauses
+                // (negating all 4-6 directed edges) are strong constraints that
+                // force merging. For larger components, full DFJ clauses are
+                // weak (thousands of literals) and partitioned DFJ is UNSOUND
+                // — random groups of 6 edges may all be unchanged in a valid
+                // Hamiltonian path through the component.
                 {
                     int curComps = static_cast<int>(components.size());
-                    if (curComps <= 4) {
-                        if (curComps == prevComps) {
-                            lowCompCount++;
-                        } else {
-                            lowCompCount = 0;
-                        }
-                        if (lowCompCount > 0 && lowCompCount % 10 == 0) {
-                            for (const auto& comp : components) {
-                                if (comp.edges.empty()) continue;
-                                std::vector<int> dfjClause;
-                                dfjClause.reserve(comp.edges.size());
-                                for (int e : comp.edges) {
-                                    dfjClause.push_back(-e);
-                                }
-                                isolver.addClause(dfjClause);
-                            }
-                            std::cerr << "c Low-comp DFJ push at count=" << lowCompCount
-                                      << ", comps=" << curComps << "\n";
-                        }
+                    if (curComps == prevComps) {
+                        lowCompCount++;
                     } else {
                         lowCompCount = 0;
+                    }
+                    if (lowCompCount > 0 && lowCompCount % 10 == 0) {
+                        if (curComps <= 4) {
+                            std::cerr << "c Low-comp DFJ push (≤4 comps) at count=" << lowCompCount
+                                      << ", comps=" << curComps << " — SKIPPED\n";
+                        } else {
+                            int addedCount = 0;
+                            for (const auto& comp : components) {
+                                if (comp.edges.empty()) continue;
+                                if (comp.vertices.size() <= 3) {
+                                    std::vector<int> dfjClause;
+                                    dfjClause.reserve(comp.edges.size());
+                                    for (int e : comp.edges) {
+                                        dfjClause.push_back(-e);
+                                    }
+                                    isolver.addClause(dfjClause);
+                                    addedCount++;
+                                }
+                            }
+                            if (addedCount > 0) {
+                                std::cerr << "c Low-comp DFJ push (>4 comps) at count=" << lowCompCount
+                                          << ", comps=" << curComps << " — added " << addedCount << " small-component DFJ\n";
+                            }
+                        }
                     }
                     prevComps = curComps;
                 }
@@ -648,7 +700,7 @@ bool Solver::runIncremental(int64_t timeLimitMs) {
 void printHelp(const char* progName) {
     std::cout << "Usage: " << progName << " <graph.dimacs> [options]\n"
               << "Options:\n"
-              << "  -c, --cycle <int>       Cycle multiplier (default: 2)\n"
+              << "  -c, --cycle <int|auto>  Cycle multiplier (default: 2, auto: 3*5*7*2^k > nNode, fallback to 2)\n"
               << "  -a, --amo <opt>         AtMostOne module: default, pblib\n"
               << "  -s, --start <opt>       Start node: min (min degree), max (max degree), first (node 0), or node index\n"
               << "  -b, --sym-break <opt>   Symmetry breaking module: default, none\n"
@@ -659,7 +711,8 @@ void printHelp(const char* progName) {
                << "  --random <int>          Set random seed for SAT solver\n"
               << "  --stagnation-k <int>    Stagnation threshold (default: 3, 0=disable)\n"
               << "  --stagnation-strategy <opt>  Escalation: greedy (default), dfj, union, both, mincut\n"
-              << "  --preprocess            Enable preprocessing (bridge detection)\n"
+              << "  --preprocess            Enable preprocessing (deg-2, 2-edge-cut forcing)\n"
+              << "  --no-preprocess         Disable preprocessing\n"
               << "  --vertex-sep            Enable vertex-separator SEC (cardinality + vertex-disjoint)\n"
               << "  --vtx-sep-threshold <int>  |S| threshold for cardinality encoding (default: 4)\n"
               << "  --vtx-sep-card-only     Like --vertex-sep but skip vertex-disjoint clauses\n"
@@ -667,6 +720,17 @@ void printHelp(const char* progName) {
 }
 
 #ifndef TESTING
+
+static int computeAutoScaleCycle(int nNode) {
+    long long cycle = 2;
+    if (cycle <= nNode) cycle *= 3;
+    if (cycle <= nNode) cycle *= 5;
+    if (cycle <= nNode) cycle *= 7;
+    while (cycle <= nNode) cycle *= 2;
+    if (cycle > static_cast<long long>(INT_MAX)) cycle = INT_MAX;
+    return static_cast<int>(cycle);
+}
+
 int main(int argc, char** argv) {
     if (argc < 2) {
         printHelp(argv[0]);
@@ -708,11 +772,15 @@ int main(int argc, char** argv) {
         } else if (arg == "-c" || arg == "--cycle") {
             if (i + 1 < argc) {
                 std::string cycleStr = argv[++i];
-                try {
-                    solver.setCycle(std::stoi(cycleStr));
-                } catch (const std::exception& e) {
-                    std::cerr << "Error: invalid cycle value \"" << cycleStr << "\"\n";
-                    return 1;
+                if (cycleStr == "auto") {
+                    solver.setCycle(0);
+                } else {
+                    try {
+                        solver.setCycle(std::stoi(cycleStr));
+                    } catch (const std::exception& e) {
+                        std::cerr << "Error: invalid cycle value \"" << cycleStr << "\"\n";
+                        return 1;
+                    }
                 }
             } else {
                 std::cerr << "Error: -c/--cycle requires a value\n";
@@ -810,6 +878,8 @@ int main(int argc, char** argv) {
             }
         } else if (arg == "--preprocess") {
             solver.setPreprocess(true);
+        } else if (arg == "--no-preprocess") {
+            solver.setPreprocess(false);
         } else if (arg == "--vertex-sep") {
             solver.setVertexSep(true);
         } else if (arg == "--vtx-sep-threshold") {
@@ -832,9 +902,50 @@ int main(int argc, char** argv) {
     }
 
     if (incremental) {
-        if (!solver.runIncremental(timeLimitMs)) {
+        if (solver.getCycle() == 0) {
+            // Load graph to compute auto-scaled cycle m = 3*5*7*2^k > nNode
+            Graph g;
+            int autoCycle = 2;
+            if (g.loadFromFile(graphFile, true)) {
+                int nNode = g.getNodes();
+                autoCycle = computeAutoScaleCycle(nNode);
+                std::cerr << "c Auto cycle: n=" << nNode << " m=" << autoCycle << "\n";
+            } else {
+                std::cerr << "c Auto cycle: could not load graph, using default\n";
+            }
+
+            std::cerr << "c Auto cycle: trying m=" << autoCycle << " (30s budget, one-shot when m > n)\n";
+            solver.setCycle(autoCycle);
+            int64_t phase1Ms = std::min<int64_t>(30000, timeLimitMs * 30 / 100);
+            auto result = solver.runIncremental(phase1Ms);
+            if (result == Solver::SolveResult::HAMILTONIAN) {
+                std::cerr << "c Auto mode: solved with cycle=" << autoCycle << "\n";
+                return 0;
+            }
+            if (result == Solver::SolveResult::UNSAT) {
+                std::cerr << "c Auto mode: UNSAT with cycle=" << autoCycle << "\n";
+                return 1;
+            }
+            // TIMEOUT: fallback to cycle=2 incremental (SEC loop)
+            std::cerr << "c Auto cycle: m=" << autoCycle
+                      << (result == Solver::SolveResult::TIMEOUT ? " TIMEOUT" : " ERROR")
+                      << ", retrying with cycle=2 SEC loop\n";
+            solver.setCycle(2);
+            int64_t phase2Ms = timeLimitMs - phase1Ms;
+            result = solver.runIncremental(phase2Ms);
+            if (result == Solver::SolveResult::HAMILTONIAN) {
+                std::cerr << "c Auto mode: solved with cycle=2\n";
+                return 0;
+            }
+            if (result == Solver::SolveResult::UNSAT) {
+                std::cerr << "c Auto mode: UNSAT with cycle=2\n";
+                return 1;
+            }
+            std::cerr << "c Auto mode: cycle=2 " << (result == Solver::SolveResult::TIMEOUT ? "TIMEOUT" : "ERROR") << "\n";
             return 1;
         }
+        auto result = solver.runIncremental(timeLimitMs);
+        return (result == Solver::SolveResult::HAMILTONIAN) ? 0 : 1;
     } else {
         if (!solver.run()) {
             return 1;

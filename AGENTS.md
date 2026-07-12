@@ -38,52 +38,81 @@ Solver options:
 
 ## Experiments
 
-`src/run_experiments.py` - Solves all 136 FHCP graph benchmarks.
+`scripts/run_experiments.py` - Solves all graphs in `graphs/` directory.
+Defaults to 600s time limit; use `--time-limit 120` for 120s.
 
-## Scoring History
+## Current Results (Jul 12 — FHCPP 18-graph benchmark at 120s)
 
-**Jul 7 (commit 7242fe8):** 134/136 solved at 600s. II_3972, II_7932 timeout.
-**Jul 10 (new encoding):** 126/136 at 120s. 10 timeouts: GPN_244, GPN_482, GPN_998, FLS_1014, FLS_845, FLS3_408, FLS3_731, FLS3_1054 + II_3972, II_7932.
+**`--cycle auto` (default):** 17/18 solved, 1 timeout.
 
-### Fix: Stagnation Escalation Threshold
+### `--cycle auto` results (17/18 solved)
 
-**Root cause:** New encoding enabled SAT search, finding diverse solutions. Stagnation detection (~3 consecutive high-Jaccard solutions) fired at 2-4 components, triggering greedy escalation that blocked half the graph. This destroyed the productive SEC-driven convergence loop, creating oscillation between 2-4 and 10+ components.
+| Graph | Phase | Auto m | Total | Status | Notes |
+|-------|-------|--------|-------|--------|-------|
+| graph48 | m=420(TO)→c=2 | 420 | ~90s | SAT | Auto-scale formula too hard for this graph |
+| graph162 | m=1680(SAT) | 1680 | <30s | SAT | One-shot via m > n |
+| graph171 | m=1680(SAT) | 1680 | <30s | SAT | One-shot |
+| graph197 | m=1680(SAT) | 1680 | <30s | SAT | One-shot |
+| graph223 | m=1680(TO)→c=2 | 1680 | ~90s | SAT | Auto-scale needs 63s, gets 30s; SEC loop finishes |
+| graph237 | m=1680(SAT) | 1680 | <30s | SAT | One-shot |
+| graph249 | m=1680(SAT) | 1680 | 6s | SAT | **Previously TIMEOUT** — m=1680 > 1558, no subcycles |
+| graph252 | m=1680(SAT) | 1680 | <30s | SAT | One-shot |
+| graph254 | m=1680(SAT) | 1680 | 5s | SAT | **Previously TIMEOUT** — m=1680 > 1582, no subcycles |
+| graph255 | m=1680(SAT) | 1680 | <30s | SAT | One-shot |
+| graph424 | m=3360(TO)→c=2 | 3360 | ~90s | SAT | Auto-scale too large (48K vars); SEC loop solves |
+| graph446 | m=3360(TO)→c=2 | 3360 | ~90s | SAT | Same as 424 |
+| graph491 | m=3360(TO)→c=2 | 3360 | ~90s | SAT | Same as 424 |
+| graph506 | m=3360(TO)→c=2 | 3360 | ~90s | SAT | Same as 424 |
+| graph522 | m=3360(TO)→c=2 | 3360 | ~90s | SAT | Same as 424 |
+| graph526 | m=3360(TO)→c=2 | 3360 | ~90s | SAT | Same as 424 |
+| graph529 | m=3360(TO)→c=2 | 3360 | ~90s | SAT | Same as 424 |
+| graph470 | m=3360(TO)→c=2(TO) | 3360 | TIMEOUT | SEC loop needs 314s |
 
-**Fix at `src/Solver.cpp:301`:** Added `components.size() > 4` guard on stagnation escalation. Below 5 components, base SEC loop converges naturally without greedy disruption.
+## Changes This Session (Jul 12)
 
-**Fix at `src/Solver.cpp:224`:** Reduced `maxSkipVars` from `g.getNodes() * 15` to `g.getNodes()`. Skip pool = 1x vertices avoids inflating CaDiCaL formula 5x+, slowing per-solve calls.
+### 1. Partitioned DFJ Bug Fixed
+File: `src/Solver.cpp` (`LOW-COMPONENT DFJ PUSH`)
 
-**Jul 10 post-fix:** 125/136 solved at 120s wall clock.
-- 7/8 non-II timeouts now SOLVED within 120s: GPN_244 (0.002s), GPN_482 (5.2s), FLS_1014 (91.8s), FLS_845 (85.7s), FLS3_408 (13.6s), FLS3_731 (46.4s), FLS3_1054 (95.8s)
-- GPN_998 still TIMEOUT (converges to 2 comps but needs 3105 iters; 120s insufficient)
-- Remaining timeouts at 120s: GPN_998, graph162, graph424, graph446, graph470, graph180, II_3972, II_7932, v-800-5, v-900-5, v-1000-5
-- Limitation: new encoding's SAT search per solve() takes 0.01-10s vs old code's sub-ms 0-conflict solving, so large graphs need more wall time
+**Bug:** Partitioned DFJ for >3-vertex components split edges into groups of 6 and added ¬e₁∨...∨¬e₆ clauses. This is UNSOUND — in a valid Hamiltonian path through a component, ALL internal edges are selected. Random groups of 6 edges may all be unchanged from the component cycle, making the DFJ clause impossible to satisfy for a valid HC.
 
-### Fix: Convergence Fix — Preprocessing Defaults + DFJ Push
+**Fix:** Removed partitioned DFJ entirely. For >3-vertex components, skip all DFJ (SEC clauses alone handle subtour elimination). For ≤3-vertex components, full DFJ (negating all edges) is correct because at least one edge of a small cycle must be deselected in the HC.
 
-**Jul 10 convergence fix:** Enable preprocess/vertex-sep/dfj defaults + DFJ push at low comps.
+**Impact:** Restored graph470 from spurious UNSAT to correct SAT (HAMILTONIAN in 314s). Graph424, graph446, and other slow-converging graphs no longer risk UNSAT.
 
-**Phase A:** Flip `preprocess_`, `useVertexSep_`, `stagnationStrategy` defaults. Restore forced-clause generation for deg-2 vertices and 2-edge-cuts in preprocessing block.
+### 2. Preprocessing O(E²) Bailout
+File: `src/GraphPreprocessor.cpp:28-33`
 
-**Phase B:** Add component-count tracking and periodic DFJ clause injection every 10th iteration when components ≤ 4. Breaks local-minimum stall at 2 components by forcing partition changes.
+graph162 (1032v, 206K edges) caused preprocessing to hang in the O(E²) 2-edge-cut detection. Added bailout: skip 2-edge-cut detection when `edges > 10000`. Enables graph162 to encode and solve in 0.1s.
 
-**Results:**
-- II_3972: SOLVED 79.2s (was TIMEOUT at 600s) — DFJ push + vertex-sep converge
-- graph424: SOLVED 76.9s (was TIMEOUT at 120s)
-- graph446: SOLVED 73.0s (was TIMEOUT at 120s)
-- GPN_998: SOLVED 93.6s (was TIMEOUT at 120s) — DFJ push breaks the 2-comp stall
-- FLS_845: SOLVED 45.5s (was 85.7s) — vertex-sep + dfj strategies converge faster
-- GPN_482: 16.5s (was 5.2s) — still well within limits
-- FLS_1014: 112.6s (was 91.8s) — slight overhead from new defaults
-- graph162: TIMEOUT
-- graph470: TIMEOUT
-- graph180: TIMEOUT
-- II_7932: TIMEOUT (21302 forced clauses from 2667 2-edge-cuts bloat formula to 193K clauses; only 1 iteration in 120s)
-- v-800-5: TIMEOUT
-- v-900-5: TIMEOUT
-- v-1000-5: TIMEOUT (oscillates at 17-57 components, never ≤4 for DFJ push)
+### 3. No DFJ Push at ≤4 Comps (Jul 11, unchanged)
+File: `src/Solver.cpp`
 
-**Limitation:** DFJ push only fires at ≤4 components. Some graphs oscillate at higher component counts and need combined min-cut + DFJ approach. Preprocessing forced clauses can bloat formula for graphs with many 2-edge-cuts, slowing the SAT solver.
+At ≤4 components, skip periodic DFJ entirely. Pure SEC loop converges naturally.
+
+### 4. Stagnation DFJ Gated at >4 Comps (Jul 10, unchanged)
+File: `src/Solver.cpp:336`
+
+`components.size() > 4` guard on stagnation escalation.
+
+### 5. Auto-scaled cycle via CRE factorization (Jul 12)
+File: `src/Solver.cpp:724-731`
+
+Compute `m = 3×5×7×2^k > nNode` (following CRE's auto-scale strategy). With m > n, the encoding prevents all subcycles — one-shot solve, no SEC loop needed. Uses 12-13 bits/node for graphs up to ~3000 nodes. Solves graph249 and graph254 in 5-6s each (previously TIMEOUT).
+
+Auto mode (`--cycle auto`) now: phase 1 = try m > n with 30s budget, phase 2 = fallback to cycle=2 SEC loop with remaining budget.
+
+### 6. Total time limit in runIncremental (Jul 12)
+File: `src/Solver.cpp`
+
+Added wall-clock timeout check at the top of the while loop (was per-solve only). Prevents infinite loops when per-solve is fast but total iterations oscillate forever.
+
+## Open Problems
+
+1. **graph470 SEC convergence:** 2843 actions / 314s needed at 2 giant components in cycle=2 mode. CRE found HC in 841s with m=420. FIXED from spurious UNSAT (partitioned DFJ bug). Still TIMEOUT at 120s. Possible fix: periodic solver restart to keep formula lean.
+
+2. **graph249/graph254 oscillation:** FIXED by auto-scale m=1680 > n — no subcycles possible, one-shot solve in 5-6s. No longer oscillates.
+
+3. **Variable cycle parameter per graph:** Hybrid approach (auto-scale m > n for phase 1, cycle=2 SEC loop for phase 2) implemented as `--cycle auto`. Works for 17/18 graphs at 120s.
 
 ## Key Features
 
