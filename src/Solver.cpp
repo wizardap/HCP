@@ -26,6 +26,9 @@
 #include <functional>
 #include <cstdint>
 
+// Forward declaration for find2EdgeConnectedBlocks (defined below)
+std::vector<std::vector<int>> find2EdgeConnectedBlocks(const Graph& g);
+
 bool Solver::run() {
     Graph g;
     if (!g.loadFromFile(graphFile, true)) {
@@ -287,6 +290,32 @@ Solver::SolveResult Solver::runIncremental(int64_t timeLimitMs) {
 
     std::cerr << "c total variables: " << isolver.getNumVars() << "\n";
     std::cerr << "c total clauses: " << isolver.getNumClauses() << "\n";
+
+    // ---- PHASE 0: Precomputed 2-EC block DFJ clauses ----
+    int blockClauseCount = 0;
+    if (precomputeBlocks_) {
+        auto blocks = find2EdgeConnectedBlocks(g);
+        for (const auto& block : blocks) {
+            if ((int)block.size() >= g.getNodes()) continue; // not proper subset
+            std::vector<bool> inBlock(g.getNodes(), false);
+            for (int v : block) inBlock[v] = true;
+            std::vector<int> clause;
+            for (int u : block) {
+                for (auto& [v, _] : g.getNeighbors(u)) {
+                    if (!inBlock[v]) {
+                        int lit = g.getAdj(u, v);
+                        if (lit > 0) clause.push_back(-lit);
+                    }
+                }
+            }
+            if (clause.size() >= 2) {
+                isolver.addClause(clause);
+                blockClauseCount++;
+            }
+        }
+        std::cerr << "c Phase 0: added " << blockClauseCount
+                  << " DFJ clauses for " << blocks.size() << " 2-EC blocks\n";
+    }
 
     // Reserve a pool of skip variables to avoid dynamic declaration clashes with CaDiCaL's BVA
     int baseVars = isolver.getNumVars();

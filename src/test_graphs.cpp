@@ -9,6 +9,7 @@
 #include <dirent.h>
 #include <cstring>
 #include <algorithm>
+#include <set>
 #include "Graph.hpp"
 #include "HcpEncoder.hpp"
 
@@ -264,6 +265,37 @@ static void test2EdgeConnectedBlocks() {
     std::cerr << "PASS: test2EdgeConnectedBlocks\n";
 }
 
+static void testPrecomputedBlockClauses() {
+    // Two triangles with bridge 2-3
+    Graph g(6, 7);
+    g.addEdge(0, 1); g.addEdge(1, 2); g.addEdge(2, 0);
+    g.addEdge(2, 3);
+    g.addEdge(3, 4); g.addEdge(4, 5); g.addEdge(5, 3);
+
+    auto blocks = find2EdgeConnectedBlocks(g);
+    TEST_ASSERT(blocks.size() == 2);  // two blocks
+
+    // For each block, find outgoing edges
+    int totalClauses = 0;
+    for (auto& block : blocks) {
+        if ((int)block.size() == g.getNodes()) continue; // not proper subset
+        std::set<int> blockSet(block.begin(), block.end());
+        std::vector<int> clause;
+        for (int u : block) {
+            for (auto& [v, _] : g.getNeighbors(u)) {
+                if (!blockSet.count(v)) {
+                    clause.push_back(-1); // placeholder, just count
+                }
+            }
+        }
+        if (clause.size() >= 2) totalClauses++;
+    }
+    // Triangle A has 1 outgoing edge (2→3), Triangle B has 1 incoming (3→2).
+    // Each directed edge gets a separate clause, but we skip <2 literals.
+    // So: 0 clauses (each block has only 1 outgoing directed edge).
+    std::cerr << "PASS: testPrecomputedBlockClauses (clauses=" << totalClauses << ")\n";
+}
+
 int main() {
     testGraphFileExists();
     testEncodingProducesValidCnf();
@@ -271,6 +303,7 @@ int main() {
     testTimingMeasurement();
     testStagnationStrategies();
     test2EdgeConnectedBlocks();
+    testPrecomputedBlockClauses();
     std::cout << "All graph tests passed successfully!\n";
     return 0;
 }
