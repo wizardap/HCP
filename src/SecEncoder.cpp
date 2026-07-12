@@ -1,4 +1,5 @@
 #include "SecEncoder.hpp"
+#include "AtLeastK/DefaultAtLeastK.hpp"
 #include "Graph.hpp"
 
 SecEncoder::SecEncoder(const Graph& graph) : graph_(graph), nextAuxBase_(0) {}
@@ -61,32 +62,9 @@ std::vector<std::vector<int>> SecEncoder::encodeSecs(
             if (allBoundary.empty()) continue;
             int n = (int)allBoundary.size();
 
-            // Sequential counter: sum(allBoundary) >= 2
-            int auxBase = globalAuxBase;
-            globalAuxBase = auxBase + n * 2;
-            auto s = [&](int i, int j) { return auxBase + i * 2 + j; };
-
-            // Base: i=0
-            clauses.push_back({-allBoundary[0], s(0,0)});
-            clauses.push_back({allBoundary[0], -s(0,0)});
-            clauses.push_back({-s(0,1)});
-
-            // Inductive: i=1..n-1
-            for (int i = 1; i < n; i++) {
-                // s[i][0] <-> (s[i-1][0] OR allBoundary[i])
-                clauses.push_back({-s(i-1,0), s(i,0)});
-                clauses.push_back({-allBoundary[i], s(i,0)});
-                clauses.push_back({-s(i,0), s(i-1,0), allBoundary[i]});
-
-                // s[i][1] <-> (s[i-1][1] OR (s[i-1][0] AND allBoundary[i]))
-                clauses.push_back({-s(i-1,1), s(i,1)});
-                clauses.push_back({-s(i-1,0), -allBoundary[i], s(i,1)});
-                clauses.push_back({-s(i,1), s(i-1,1), s(i-1,0)});
-                clauses.push_back({-s(i,1), s(i-1,1), allBoundary[i]});
-            }
-
-            // Enforce sum >= 2
-            clauses.push_back({s(n-1,1)});
+            DefaultAtLeastK atLeastK;
+            auto kClauses = atLeastK.encode(allBoundary, 2, globalAuxBase);
+            clauses.insert(clauses.end(), kClauses.begin(), kClauses.end());
 
             // Cross-direction vertex-disjoint for |S| = 2
             if (sSize == 2 && n >= 4 && !skipVertexDisjoint) {
