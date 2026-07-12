@@ -3,11 +3,40 @@
 
 #include <string>
 #include <memory>
+#include <cstdint>
+#include <unordered_map>
 #include "Graph.hpp"
 #include "AtMostOne/IAtMostOne.hpp"
 #include "AtMostOne/DefaultAtMostOne.hpp"
 
 class IncrementalSolver;
+
+struct OscillationTracker {
+    int window;
+    int minCutThreshold;
+    int maxCutSize;
+    std::unordered_map<uint64_t, int> history;
+
+    OscillationTracker(int win, int minC, int maxC)
+        : window(win), minCutThreshold(minC), maxCutSize(maxC) {}
+
+    bool isOscillating(uint64_t hash, int currentIter) const {
+        auto it = history.find(hash);
+        if (it == history.end()) return false;
+        return (currentIter - it->second) < window;
+    }
+
+    void record(uint64_t hash, int currentIter) {
+        history[hash] = currentIter;
+    }
+};
+
+struct Component;
+
+std::vector<int> buildBoundaryClause(
+    const std::vector<int>& sideA_vertices,
+    const Component& fullComponent,
+    const Graph& graph);
 
 class Solver {
 public:

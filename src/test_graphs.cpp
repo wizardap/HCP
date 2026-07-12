@@ -10,6 +10,7 @@
 #include <cstring>
 #include <algorithm>
 #include <set>
+#include "SubtourDetector.hpp"
 #include "Graph.hpp"
 #include "HcpEncoder.hpp"
 
@@ -296,6 +297,47 @@ static void testPrecomputedBlockClauses() {
     std::cerr << "PASS: testPrecomputedBlockClauses (clauses=" << totalClauses << ")\n";
 }
 
+static void testOscillationTracker() {
+    OscillationTracker tracker(10, 100, 10);
+
+    uint64_t h1 = 0xAAAA;
+    uint64_t h2 = 0xBBBB;
+
+    TEST_ASSERT(!tracker.isOscillating(h1, 0));
+
+    tracker.record(h1, 0);
+    TEST_ASSERT(tracker.isOscillating(h1, 5));
+    TEST_ASSERT(!tracker.isOscillating(h1, 10));
+
+    tracker.record(h1, 10);
+    TEST_ASSERT(tracker.isOscillating(h1, 15));
+
+    TEST_ASSERT(!tracker.isOscillating(h2, 15));
+
+    tracker.record(h2, 100);
+    TEST_ASSERT(!tracker.isOscillating(h1, 100));
+
+    std::cerr << "PASS: testOscillationTracker\n";
+}
+
+static void testBuildBoundaryClause() {
+    Graph g(3, 3);
+    g.addEdge(0, 1, 10); g.addEdge(1, 0, 11);
+    g.addEdge(1, 2, 12); g.addEdge(2, 1, 13);
+    g.addEdge(2, 0, 14); g.addEdge(0, 2, 15);
+
+    Component fullComp;
+    fullComp.vertices = {0, 1, 2};
+    fullComp.edges = {10, 11, 12, 13, 14, 15};
+
+    auto clause = buildBoundaryClause({0}, fullComp, g);
+    TEST_ASSERT(clause.size() == 2);
+    TEST_ASSERT(std::find(clause.begin(), clause.end(), -10) != clause.end());
+    TEST_ASSERT(std::find(clause.begin(), clause.end(), -15) != clause.end());
+
+    std::cerr << "PASS: testBuildBoundaryClause\n";
+}
+
 int main() {
     testGraphFileExists();
     testEncodingProducesValidCnf();
@@ -304,6 +346,8 @@ int main() {
     testStagnationStrategies();
     test2EdgeConnectedBlocks();
     testPrecomputedBlockClauses();
+    testOscillationTracker();
+    testBuildBoundaryClause();
     std::cout << "All graph tests passed successfully!\n";
     return 0;
 }

@@ -176,6 +176,29 @@ static bool runGreedyBlocking(
     return false;
 }
 
+std::vector<int> buildBoundaryClause(
+    const std::vector<int>& sideA_vertices,
+    const Component& fullComponent,
+    const Graph& graph)
+{
+    std::vector<bool> inSideA(graph.getNodes(), false);
+    for (int v : sideA_vertices) inSideA[v] = true;
+
+    std::vector<bool> inFullComp(graph.getNodes(), false);
+    for (int v : fullComponent.vertices) inFullComp[v] = true;
+
+    std::vector<int> clause;
+    for (int u : sideA_vertices) {
+        for (auto& [v, _] : graph.getNeighbors(u)) {
+            if (!inSideA[v]) {
+                int lit = graph.getAdj(u, v);
+                if (lit > 0) clause.push_back(-lit);
+            }
+        }
+    }
+    return clause;
+}
+
 Solver::SolveResult Solver::runIncremental(int64_t timeLimitMs) {
     Graph g;
     if (!g.loadFromFile(graphFile, true)) { // Pass true for directed edge indices mapping
