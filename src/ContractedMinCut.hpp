@@ -27,3 +27,8 @@ MinCutResult computeInternalMinCut(
     const Graph& graph,
     int maxFlowVertLimit = 500
 );
+
+// Dinic max-flow wrapper — same signature as maxFlowBFS but uses Dinic's algorithm
+// (O(E * sqrt(V)) on unit capacities) instead of Edmonds-Karp (O(V * E^2)).
+int maxFlowDinic(int n, std::vector<std::vector<int>>& cap,
+                 int s, int t, std::vector<bool>& minCutSide);

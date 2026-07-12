@@ -211,6 +211,22 @@ void testContractedMinCut() {
     std::cout << "ContractedMinCut passed!\n";
 }
 
+void testDinicMaxFlow() {
+    std::cout << "Testing Dinic max-flow...\n";
+    int n = 4;
+    std::vector<std::vector<int>> cap(n, std::vector<int>(n, 0));
+    cap[0][1] = cap[1][0] = 1;
+    cap[1][2] = cap[2][1] = 1;
+    cap[2][3] = cap[3][2] = 1;
+    std::vector<bool> sideA;
+    int flow = maxFlowDinic(n, cap, 0, 3, sideA);
+    TEST_ASSERT(flow == 1);
+    TEST_ASSERT(sideA.size() == 4);
+    TEST_ASSERT(sideA[0] == true);
+    TEST_ASSERT(sideA[3] == false);
+    std::cout << "Dinic max-flow passed!\n";
+}
+
 int main() {
     testVariableManager();
     testIncrementalSolverBasic();
@@ -219,6 +235,7 @@ int main() {
     testGraphPreprocessor();
     testSolverPreprocessing();
     testContractedMinCut();
+    testDinicMaxFlow();
     std::cout << "All unit tests passed successfully!\n";
     return 0;
 }
