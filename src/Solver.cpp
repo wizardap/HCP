@@ -616,28 +616,8 @@ Solver::SolveResult Solver::runIncremental(int64_t timeLimitMs) {
                 }
                 prevBlockedComponentIds = std::move(currentComponentIds);
 
-                // ----- LARGE COMPONENT SPLITTING via internal min-cut -----
-                // For components >100 vertices, find internal min-cut and
-                // encode SEC on the smaller side. This creates much stronger
-                // constraints than weak outgoing-edge SEC for giant components.
-                std::vector<Component> splitSubjects;
-                for (const auto& comp : components) {
-                    if (static_cast<int>(comp.vertices.size()) > 100) {
-                        auto mcr = computeInternalMinCut(comp, g, 2000);
-                        if (!mcr.sideA_vertices.empty()) {
-                            Component splitComp;
-                            splitComp.vertices = std::move(mcr.sideA_vertices);
-                            splitSubjects.push_back(std::move(splitComp));
-                        } else {
-                            splitSubjects.push_back(comp);
-                        }
-                    } else {
-                        splitSubjects.push_back(comp);
-                    }
-                }
-
                 iterationSecEncoder.startAuxAt(isolver.getNumVars() + 1);
-                auto secClauses = iterationSecEncoder.encodeSecs(splitSubjects, useVertexSep_, vtxSepThreshold_, skipVertexDisjoint_);
+                auto secClauses = iterationSecEncoder.encodeSecs(components, useVertexSep_, vtxSepThreshold_, skipVertexDisjoint_);
 
                 // Algorithmic Improvement: Add union SECs for the smallest components to
                 // force faster component merging. Only applies when many components remain;
