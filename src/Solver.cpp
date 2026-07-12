@@ -1059,24 +1059,32 @@ int main(int argc, char** argv) {
                 std::cerr << "c Auto cycle: could not load graph, using default\n";
             }
 
-            std::cerr << "c Auto cycle: trying m=" << autoCycle << " (30s budget, one-shot when m > n)\n";
-            solver.setCycle(autoCycle);
-            int64_t phase1Ms = std::min<int64_t>(30000, timeLimitMs * 30 / 100);
-            auto result = solver.runIncremental(phase1Ms);
-            if (result == Solver::SolveResult::HAMILTONIAN) {
-                std::cerr << "c Auto mode: solved with cycle=" << autoCycle << "\n";
-                return 0;
+            // Phase 1: try auto-scaled cycle m > n (one-shot, no SEC loop).
+            // Skip when m >= 3360 — formula too large (48K+ vars, 529K+ clauses
+            // for graph470) for the 30s budget; goes straight to cycle=2 SEC loop.
+            bool skipPhase1 = (autoCycle >= 3360);
+            Solver::SolveResult result;
+            if (!skipPhase1) {
+                std::cerr << "c Auto cycle: trying m=" << autoCycle << " (30s budget, one-shot when m > n)\n";
+                solver.setCycle(autoCycle);
+                int64_t phase1Ms = std::min<int64_t>(30000, timeLimitMs * 30 / 100);
+                result = solver.runIncremental(phase1Ms);
+                if (result == Solver::SolveResult::HAMILTONIAN) {
+                    std::cerr << "c Auto mode: solved with cycle=" << autoCycle << "\n";
+                    return 0;
+                }
+                if (result == Solver::SolveResult::UNSAT) {
+                    std::cerr << "c Auto mode: UNSAT with cycle=" << autoCycle << "\n";
+                    return 1;
+                }
+                std::cerr << "c Auto cycle: m=" << autoCycle
+                          << (result == Solver::SolveResult::TIMEOUT ? " TIMEOUT" : " ERROR")
+                          << ", retrying with cycle=2 SEC loop\n";
+            } else {
+                std::cerr << "c Auto cycle: m=" << autoCycle << " >= 3360, skipping Phase 1 (would timeout)\n";
             }
-            if (result == Solver::SolveResult::UNSAT) {
-                std::cerr << "c Auto mode: UNSAT with cycle=" << autoCycle << "\n";
-                return 1;
-            }
-            // TIMEOUT: fallback to cycle=2 incremental (SEC loop)
-            std::cerr << "c Auto cycle: m=" << autoCycle
-                      << (result == Solver::SolveResult::TIMEOUT ? " TIMEOUT" : " ERROR")
-                      << ", retrying with cycle=2 SEC loop\n";
             solver.setCycle(2);
-            int64_t phase2Ms = timeLimitMs - phase1Ms;
+            int64_t phase2Ms = skipPhase1 ? timeLimitMs : timeLimitMs - std::min<int64_t>(30000, timeLimitMs * 30 / 100);
             result = solver.runIncremental(phase2Ms);
             if (result == Solver::SolveResult::HAMILTONIAN) {
                 std::cerr << "c Auto mode: solved with cycle=2\n";
