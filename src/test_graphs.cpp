@@ -11,6 +11,9 @@
 #include <algorithm>
 #include "Graph.hpp"
 #include "HcpEncoder.hpp"
+
+// Forward declaration for find2EdgeConnectedBlocks (defined in Solver.cpp)
+std::vector<std::vector<int>> find2EdgeConnectedBlocks(const Graph& g);
 #include "AtMostOne/DefaultAtMostOne.hpp"
 #include "SymmetryBreaking/DefaultSymmetryBreaker.hpp"
 #include "IncrementalSolver.hpp"
@@ -235,12 +238,39 @@ void testStagnationStrategies() {
     std::cout << "  Stagnation strategies tested successfully!\n";
 }
 
+static void test2EdgeConnectedBlocks() {
+    // Simple triangle (3-cycle): no bridges, one block with all vertices
+    {
+        Graph g(3, 3);
+        g.addEdge(0, 1);
+        g.addEdge(1, 2);
+        g.addEdge(2, 0);
+        auto blocks = find2EdgeConnectedBlocks(g);
+        TEST_ASSERT(blocks.size() == 1);
+        TEST_ASSERT(blocks[0].size() == 3);
+    }
+    // Two triangles connected by a single bridge edge:
+    // Triangle A (0-1-2), bridge 2-3, triangle B (3-4-5)
+    // Expected: 2 blocks, block 0 = {0,1,2}, block 1 = {3,4,5}
+    {
+        Graph g(6, 7);
+        g.addEdge(0, 1); g.addEdge(1, 2); g.addEdge(2, 0);  // triangle A
+        g.addEdge(2, 3);  // bridge
+        g.addEdge(3, 4); g.addEdge(4, 5); g.addEdge(5, 3);  // triangle B
+        auto blocks = find2EdgeConnectedBlocks(g);
+        TEST_ASSERT(blocks.size() == 2);
+        for (auto& b : blocks) TEST_ASSERT(b.size() == 3);
+    }
+    std::cerr << "PASS: test2EdgeConnectedBlocks\n";
+}
+
 int main() {
     testGraphFileExists();
     testEncodingProducesValidCnf();
     testIncrementalVsNonIncrementalCountsMatch();
     testTimingMeasurement();
     testStagnationStrategies();
+    test2EdgeConnectedBlocks();
     std::cout << "All graph tests passed successfully!\n";
     return 0;
 }

@@ -21,6 +21,10 @@
 #include <algorithm>
 #include <iterator>
 #include <climits>
+#include <unordered_map>
+#include <set>
+#include <functional>
+#include <cstdint>
 
 bool Solver::run() {
     Graph g;
@@ -717,6 +721,62 @@ void printHelp(const char* progName) {
               << "  --vtx-sep-threshold <int>  |S| threshold for cardinality encoding (default: 4)\n"
               << "  --vtx-sep-card-only     Like --vertex-sep but skip vertex-disjoint clauses\n"
               << "  -h, --help              Show this help\n";
+}
+
+// Returns the 2-edge-connected components (blocks) of graph g.
+// A block is a maximal subgraph without bridges.
+std::vector<std::vector<int>> find2EdgeConnectedBlocks(const Graph& g) {
+    int n = g.getNodes();
+    // --- First pass: find all bridges ---
+    std::vector<int> disc(n, -1), low(n, -1), parent(n, -1);
+    std::vector<std::pair<int,int>> bridges;
+    int timer = 0;
+    std::function<void(int)> dfs = [&](int u) {
+        disc[u] = low[u] = timer++;
+        for (auto& [v, _] : g.getNeighbors(u)) {
+            if (disc[v] == -1) {
+                parent[v] = u;
+                dfs(v);
+                low[u] = std::min(low[u], low[v]);
+                if (low[v] > disc[u]) {
+                    int bu = std::min(u, v), bv = std::max(u, v);
+                    bridges.push_back({bu, bv});
+                }
+            } else if (v != parent[u]) {
+                low[u] = std::min(low[u], disc[v]);
+            }
+        }
+    };
+    for (int i = 0; i < n; ++i)
+        if (disc[i] == -1) dfs(i);
+
+    // --- Second pass: assign block IDs via DFS skipping bridges ---
+    std::set<std::pair<int,int>> bridgeSet(bridges.begin(), bridges.end());
+    std::vector<int> blockId(n, -1);
+    int blockCount = 0;
+    for (int i = 0; i < n; ++i) {
+        if (blockId[i] >= 0) continue;
+        std::vector<int> stack = {i};
+        blockId[i] = blockCount;
+        std::vector<int> vertices;
+        while (!stack.empty()) {
+            int u = stack.back(); stack.pop_back();
+            vertices.push_back(u);
+            for (auto& [v, _] : g.getNeighbors(u)) {
+                if (blockId[v] >= 0) continue;
+                int a = std::min(u, v), b = std::max(u, v);
+                if (bridgeSet.count({a, b})) continue;
+                blockId[v] = blockCount;
+                stack.push_back(v);
+            }
+        }
+        blockCount++;
+    }
+
+    std::vector<std::vector<int>> blocks(blockCount);
+    for (int v = 0; v < n; ++v)
+        blocks[blockId[v]].push_back(v);
+    return blocks;
 }
 
 #ifndef TESTING
