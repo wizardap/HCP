@@ -364,6 +364,8 @@ Solver::SolveResult Solver::runIncremental(int64_t timeLimitMs) {
     SecEncoder iterationSecEncoder(g);
     iterationSecEncoder.startAuxAt(isolver.getNumVars() + 1);
 
+    OscillationTracker oscillationTracker_(oscillationWindow_, cutThreshold_, 10);
+
     while (true) {
         {
             auto now = std::chrono::steady_clock::now();
@@ -670,7 +672,6 @@ Solver::SolveResult Solver::runIncremental(int64_t timeLimitMs) {
 
                 // ---- Phase 1: oscillation-guided cut escalation ----
                 {
-                    OscillationTracker oscillationTracker_(oscillationWindow_, cutThreshold_, 10);
                     int oscClausesAdded = 0;
                     for (const auto& comp : components) {
                         if ((int)comp.vertices.size() < oscillationTracker_.minCutThreshold)
