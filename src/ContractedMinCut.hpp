@@ -25,7 +25,7 @@ MinCutResult computeComponentMinCut(
 MinCutResult computeInternalMinCut(
     const Component& component,
     const Graph& graph,
-    int maxFlowVertLimit = 500
+    int maxFlowVertLimit = 2000
 );
 
 // Dinic max-flow wrapper — same signature as maxFlowBFS but uses Dinic's algorithm

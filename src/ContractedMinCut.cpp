@@ -270,7 +270,12 @@ MinCutResult computeInternalMinCut(
         int t = boundary[ti];
         auto capCopy = cap;
         std::vector<bool> sideA_local;
-        int flowVal = maxFlowBFS(k, capCopy, s, t, sideA_local);
+        int flowVal;
+        if (k > 500) {
+            flowVal = maxFlowDinic(k, capCopy, s, t, sideA_local);
+        } else {
+            flowVal = maxFlowBFS(k, capCopy, s, t, sideA_local);
+        }
 
         if (flowVal > 0 && flowVal < best.cutSize) {
             best.cutSize = flowVal;
