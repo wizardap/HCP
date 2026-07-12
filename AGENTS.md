@@ -66,7 +66,7 @@ Defaults to 600s time limit; use `--time-limit 120` for 120s.
 | graph522 | m=3360(TO)→c=2 | 3360 | ~90s | SAT | Same as 424 |
 | graph526 | m=3360(TO)→c=2 | 3360 | ~90s | SAT | Same as 424 |
 | graph529 | m=3360(TO)→c=2 | 3360 | ~90s | SAT | Same as 424 |
-| graph470 | m=3360(TO)→c=2(TO) | 3360 | TIMEOUT | SEC loop needs 314s |
+| graph470 | m=3360(TO)→c=2(TO) | 3360 | TIMEOUT | SEC loop needs >360s at ~0.75s/iter |
 
 ## Changes This Session (Jul 12)
 
@@ -106,9 +106,19 @@ File: `src/Solver.cpp`
 
 Added wall-clock timeout check at the top of the while loop (was per-solve only). Prevents infinite loops when per-solve is fast but total iterations oscillate forever.
 
+### 7. Dinic max-flow (Jul 12)
+File: `src/ContractedMinCut.cpp`
+
+Replaced Edmonds-Karp BFS with Dinic (O(E√V)) for internal min-cut. `maxFlowVertLimit` bumped from 500 to 2000.
+
+### 8. Internal min-cut splitting for SEC (Jul 12, REVERTED)
+File: `src/Solver.cpp`
+
+Attempted divide-and-conquer: split giant components via `computeInternalMinCut`, encode outgoing-edge decisions separately per partition. Counterproductive — graph470 regressed from 2843 iter/314s to 263 iter/360s (still TIMEOUT). Per-iteration overhead ~1.3-2.0s from formula size increase. Reverted at commit 5bc06ca. Dinic changes kept.
+
 ## Open Problems
 
-1. **graph470 SEC convergence:** 2843 actions / 314s needed at 2 giant components in cycle=2 mode. CRE found HC in 841s with m=420. FIXED from spurious UNSAT (partitioned DFJ bug). Still TIMEOUT at 120s. Possible fix: periodic solver restart to keep formula lean.
+1. **graph470 SEC convergence:** ~1.5s/iteration at 2 giant components in cycle=2 mode. Needs >360s for SEC loop to converge. Auto-scale m=3360 formula too large (48K vars, 529K clauses — TIMEOUT at 30s). Larger cycle values (6, 30, 210) produce intractable formulas. Internal min-cut splitting made per-iteration overhead worse. No known approach converges <120s.
 
 2. **graph249/graph254 oscillation:** FIXED by auto-scale m=1680 > n — no subcycles possible, one-shot solve in 5-6s. No longer oscillates.
 
