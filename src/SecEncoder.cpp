@@ -2,7 +2,17 @@
 #include "AtLeastK/DefaultAtLeastK.hpp"
 #include "Graph.hpp"
 
-SecEncoder::SecEncoder(const Graph& graph) : graph_(graph), nextAuxBase_(0) {}
+SecEncoder::SecEncoder(const Graph& graph) : graph_(graph), nextAuxBase_(0) {
+    int numNodes = graph_.getNodes();
+    inAdj_.resize(numNodes);
+    for (int u = 0; u < numNodes; ++u) {
+        for (auto& [v, edgeIdx] : graph_.getNeighbors(u)) {
+            if (v >= 0 && v < numNodes) {
+                inAdj_[v].push_back({u, edgeIdx});
+            }
+        }
+    }
+}
 
 void SecEncoder::startAuxAt(int base) {
     nextAuxBase_ = base;
@@ -67,7 +77,9 @@ std::vector<std::vector<int>> SecEncoder::encodeSecs(
             clauses.insert(clauses.end(), kClauses.begin(), kClauses.end());
 
             // Cross-direction vertex-disjoint for |S| = 2
-            if (sSize == 2 && n >= 4 && !skipVertexDisjoint) {
+            // Only sound if the rest of the graph is not empty: V \ (C U S) != empty.
+            // If C U S = V, then any Hamiltonian cycle must enter and exit the boundary vertices.
+            if (sSize == 2 && n >= 4 && !skipVertexDisjoint && (int)(component.vertices.size() + sSize) < numNodes) {
                 for (int bv : boundaryVertices) {
                     std::vector<int> edgesOut;
                     for (int u : component.vertices) {
@@ -127,28 +139,23 @@ std::vector<int> SecEncoder::getOutgoingLiterals(const Component& component) {
 
 std::vector<int> SecEncoder::getIncomingLiterals(const Component& component) {
     int numNodes = graph_.getNodes();
-    std::vector<int> validVertices;
-    validVertices.reserve(component.vertices.size());
-
     std::vector<bool> inComponent(numNodes, false);
     int totalDegree = 0;
     for (int v : component.vertices) {
         if (v >= 0 && v < numNodes) {
             inComponent[v] = true;
             totalDegree += graph_.getDegree(v);
-            validVertices.push_back(v);
         }
     }
 
     std::vector<int> literals;
     literals.reserve(totalDegree);
 
-    for (int u = 0; u < numNodes; ++u) {
-        if (!inComponent[u]) {
-            for (auto& [v, edgeIdx] : graph_.getNeighbors(u)) {
-                if (inComponent[v]) {
-                    literals.push_back(edgeIdx);
-                }
+    for (int v : component.vertices) {
+        if (v < 0 || v >= numNodes) continue;
+        for (auto& [u, edgeIdx] : inAdj_[v]) {
+            if (u >= 0 && u < numNodes && !inComponent[u]) {
+                literals.push_back(edgeIdx);
             }
         }
     }

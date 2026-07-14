@@ -2,6 +2,7 @@
 #define SEC_ENCODER_HPP
 
 #include <vector>
+#include <utility>
 #include "SubtourDetector.hpp" // For Component struct
 
 class Graph;
@@ -28,6 +29,7 @@ public:
 private:
     const Graph& graph_;
     int nextAuxBase_;
+    std::vector<std::vector<std::pair<int, int>>> inAdj_;
     
     // For directed outgoing cut: Σ x_{u,v} ≥ 1 where u∈S, v∉S
     std::vector<int> getOutgoingLiterals(const Component& component);

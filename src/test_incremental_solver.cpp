@@ -227,6 +227,24 @@ void testDinicMaxFlow() {
     std::cout << "Dinic max-flow passed!\n";
 }
 
+void testGetIncomingLiterals() {
+    std::cout << "Testing getIncomingLiterals correctness...\n";
+    Graph g(3, 3);
+    g.addEdge(0, 1, 1); g.addEdge(1, 0, 2);
+    g.addEdge(1, 2, 3); g.addEdge(2, 1, 4);
+    g.addEdge(2, 0, 5); g.addEdge(0, 2, 6);
+
+    Component c;
+    c.vertices = {1, 2};
+    
+    SecEncoder secEncoder(g);
+    auto clauses = secEncoder.encodeSecs({c}, false);
+    TEST_ASSERT(clauses.size() == 2);
+    TEST_ASSERT(clauses[0] == std::vector<int>({2, 5}));
+    TEST_ASSERT(clauses[1] == std::vector<int>({1, 6}));
+    std::cout << "testGetIncomingLiterals passed!\n";
+}
+
 int main() {
     testVariableManager();
     testIncrementalSolverBasic();
@@ -236,6 +254,7 @@ int main() {
     testSolverPreprocessing();
     testContractedMinCut();
     testDinicMaxFlow();
+    testGetIncomingLiterals();
     std::cout << "All unit tests passed successfully!\n";
     return 0;
 }
