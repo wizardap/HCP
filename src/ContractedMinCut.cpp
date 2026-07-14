@@ -235,7 +235,7 @@ MinCutResult computeInternalMinCut(
     std::vector<std::vector<std::pair<int, int>>> localAdj(k);
     for (int vi = 0; vi < k; ++vi) {
         int u = localToGlobal[vi];
-        if (u < 0) continue;
+        if (u < 0 || u >= static_cast<int>(graph.getNodes())) continue;
         for (auto& [v, _] : graph.getNeighbors(u)) {
             int vj = globalToLocal[v];
             if (vj >= 0 && vj != vi) {
@@ -248,6 +248,7 @@ MinCutResult computeInternalMinCut(
     std::vector<int> boundary;
     for (int vi = 0; vi < k; ++vi) {
         int u = localToGlobal[vi];
+        if (u < 0 || u >= static_cast<int>(graph.getNodes())) continue;
         for (auto& [v, _] : graph.getNeighbors(u)) {
             int vj = globalToLocal[v];
             if (vj < 0) {
@@ -280,19 +281,22 @@ MinCutResult computeInternalMinCut(
         int flowVal = dinic.maxFlow(s, t);
         std::vector<bool> sideA_local = dinic.minCut(s);
 
-        if (flowVal > 0 && flowVal < best.cutSize) {
-            best.cutSize = flowVal;
-            best.sideA_vertices.clear();
-            for (int vi = 0; vi < k; ++vi) {
-                if (sideA_local[vi]) {
-                    best.sideA_vertices.push_back(localToGlobal[vi]);
-                }
+        int sideA_count = 0;
+        for (int vi = 0; vi < k; ++vi) {
+            if (sideA_local[vi]) {
+                sideA_count++;
             }
+        }
 
-            if (best.sideA_vertices.empty() ||
-                static_cast<int>(best.sideA_vertices.size()) >= k) {
-                best.cutSize = std::numeric_limits<int>::max();
+        if (sideA_count > 0 && sideA_count < k) {
+            if (flowVal > 0 && flowVal < best.cutSize) {
+                best.cutSize = flowVal;
                 best.sideA_vertices.clear();
+                for (int vi = 0; vi < k; ++vi) {
+                    if (sideA_local[vi]) {
+                        best.sideA_vertices.push_back(localToGlobal[vi]);
+                    }
+                }
             }
         }
     }

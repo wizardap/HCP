@@ -144,7 +144,7 @@ std::vector<int> SecEncoder::getIncomingLiterals(const Component& component) {
     for (int v : component.vertices) {
         if (v >= 0 && v < numNodes) {
             inComponent[v] = true;
-            totalDegree += graph_.getDegree(v);
+            totalDegree += inAdj_[v].size();
         }
     }
 
