@@ -229,29 +229,28 @@ MinCutResult computeInternalMinCut(
         }
     }
 
-    // Local vertex -> global vertex
     auto& localToGlobal = component.vertices;
 
-    // Build undirected capacity matrix for edges WITHIN the component
-    std::vector<std::vector<int>> cap(k, std::vector<int>(k, 0));
+    // Build sparse capacity representation for edges WITHIN the component
+    std::vector<std::vector<std::pair<int, int>>> localAdj(k);
     for (int vi = 0; vi < k; ++vi) {
         int u = localToGlobal[vi];
         if (u < 0) continue;
         for (auto& [v, _] : graph.getNeighbors(u)) {
             int vj = globalToLocal[v];
             if (vj >= 0 && vj != vi) {
-                cap[vi][vj] = 1;  // unit capacity per directed edge
+                localAdj[vi].push_back({vj, 1});
             }
         }
     }
 
-    // Find boundary vertices: those with at least one neighbor OUTSIDE the component
+    // Find boundary vertices
     std::vector<int> boundary;
     for (int vi = 0; vi < k; ++vi) {
         int u = localToGlobal[vi];
         for (auto& [v, _] : graph.getNeighbors(u)) {
             int vj = globalToLocal[v];
-            if (vj < 0) {  // neighbor is outside component
+            if (vj < 0) {
                 boundary.push_back(vi);
                 break;
             }
@@ -260,34 +259,33 @@ MinCutResult computeInternalMinCut(
 
     if (boundary.size() < 2) return {};
 
-    // Use the smallest boundary vertex as source, try each other as sink
-    // (smallest = will be on one side of a good cut)
     int s = boundary[0];
     MinCutResult best;
     best.cutSize = std::numeric_limits<int>::max();
 
-    for (size_t ti = 1; ti < boundary.size(); ++ti) {
+    // Cap boundary sinks to at most 10
+    size_t maxSinks = 10;
+    size_t step = std::max<size_t>(1, (boundary.size() - 1) / maxSinks);
+
+    for (size_t ti = 1; ti < boundary.size(); ti += step) {
         int t = boundary[ti];
-        auto capCopy = cap;
-        std::vector<bool> sideA_local;
-        int flowVal;
-        if (k > 500) {
-            flowVal = maxFlowDinic(k, capCopy, s, t, sideA_local);
-        } else {
-            flowVal = maxFlowBFS(k, capCopy, s, t, sideA_local);
+        
+        Dinic dinic(k);
+        for (int u = 0; u < k; ++u) {
+            for (auto& [v, capVal] : localAdj[u]) {
+                dinic.addEdge(u, v, capVal);
+            }
         }
+
+        int flowVal = dinic.maxFlow(s, t);
+        std::vector<bool> sideA_local = dinic.minCut(s);
 
         if (flowVal > 0 && flowVal < best.cutSize) {
             best.cutSize = flowVal;
-
-            // Map sideA from local indices back to global vertex IDs
             best.sideA_vertices.clear();
-            std::vector<bool> inComponent(graph.getNodes(), false);
             for (int vi = 0; vi < k; ++vi) {
                 if (sideA_local[vi]) {
-                    int gv = localToGlobal[vi];
-                    best.sideA_vertices.push_back(gv);
-                    inComponent[gv] = true;
+                    best.sideA_vertices.push_back(localToGlobal[vi]);
                 }
             }
 

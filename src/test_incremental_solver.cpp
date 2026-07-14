@@ -245,6 +245,26 @@ void testGetIncomingLiterals() {
     std::cout << "testGetIncomingLiterals passed!\n";
 }
 
+void testInternalMinCut() {
+    std::cout << "Testing computeInternalMinCut...\n";
+    Graph g2(6, 6);
+    g2.addEdge(0, 1); g2.addEdge(1, 0);
+    g2.addEdge(1, 2); g2.addEdge(2, 1);
+    g2.addEdge(2, 3); g2.addEdge(3, 2);
+    g2.addEdge(3, 0); g2.addEdge(0, 3);
+    g2.addEdge(0, 4); g2.addEdge(4, 0);
+    g2.addEdge(3, 5); g2.addEdge(5, 3);
+
+    Component comp2;
+    comp2.vertices = {0, 1, 2, 3};
+    
+    auto mcr = computeInternalMinCut(comp2, g2, 100);
+    TEST_ASSERT(mcr.cutSize == 2);
+    TEST_ASSERT(mcr.sideA_vertices.size() >= 1);
+    TEST_ASSERT(mcr.sideA_vertices.size() <= 3);
+    std::cout << "testInternalMinCut passed!\n";
+}
+
 int main() {
     testVariableManager();
     testIncrementalSolverBasic();
@@ -255,6 +275,8 @@ int main() {
     testContractedMinCut();
     testDinicMaxFlow();
     testGetIncomingLiterals();
+    testInternalMinCut();
     std::cout << "All unit tests passed successfully!\n";
     return 0;
 }
+
