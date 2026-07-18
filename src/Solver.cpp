@@ -718,79 +718,24 @@ Solver::SolveResult Solver::runIncremental(int64_t timeLimitMs) {
                 // ---- 2-COMPONENT DEADLOCK STRATEGY ----
                 if (components.size() == 2 && twoCompStreak >= twoCompThreshold_) {
                     std::cerr << "c 2-comp deadlock detected (streak=" << twoCompStreak
-                              << "), applying vertex-separator strengthening\n";
+                              << "), applying DFJ cycle-blocking clauses\n";
                     twoCompStreak = 0;  // reset to allow re-triggering after threshold
 
-                    // Build component A membership
-                    std::vector<bool> inA(g.getNodes(), false);
-                    for (int v : components[0].vertices) {
-                        if (v >= 0 && v < g.getNodes()) inA[v] = true;
-                    }
-
-                    // Collect all crossing edges (both A→B and B→A)
-                    std::vector<int> allCrossing;
-                    for (int u : components[0].vertices) {
-                        if (u < 0 || u >= g.getNodes()) continue;
-                        for (auto& [v, edgeIdx] : g.getNeighbors(u)) {
-                            if (!inA[v] && edgeIdx > 0) allCrossing.push_back(edgeIdx);
-                        }
-                    }
-                    for (int u : components[1].vertices) {
-                        if (u < 0 || u >= g.getNodes()) continue;
-                        for (auto& [v, edgeIdx] : g.getNeighbors(u)) {
-                            if (inA[v] && edgeIdx > 0) allCrossing.push_back(edgeIdx);
-                        }
-                    }
-
                     int twoCompClauses = 0;
-
-                    // At-least-4 on all crossing edges
-                    if ((int)allCrossing.size() >= 4) {
-                        DefaultAtLeastK atLeastK;
-                        int auxBase = isolver.getNumVars() + 1;
-                        auto kClauses = atLeastK.encode(allCrossing, 4, auxBase);
-                        for (const auto& cl : kClauses) {
-                            isolver.addClause(cl);
-                            twoCompClauses++;
+                    for (const auto& comp : components) {
+                        if (comp.edges.empty()) continue;
+                        std::vector<int> clause;
+                        clause.reserve(comp.edges.size());
+                        for (int e : comp.edges) {
+                            clause.push_back(-e);
                         }
-                    }
-
-                    // Vertex-disjoint constraints on boundary vertices of component B
-                    for (int bv : components[1].vertices) {
-                        if (bv < 0 || bv >= g.getNodes()) continue;
-                        bool isBoundary = false;
-                        for (auto& [v, _] : g.getNeighbors(bv)) {
-                            if (inA[v]) { isBoundary = true; break; }
-                        }
-                        if (!isBoundary) continue;
-
-                        // Edges from A into bv
-                        std::vector<int> edgesIn;
-                        for (auto& [u, edgeIdx] : g.getNeighbors(bv)) {
-                            if (inA[u]) {
-                                int lit = g.getAdj(u, bv);
-                                if (lit > 0) edgesIn.push_back(lit);
-                            }
-                        }
-                        // Edges from bv to A
-                        std::vector<int> edgesOut;
-                        for (auto& [v, edgeIdx] : g.getNeighbors(bv)) {
-                            if (inA[v] && edgeIdx > 0) {
-                                edgesOut.push_back(edgeIdx);
-                            }
-                        }
-                        // Pairwise mutex: HC cannot enter from A and exit to A through same vertex
-                        for (int eIn : edgesIn) {
-                            for (int eOut : edgesOut) {
-                                isolver.addClause({-eIn, -eOut});
-                                twoCompClauses++;
-                            }
-                        }
+                        isolver.addClause(clause);
+                        twoCompClauses++;
                     }
 
                     if (twoCompClauses > 0) {
                         std::cerr << "c 2-comp strategy: added " << twoCompClauses
-                                  << " clauses (at-least-4 + vertex-disjoint)\n";
+                                  << " DFJ cycle-blocking clauses\n";
                     }
                 }
 
