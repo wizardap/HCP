@@ -80,6 +80,7 @@ private:
     bool precomputeBlocks_;
     int oscillationWindow_ = 10;
     int cutThreshold_ = 100;
+    int ghAtLeast2Threshold_ = 4;  // Gomory-Hu: use at-least-2 for cuts with weight <= this
 
 public:
     Solver(const std::string& gFile) 
