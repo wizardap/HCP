@@ -1,10 +1,4 @@
-# SDD Progress Ledger
-Task 1: complete (commits 1d1c2b4..652123c, review clean)
-Task 2: complete (commits 652123c..ef04ebd, review clean)
-Task 3: reverted (min-cut splitting did not improve graph470; keeps Dinic + limit increase from Tasks 1-2)
-Task 4: complete (benchmark 17/18 at 120s, all good)
-Task 1: complete (commits 8fb3b3c..58d31f1, review clean, Minor: dead vertices var at Solver.cpp:90, unused includes unordered_map/cstdint)
-Task 2: complete (commits 58d31f1..8a549d0, review clean)
-Task 3: complete (commits 8a549d0..0243739, review clean after fix)
-Task 1: complete (commits 6f29e85..11eeaf7, review clean)
-Task 2: complete (commits 11eeaf7..cd12579, review clean)
+# progress.md
+# SEC Loop Improvements Progress Ledger (Started 2026-07-18)
+Plan: docs/superpowers/plans/2026-07-18-sec-loop-improvements.md
+Task 1: complete (commits 4df7064..665b054, review clean, Minor: unused <numeric> in GomoryHuTree.cpp, inaccurate comment in test_gomory_hu.cpp, unnecessary SecEncoder.cpp in test_gomory_hu target)
