@@ -143,6 +143,23 @@ std::vector<int> IncrementalSolver::getModel() const {
     return model;
 }
 
+std::vector<int> IncrementalSolver::getModel(int maxEdgeVar) const {
+    if (state != SolverState::SAT) {
+        throw std::logic_error("Cannot get model: solver is not in SAT state");
+    }
+    int limit = std::min(maxEdgeVar, max_var);
+    std::vector<int> model(limit + 1, 0);
+    for (int i = 1; i <= limit; ++i) {
+        int val = getModelValue(i);
+        if (val == 1) {
+            model[i] = i;
+        } else if (val == -1) {
+            model[i] = -i;
+        }
+    }
+    return model;
+}
+
 int IncrementalSolver::getNumVars() const {
     return max_var;
 }

@@ -60,6 +60,41 @@ void testIncrementalSolverBasic() {
     std::cout << "IncrementalSolver Basic passed!\n";
 }
 
+void testIncrementalSolverGetModelOverload() {
+    std::cout << "Testing IncrementalSolver getModel overload...\n";
+    IncrementalSolver solver;
+    solver.addClause({1, 2});
+    solver.addClause({-1});
+    solver.addClause({3, 4});
+    solver.addClause({-3});
+    auto res = solver.solve();
+    TEST_ASSERT(res == IncrementalSolver::Result::SAT);
+    
+    // Full model should cover up to max var (which is 4)
+    auto fullModel = solver.getModel();
+    TEST_ASSERT(fullModel.size() == 5);
+    TEST_ASSERT(fullModel[1] == -1);
+    TEST_ASSERT(fullModel[2] == 2);
+    TEST_ASSERT(fullModel[3] == -3);
+    TEST_ASSERT(fullModel[4] == 4);
+
+    // Partial model up to var 2
+    auto partialModel2 = solver.getModel(2);
+    TEST_ASSERT(partialModel2.size() == 3);
+    TEST_ASSERT(partialModel2[1] == -1);
+    TEST_ASSERT(partialModel2[2] == 2);
+
+    // Partial model up to var 5 (should clamp to max_var)
+    auto partialModel5 = solver.getModel(5);
+    TEST_ASSERT(partialModel5.size() == 5);
+    TEST_ASSERT(partialModel5[1] == -1);
+    TEST_ASSERT(partialModel5[2] == 2);
+    TEST_ASSERT(partialModel5[3] == -3);
+    TEST_ASSERT(partialModel5[4] == 4);
+
+    std::cout << "IncrementalSolver getModel overload passed!\n";
+}
+
 void testIncrementalSolverTimeout() {
     std::cout << "Testing IncrementalSolver Timeout...\n";
     IncrementalSolver solver(1); // 1ms timeout
@@ -268,6 +303,7 @@ void testInternalMinCut() {
 int main() {
     testVariableManager();
     testIncrementalSolverBasic();
+    testIncrementalSolverGetModelOverload();
     testIncrementalSolverTimeout();
     testSubtourDetectorAndSecEncoder();
     testGraphPreprocessor();

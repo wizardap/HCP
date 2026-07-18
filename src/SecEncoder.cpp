@@ -4,6 +4,8 @@
 
 SecEncoder::SecEncoder(const Graph& graph) : graph_(graph), nextAuxBase_(0) {
     int numNodes = graph_.getNodes();
+    inComponent_.resize(numNodes, false);
+    isBoundary_.resize(numNodes, false);
     inAdj_.resize(numNodes);
     for (int u = 0; u < numNodes; ++u) {
         for (auto& [v, edgeIdx] : graph_.getNeighbors(u)) {
@@ -42,19 +44,19 @@ std::vector<std::vector<int>> SecEncoder::encodeSecs(
         }
 
         // Build inComponent bitmask
-        std::vector<bool> inComponent(numNodes, false);
+        std::fill(inComponent_.begin(), inComponent_.end(), false);
         for (int u : component.vertices) {
-            if (u >= 0 && u < numNodes) inComponent[u] = true;
+            if (u >= 0 && u < numNodes) inComponent_[u] = true;
         }
 
         // Compute vertex boundary S
-        std::vector<bool> isBoundary(numNodes, false);
+        std::fill(isBoundary_.begin(), isBoundary_.end(), false);
         std::vector<int> boundaryVertices;
         for (int u : component.vertices) {
             if (u < 0 || u >= numNodes) continue;
             for (auto& [v, _] : graph_.getNeighbors(u)) {
-                if (v >= 0 && v < numNodes && !inComponent[v] && !isBoundary[v]) {
-                    isBoundary[v] = true;
+                if (v >= 0 && v < numNodes && !inComponent_[v] && !isBoundary_[v]) {
+                    isBoundary_[v] = true;
                     boundaryVertices.push_back(v);
                 }
             }
@@ -90,7 +92,7 @@ std::vector<std::vector<int>> SecEncoder::encodeSecs(
                     }
                     std::vector<int> edgesIn;
                     for (auto& [v, edgeIdx] : graph_.getNeighbors(bv)) {
-                        if (v >= 0 && v < numNodes && inComponent[v]) {
+                        if (v >= 0 && v < numNodes && inComponent_[v]) {
                             edgesIn.push_back(edgeIdx);
                         }
                     }
@@ -114,11 +116,11 @@ std::vector<int> SecEncoder::getOutgoingLiterals(const Component& component) {
     std::vector<int> validVertices;
     validVertices.reserve(component.vertices.size());
 
-    std::vector<bool> inComponent(numNodes, false);
+    std::fill(inComponent_.begin(), inComponent_.end(), false);
     int totalDegree = 0;
     for (int u : component.vertices) {
         if (u >= 0 && u < numNodes) {
-            inComponent[u] = true;
+            inComponent_[u] = true;
             totalDegree += graph_.getDegree(u);
             validVertices.push_back(u);
         }
@@ -129,7 +131,7 @@ std::vector<int> SecEncoder::getOutgoingLiterals(const Component& component) {
 
     for (int u : validVertices) {
         for (auto& [v, edgeIdx] : graph_.getNeighbors(u)) {
-            if (!inComponent[v]) {
+            if (!inComponent_[v]) {
                 literals.push_back(edgeIdx);
             }
         }
@@ -139,11 +141,11 @@ std::vector<int> SecEncoder::getOutgoingLiterals(const Component& component) {
 
 std::vector<int> SecEncoder::getIncomingLiterals(const Component& component) {
     int numNodes = graph_.getNodes();
-    std::vector<bool> inComponent(numNodes, false);
+    std::fill(inComponent_.begin(), inComponent_.end(), false);
     int totalDegree = 0;
     for (int v : component.vertices) {
         if (v >= 0 && v < numNodes) {
-            inComponent[v] = true;
+            inComponent_[v] = true;
             totalDegree += inAdj_[v].size();
         }
     }
@@ -154,7 +156,7 @@ std::vector<int> SecEncoder::getIncomingLiterals(const Component& component) {
     for (int v : component.vertices) {
         if (v < 0 || v >= numNodes) continue;
         for (auto& [u, edgeIdx] : inAdj_[v]) {
-            if (u >= 0 && u < numNodes && !inComponent[u]) {
+            if (u >= 0 && u < numNodes && !inComponent_[u]) {
                 literals.push_back(edgeIdx);
             }
         }

@@ -30,6 +30,8 @@ private:
     const Graph& graph_;
     int nextAuxBase_;
     std::vector<std::vector<std::pair<int, int>>> inAdj_;
+    mutable std::vector<bool> inComponent_;
+    mutable std::vector<bool> isBoundary_;
     
     // For directed outgoing cut: Σ x_{u,v} ≥ 1 where u∈S, v∉S
     std::vector<int> getOutgoingLiterals(const Component& component);

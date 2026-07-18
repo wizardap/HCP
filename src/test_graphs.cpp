@@ -320,6 +320,35 @@ static void testOscillationTracker() {
     std::cerr << "PASS: testOscillationTracker\n";
 }
 
+static void testOrderIndependentHash() {
+    std::cout << "Testing order independent hash...\n";
+    std::vector<int> v1 = {1, 2, 3, 4, 5};
+    std::vector<int> v2 = {5, 4, 3, 2, 1};
+    std::vector<int> v3 = {3, 1, 5, 2, 4};
+    
+    auto compute_hash = [](const std::vector<int>& vertices) {
+        uint64_t hash = 0;
+        for (int v : vertices) {
+            hash ^= std::hash<int>{}(v) * 0x9e3779b97f4a7c15ULL;
+        }
+        return hash;
+    };
+    
+    uint64_t h1 = compute_hash(v1);
+    uint64_t h2 = compute_hash(v2);
+    uint64_t h3 = compute_hash(v3);
+    
+    TEST_ASSERT(h1 == h2);
+    TEST_ASSERT(h1 == h3);
+    
+    // Also verify it's different for a different set
+    std::vector<int> v4 = {1, 2, 3, 4, 6};
+    uint64_t h4 = compute_hash(v4);
+    TEST_ASSERT(h1 != h4);
+    
+    std::cout << "  Order independent hash test passed!\n";
+}
+
 static void testBuildBoundaryClause() {
     Graph g(3, 3);
     g.addEdge(0, 1, 10); g.addEdge(1, 0, 11);
@@ -357,6 +386,7 @@ int main() {
     test2EdgeConnectedBlocks();
     testPrecomputedBlockClauses();
     testOscillationTracker();
+    testOrderIndependentHash();
     testBuildBoundaryClause();
     testTwoCompThresholdConfig();
     std::cout << "All graph tests passed successfully!\n";

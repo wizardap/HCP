@@ -51,6 +51,10 @@ public:
     // Returns a vector of literals representing the full model (1-indexed, size: maxVar + 1).
     std::vector<int> getModel() const;
     
+    // Returns a partial model covering only variables 1..maxEdgeVar.
+    // Useful when only edge variables are needed (avoids querying auxiliary variables).
+    std::vector<int> getModel(int maxEdgeVar) const;
+    
     // Returns the maximum variable index added or solved.
     int getNumVars() const;
 

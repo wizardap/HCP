@@ -149,7 +149,8 @@ static bool runGreedyBlocking(
         }
 
         if (innerResult == IncrementalSolver::Result::SAT) {
-            auto innerModel = isolver.getModel();
+            int maxEdgeVar = 2 * g.getEdges();
+            auto innerModel = isolver.getModel(maxEdgeVar);
             auto innerComps = SubtourDetector::detect(innerModel, g);
 
             if (partitionChanged(prevFingerprint, innerComps)) {
@@ -410,7 +411,8 @@ Solver::SolveResult Solver::runIncremental(int64_t timeLimitMs) {
             return SolveResult::TIMEOUT;
         }
         if (result == IncrementalSolver::Result::SAT) {
-            auto model = isolver.getModel();
+            int maxEdgeVar = 2 * g.getEdges();
+            auto model = isolver.getModel(maxEdgeVar);
             auto components = SubtourDetector::detect(model, g);
 
             // Compute edge Jaccard similarity
@@ -609,8 +611,8 @@ Solver::SolveResult Solver::runIncremental(int64_t timeLimitMs) {
             // ----- TRACER LOG -----
             if (tracer) {
                 std::vector<int> modelEdgeVars;
-                int numVars = isolver.getNumVars();
-                for (int v = 1; v <= numVars; ++v) {
+                int maxEdgeVar = 2 * g.getEdges();
+                for (int v = 1; v <= maxEdgeVar; ++v) {
                     if (isolver.getModelValue(v) > 0) {
                         modelEdgeVars.push_back(v);
                     }
@@ -689,7 +691,7 @@ Solver::SolveResult Solver::runIncremental(int64_t timeLimitMs) {
 
                         uint64_t hash = 0;
                         for (int v : comp.vertices) {
-                            hash ^= std::hash<int>{}(v) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+                            hash ^= std::hash<int>{}(v) * 0x9e3779b97f4a7c15ULL;
                         }
 
                         if (oscillationTracker_.isOscillating(hash, actions)) {
