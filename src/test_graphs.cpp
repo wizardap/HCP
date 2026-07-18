@@ -339,6 +339,15 @@ static void testBuildBoundaryClause() {
     std::cerr << "PASS: testBuildBoundaryClause\n";
 }
 
+void testTwoCompThresholdConfig() {
+    std::cout << "Testing twoCompThreshold config setter/getter...\n";
+    Solver solver("src/small.edge");
+    TEST_ASSERT(solver.getTwoCompThreshold() == 20); // default
+    solver.setTwoCompThreshold(5);
+    TEST_ASSERT(solver.getTwoCompThreshold() == 5);
+    std::cout << "  twoCompThreshold config test passed!\n";
+}
+
 int main() {
     testGraphFileExists();
     testEncodingProducesValidCnf();
@@ -349,6 +358,7 @@ int main() {
     testPrecomputedBlockClauses();
     testOscillationTracker();
     testBuildBoundaryClause();
+    testTwoCompThresholdConfig();
     std::cout << "All graph tests passed successfully!\n";
     return 0;
 }

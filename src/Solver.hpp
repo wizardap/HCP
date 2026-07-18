@@ -81,6 +81,7 @@ private:
     int oscillationWindow_ = 10;
     int cutThreshold_ = 100;
     int ghAtLeast2Threshold_ = 4;  // Gomory-Hu: use at-least-2 for cuts with weight <= this
+    int twoCompThreshold_ = 20;    // trigger 2-comp strategy after this many consecutive 2-comp iterations
 
 public:
     Solver(const std::string& gFile) 
@@ -112,6 +113,8 @@ public:
     void setPrecomputeBlocks(bool b) { precomputeBlocks_ = b; }
     void setOscillationWindow(int w) { oscillationWindow_ = w; }
     void setCutThreshold(int t) { cutThreshold_ = t; }
+    void setTwoCompThreshold(int t) { twoCompThreshold_ = t; }
+    int getTwoCompThreshold() const { return twoCompThreshold_; }
 
     bool run();
     SolveResult runIncremental(int64_t timeLimitMs = 600000);
