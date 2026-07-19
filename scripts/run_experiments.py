@@ -23,6 +23,8 @@ def main():
         except (IndexError, ValueError):
             pass
 
+
+
     # Resolve to root-level graphs/
     graphs_dir = os.path.join(script_dir, "../graphs")
     
@@ -61,7 +63,17 @@ def main():
             pass
             
     if graph_filter:
-        files = [f for f in files if graph_filter in f]
+        if graph_filter == "fhcppp":
+            fhcppp_names = {
+                "graph48.edge", "graph162.edge", "graph171.edge", "graph197.edge",
+                "graph223.edge", "graph237.edge", "graph249.edge", "graph252.edge",
+                "graph254.edge", "graph255.edge", "graph424.edge", "graph446.edge",
+                "graph470.edge", "graph491.edge", "graph506.edge", "graph522.edge",
+                "graph526.edge", "graph529.edge"
+            }
+            files = [f for f in files if os.path.basename(f) in fhcppp_names and os.path.dirname(f) == ""]
+        else:
+            files = [f for f in files if graph_filter in f]
     
     # Sort files by subdirectory, numerically, then by filename string
     def get_sort_key(filename):
@@ -186,16 +198,25 @@ def main():
                         with open(graph_path, "r") as gf:
                             for line in gf:
                                 stripped = line.strip()
+                                if not stripped or stripped.startswith("c") or stripped.startswith("C"):
+                                    continue
                                 if stripped.startswith("p edge"):
                                     parts = stripped.split()
                                     n_nodes_found = int(parts[2])
-                                elif stripped.startswith("e ") or stripped.startswith("E "):
-                                    parts = stripped.split()
+                                    continue
+                                parts = stripped.split()
+                                if len(parts) < 2:
+                                    continue
+                                first = parts[0]
+                                if first == "e" or first == "E":
                                     u, v = int(parts[1]), int(parts[2])
-                                    edge_key = tuple(sorted((u, v)))
-                                    if edge_key not in edges_seen:
-                                        edges_seen.add(edge_key)
-                                        unique_edges.append((u, v))
+                                else:
+                                    try:
+                                        u = int(first)
+                                        v = int(parts[1])
+                                    except ValueError:
+                                        continue
+                                unique_edges.append((u, v))
                                         
                         with open(clean_graph_path, "w") as cgf:
                             cgf.write(f"p edge {n_nodes_found} {len(unique_edges)}\n")

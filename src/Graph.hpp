@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iostream>
 #include <algorithm>
+#include <sstream>
 
 class Graph {
 private:
@@ -32,19 +33,31 @@ public:
         adj.assign(nNode, std::vector<std::pair<int, int>>());
         degree.assign(nNode, 0);
 
-        std::string e;
-        int u, v;
+        std::string line;
         int maxIndex = 0;
-        while (file >> e >> u >> v) {
-            if (e == "e" || e == "E") {
-                u--; v--;
-                if (directedEdgeIndices) {
-                    adj[u].push_back({v, ++maxIndex});
-                    adj[v].push_back({u, ++maxIndex});
-                } else {
-                    adj[u].push_back({v, 1});
-                    adj[v].push_back({u, 1});
-                }
+        while (std::getline(file, line)) {
+            if (line.empty()) continue;
+            std::istringstream iss(line);
+            std::string token;
+            iss >> token;
+            if (!iss) continue;
+            int u, v;
+            if (token == "c" || token == "C") {
+                continue;
+            }
+            if (token == "e" || token == "E") {
+                if (!(iss >> u >> v)) continue;
+            } else {
+                std::istringstream(token) >> u;
+                if (iss.fail() || !(iss >> v)) continue;
+            }
+            u--; v--;
+            if (directedEdgeIndices) {
+                adj[u].push_back({v, ++maxIndex});
+                adj[v].push_back({u, ++maxIndex});
+            } else {
+                adj[u].push_back({v, 1});
+                adj[v].push_back({u, 1});
             }
         }
 
