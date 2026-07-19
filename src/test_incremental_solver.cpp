@@ -149,7 +149,7 @@ void testSubtourDetectorAndSecEncoder() {
     
     SecEncoder secEncoder(g);
     auto clauses = secEncoder.encodeSecs(components);
-    TEST_ASSERT(clauses.size() == 4); // Outgoing + Incoming for each of the 2 components
+    TEST_ASSERT(clauses.size() == 6); // Outgoing + Incoming + Small-cycle DFJ for each of the 2 components
     std::cout << "SubtourDetector and SecEncoder passed!\n";
 }
 
@@ -274,9 +274,10 @@ void testGetIncomingLiterals() {
     
     SecEncoder secEncoder(g);
     auto clauses = secEncoder.encodeSecs({c}, false);
-    TEST_ASSERT(clauses.size() == 2);
+    TEST_ASSERT(clauses.size() == 3);
     TEST_ASSERT(clauses[0] == std::vector<int>({2, 5}));
     TEST_ASSERT(clauses[1] == std::vector<int>({1, 6}));
+    TEST_ASSERT(clauses[2] == std::vector<int>({-3, -4}));
     std::cout << "testGetIncomingLiterals passed!\n";
 }
 
