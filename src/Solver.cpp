@@ -741,65 +741,7 @@ Solver::SolveResult Solver::runIncremental(int64_t timeLimitMs) {
                     }
                 }
 
-                // ---- Gomory-Hu prioritized cuts ----
-                if (components.size() > 2 && (components.size() <= 15 || actions % 10 == 0)) {
-                    auto ghTree = computeGomoryHuTree(components, g);
-                    int ghClausesAdded = 0;
 
-                    // Build component membership for crossing-edge collection
-                    std::vector<int> vertToComp(g.getNodes(), -1);
-                    for (int ci = 0; ci < (int)components.size(); ++ci) {
-                        for (int v : components[ci].vertices) {
-                            if (v >= 0 && v < g.getNodes()) vertToComp[v] = ci;
-                        }
-                    }
-
-                    int ghCutsProcessed = 0;
-                    for (const auto& edge : ghTree.edges) {
-                        if (edge.cutWeight > ghAtLeast2Threshold_) break; // sorted ascending; rest are strong enough
-                        if (ghCutsProcessed >= 10) break; // limit to 10 weakest cuts to avoid clause bloat
-                        ghCutsProcessed++;
-
-                        // Build sideA membership
-                        std::vector<bool> inSideA(components.size(), false);
-                        for (int ci : edge.sideA) inSideA[ci] = true;
-
-                        // Collect all crossing edges (both directions)
-                        std::vector<int> crossingLits;
-                        for (int ci = 0; ci < (int)components.size(); ++ci) {
-                            bool uInSideA = inSideA[ci];
-                            for (int u : components[ci].vertices) {
-                                for (auto& [v, edgeIdx] : g.getNeighbors(u)) {
-                                    int cv = vertToComp[v];
-                                    if (cv >= 0) {
-                                        bool vInSideA = inSideA[cv];
-                                        if (uInSideA != vInSideA) {
-                                            crossingLits.push_back(edgeIdx);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        std::sort(crossingLits.begin(), crossingLits.end());
-                        crossingLits.erase(std::unique(crossingLits.begin(), crossingLits.end()), crossingLits.end());
-
-                        if ((int)crossingLits.size() >= 4) {
-                            // At-least-2 on crossing edges
-                            DefaultAtLeastK atLeastK;
-                            int auxBase = isolver.getNumVars() + 1;
-                            auto kClauses = atLeastK.encode(crossingLits, 2, auxBase);
-                            for (const auto& cl : kClauses) {
-                                isolver.addClause(cl);
-                                ghClausesAdded++;
-                            }
-                        }
-                    }
-
-                    if (ghClausesAdded > 0) {
-                        std::cerr << "c Gomory-Hu: added " << ghClausesAdded
-                                  << " at-least-2 clauses for " << ghTree.edges.size() << " tree edges\n";
-                    }
-                }
 
                 iterationSecEncoder.startAuxAt(isolver.getNumVars() + 1);
                 auto secClauses = iterationSecEncoder.encodeSecs(components, useVertexSep_, vtxSepThreshold_, skipVertexDisjoint_);
