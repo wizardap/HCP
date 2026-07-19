@@ -28,84 +28,108 @@ std::vector<std::vector<int>> SecEncoder::encodeSecs(
 {
     std::vector<std::vector<int>> clauses;
     int numNodes = graph_.getNodes();
+    if ((int)inComponent_.size() < numNodes) {
+        inComponent_.resize(numNodes, false);
+        isBoundary_.resize(numNodes, false);
+    }
 
     if (nextAuxBase_ <= 0) {
         nextAuxBase_ = graph_.getEdges() * 2 + 2;
     }
     int& globalAuxBase = nextAuxBase_;
+
     for (const auto& component : components) {
+        // Set bitmask for S in O(|S|)
+        for (int u : component.vertices) {
+            if (u >= 0 && u < numNodes) inComponent_[u] = true;
+        }
+
         std::vector<int> outgoing = getOutgoingLiterals(component);
         std::vector<int> incoming = getIncomingLiterals(component);
 
         if (!useVertexSep) {
             if (!outgoing.empty()) clauses.push_back(std::move(outgoing));
             if (!incoming.empty()) clauses.push_back(std::move(incoming));
-            continue;
-        }
-
-        // Build inComponent bitmask
-        std::fill(inComponent_.begin(), inComponent_.end(), false);
-        for (int u : component.vertices) {
-            if (u >= 0 && u < numNodes) inComponent_[u] = true;
-        }
-
-        // Compute vertex boundary S
-        std::fill(isBoundary_.begin(), isBoundary_.end(), false);
-        std::vector<int> boundaryVertices;
-        for (int u : component.vertices) {
-            if (u < 0 || u >= numNodes) continue;
-            for (auto& [v, _] : graph_.getNeighbors(u)) {
-                if (v >= 0 && v < numNodes && !inComponent_[v] && !isBoundary_[v]) {
-                    isBoundary_[v] = true;
-                    boundaryVertices.push_back(v);
-                }
-            }
-        }
-
-        int sSize = (int)boundaryVertices.size();
-
-        if (sSize <= vtxSepThreshold) {
-            // Merge and dedup all boundary edges
-            std::vector<int> allBoundary = outgoing;
-            allBoundary.insert(allBoundary.end(), incoming.begin(), incoming.end());
-            std::sort(allBoundary.begin(), allBoundary.end());
-            allBoundary.erase(std::unique(allBoundary.begin(), allBoundary.end()), allBoundary.end());
-
-            if (allBoundary.empty()) continue;
-            int n = (int)allBoundary.size();
-
-            DefaultAtLeastK atLeastK;
-            auto kClauses = atLeastK.encode(allBoundary, 2, globalAuxBase);
-            clauses.insert(clauses.end(), kClauses.begin(), kClauses.end());
-
-            // Cross-direction vertex-disjoint for |S| = 2
-            // Only sound if the rest of the graph is not empty: V \ (C U S) != empty.
-            // If C U S = V, then any Hamiltonian cycle must enter and exit the boundary vertices.
-            if (sSize == 2 && n >= 4 && !skipVertexDisjoint && (int)(component.vertices.size() + sSize) < numNodes) {
-                for (int bv : boundaryVertices) {
-                    std::vector<int> edgesOut;
-                    for (int u : component.vertices) {
-                        if (u < 0 || u >= numNodes) continue;
-                        for (auto& [v, edgeIdx] : graph_.getNeighbors(u)) {
-                            if (v == bv) edgesOut.push_back(edgeIdx);
-                        }
-                    }
-                    std::vector<int> edgesIn;
-                    for (auto& [v, edgeIdx] : graph_.getNeighbors(bv)) {
-                        if (v >= 0 && v < numNodes && inComponent_[v]) {
-                            edgesIn.push_back(edgeIdx);
-                        }
-                    }
-                    for (int eOut : edgesOut) {
-                        for (int eIn : edgesIn) {
-                            clauses.push_back({-eOut, -eIn});
-                        }
-                    }
-                }
-            }
         } else {
-            if (!outgoing.empty()) clauses.push_back(std::move(outgoing));
-            if (!incoming.empty()) clauses.push_back(std::move(incoming));
+            // Compute vertex boundary S
+            std::vector<int> boundaryVertices;
+            for (int u : component.vertices) {
+                if (u < 0 || u >= numNodes) continue;
+                for (auto& [v, _] : graph_.getNeighbors(u)) {
+                    if (v >= 0 && v < numNodes && !inComponent_[v] && !isBoundary_[v]) {
+                        isBoundary_[v] = true;
+                        boundaryVertices.push_back(v);
+                    }
+                }
+            }
+
+            int sSize = (int)boundaryVertices.size();
+
+            if (sSize <= vtxSepThreshold) {
+                // Merge and dedup all boundary edges
+                std::vector<int> allBoundary = outgoing;
+                allBoundary.insert(allBoundary.end(), incoming.begin(), incoming.end());
+                std::sort(allBoundary.begin(), allBoundary.end());
+                allBoundary.erase(std::unique(allBoundary.begin(), allBoundary.end()), allBoundary.end());
+
+                if (!allBoundary.empty()) {
+                    DefaultAtLeastK atLeastK;
+                    auto kClauses = atLeastK.encode(allBoundary, 2, globalAuxBase);
+                    clauses.insert(clauses.end(), kClauses.begin(), kClauses.end());
+
+                    if (sSize == 2 && (int)allBoundary.size() >= 4 && !skipVertexDisjoint && (int)(component.vertices.size() + sSize) < numNodes) {
+                        for (int bv : boundaryVertices) {
+                            std::vector<int> edgesOut;
+                            for (int u : component.vertices) {
+                                if (u < 0 || u >= numNodes) continue;
+                                for (auto& [v, edgeIdx] : graph_.getNeighbors(u)) {
+                                    if (v == bv) edgesOut.push_back(edgeIdx);
+                                }
+                            }
+                            std::vector<int> edgesIn;
+                            for (auto& [v, edgeIdx] : graph_.getNeighbors(bv)) {
+                                if (v >= 0 && v < numNodes && inComponent_[v]) {
+                                    edgesIn.push_back(edgeIdx);
+                                }
+                            }
+                            for (int eOut : edgesOut) {
+                                for (int eIn : edgesIn) {
+                                    clauses.push_back({-eOut, -eIn});
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                if (!outgoing.empty()) clauses.push_back(std::move(outgoing));
+                if (!incoming.empty()) clauses.push_back(std::move(incoming));
+            }
+
+            // Reset isBoundary_
+            for (int bv : boundaryVertices) {
+                isBoundary_[bv] = false;
+            }
+        }
+
+        // Small-cycle DFJ clause for |S| <= 3
+        if (component.vertices.size() <= 3) {
+            std::vector<int> dfjClause;
+            for (int u : component.vertices) {
+                if (u < 0 || u >= numNodes) continue;
+                for (auto& [v, edgeIdx] : graph_.getNeighbors(u)) {
+                    if (v >= 0 && v < numNodes && inComponent_[v]) {
+                        dfjClause.push_back(-edgeIdx);
+                    }
+                }
+            }
+            if (!dfjClause.empty()) {
+                clauses.push_back(std::move(dfjClause));
+            }
+        }
+
+        // Reset inComponent_ in O(|S|)
+        for (int u : component.vertices) {
+            if (u >= 0 && u < numNodes) inComponent_[u] = false;
         }
     }
     return clauses;
@@ -113,25 +137,12 @@ std::vector<std::vector<int>> SecEncoder::encodeSecs(
 
 std::vector<int> SecEncoder::getOutgoingLiterals(const Component& component) {
     int numNodes = graph_.getNodes();
-    std::vector<int> validVertices;
-    validVertices.reserve(component.vertices.size());
-
-    std::fill(inComponent_.begin(), inComponent_.end(), false);
-    int totalDegree = 0;
-    for (int u : component.vertices) {
-        if (u >= 0 && u < numNodes) {
-            inComponent_[u] = true;
-            totalDegree += graph_.getDegree(u);
-            validVertices.push_back(u);
-        }
-    }
-
     std::vector<int> literals;
-    literals.reserve(totalDegree);
 
-    for (int u : validVertices) {
+    for (int u : component.vertices) {
+        if (u < 0 || u >= numNodes) continue;
         for (auto& [v, edgeIdx] : graph_.getNeighbors(u)) {
-            if (!inComponent_[v]) {
+            if (v >= 0 && v < numNodes && !inComponent_[v]) {
                 literals.push_back(edgeIdx);
             }
         }
@@ -141,17 +152,7 @@ std::vector<int> SecEncoder::getOutgoingLiterals(const Component& component) {
 
 std::vector<int> SecEncoder::getIncomingLiterals(const Component& component) {
     int numNodes = graph_.getNodes();
-    std::fill(inComponent_.begin(), inComponent_.end(), false);
-    int totalDegree = 0;
-    for (int v : component.vertices) {
-        if (v >= 0 && v < numNodes) {
-            inComponent_[v] = true;
-            totalDegree += inAdj_[v].size();
-        }
-    }
-
     std::vector<int> literals;
-    literals.reserve(totalDegree);
 
     for (int v : component.vertices) {
         if (v < 0 || v >= numNodes) continue;
