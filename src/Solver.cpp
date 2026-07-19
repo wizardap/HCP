@@ -742,7 +742,7 @@ Solver::SolveResult Solver::runIncremental(int64_t timeLimitMs) {
                 }
 
                 // ---- Gomory-Hu prioritized cuts ----
-                if (components.size() > 2) {
+                if (components.size() > 2 && (components.size() <= 15 || actions % 10 == 0)) {
                     auto ghTree = computeGomoryHuTree(components, g);
                     int ghClausesAdded = 0;
 
@@ -754,8 +754,11 @@ Solver::SolveResult Solver::runIncremental(int64_t timeLimitMs) {
                         }
                     }
 
+                    int ghCutsProcessed = 0;
                     for (const auto& edge : ghTree.edges) {
                         if (edge.cutWeight > ghAtLeast2Threshold_) break; // sorted ascending; rest are strong enough
+                        if (ghCutsProcessed >= 10) break; // limit to 10 weakest cuts to avoid clause bloat
+                        ghCutsProcessed++;
 
                         // Build sideA membership
                         std::vector<bool> inSideA(components.size(), false);
@@ -1161,9 +1164,9 @@ int main(int argc, char** argv) {
             }
 
             // Phase 1: try auto-scaled cycle m > n (one-shot, no SEC loop).
-            // Skip when m >= 3360 — formula too large (48K+ vars, 529K+ clauses
-            // for graph470) for the 30s budget; goes straight to cycle=2 SEC loop.
-            bool skipPhase1 = (autoCycle >= 3360);
+            // Skip when m >= 840 — formula too large (20K+ vars, 150K+ clauses)
+            // for the 30s budget; goes straight to cycle=2 SEC loop.
+            bool skipPhase1 = (autoCycle >= 840);
             Solver::SolveResult result;
             if (!skipPhase1) {
                 std::cerr << "c Auto cycle: trying m=" << autoCycle << " (30s budget, one-shot when m > n)\n";

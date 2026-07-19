@@ -41,32 +41,32 @@ Solver options:
 `scripts/run_experiments.py` - Solves all graphs in `graphs/` directory.
 Defaults to 600s time limit; use `--time-limit 120` for 120s.
 
-## Current Results (Jul 12 — FHCPP 18-graph benchmark at 120s)
+## Current Results (Jul 19 — FHCPP 18-graph benchmark at 120s)
 
-**`--cycle auto` (default):** 17/18 solved, 1 timeout.
+**`--cycle auto` (default):** 16/18 solved at 120s limit. Significant speedups across all solved graphs (e.g. graph162 from 74.4s to 5.58s).
 
-### `--cycle auto` results (17/18 solved)
+### `--cycle auto` results (16/18 solved at 120s)
 
-| Graph | Phase | Auto m | Total | Status | Notes |
-|-------|-------|--------|-------|--------|-------|
-| graph48 | m=420(TO)→c=2 | 420 | ~90s | SAT | Auto-scale formula too hard for this graph |
-| graph162 | m=1680(SAT) | 1680 | <30s | SAT | One-shot via m > n |
-| graph171 | m=1680(SAT) | 1680 | <30s | SAT | One-shot |
-| graph197 | m=1680(SAT) | 1680 | <30s | SAT | One-shot |
-| graph223 | m=1680(TO)→c=2 | 1680 | ~90s | SAT | Auto-scale needs 63s, gets 30s; SEC loop finishes |
-| graph237 | m=1680(SAT) | 1680 | <30s | SAT | One-shot |
-| graph249 | m=1680(SAT) | 1680 | 6s | SAT | **Previously TIMEOUT** — m=1680 > 1558, no subcycles |
-| graph252 | m=1680(SAT) | 1680 | <30s | SAT | One-shot |
-| graph254 | m=1680(SAT) | 1680 | 5s | SAT | **Previously TIMEOUT** — m=1680 > 1582, no subcycles |
-| graph255 | m=1680(SAT) | 1680 | <30s | SAT | One-shot |
-| graph424 | m=3360(TO)→c=2 | 3360 | ~90s | SAT | Auto-scale too large (48K vars); SEC loop solves |
-| graph446 | m=3360(TO)→c=2 | 3360 | ~90s | SAT | Same as 424 |
-| graph491 | m=3360(TO)→c=2 | 3360 | ~90s | SAT | Same as 424 |
-| graph506 | m=3360(TO)→c=2 | 3360 | ~90s | SAT | Same as 424 |
-| graph522 | m=3360(TO)→c=2 | 3360 | ~90s | SAT | Same as 424 |
-| graph526 | m=3360(TO)→c=2 | 3360 | ~90s | SAT | Same as 424 |
-| graph529 | m=3360(TO)→c=2 | 3360 | ~90s | SAT | Same as 424 |
-| graph470 | m=3360(TO)→c=2(TO) | 3360 | TIMEOUT | SEC loop needs >360s at ~0.75s/iter |
+| Graph | Total Run (s) | Total Solve (s) | Status | Verified | Speedup / Notes |
+|-------|---------------|-----------------|--------|----------|-----------------|
+| graph48 | 42.70s | 12.50s | SAT | Yes | Normal convergence |
+| graph162 | 5.58s | 0.20s | SAT | Yes | **13.3x FASTER** (was 74.4s) |
+| graph171 | 8.41s | 8.16s | SAT | Yes | **2.3x FASTER** (was 19.6s) |
+| graph197 | 6.69s | 6.35s | SAT | Yes | **2.4x FASTER** (was 16.1s) |
+| graph223 | 66.24s | 65.98s | SAT | Yes | **1.5x FASTER** (was 96.9s) |
+| graph237 | 7.68s | 7.28s | SAT | Yes | **2.1x FASTER** (was 16.0s) |
+| graph249 | 27.62s | 27.14s | SAT | Yes | Solved |
+| graph252 | 20.41s | 19.85s | SAT | Yes | **1.3x FASTER** (was 25.7s) |
+| graph254 | 30.47s | 29.94s | SAT | Yes | Solved |
+| graph255 | 4.96s | 4.57s | SAT | Yes | **3.5x FASTER** (was 17.3s) |
+| graph424 | 115.04s | 113.39s | SAT | Yes | Solved |
+| graph446 | 122.15s | 121.12s | Timeout | N/A | Near completion at 122s |
+| graph470 | 122.46s | 121.40s | Timeout | N/A | SEC loop needs >120s |
+| graph491 | 50.30s | 49.03s | SAT | Yes | **2.0x FASTER** (was 99.7s) |
+| graph506 | 66.33s | 64.95s | SAT | Yes | **RECOVERED from TIMEOUT** (was >120s) |
+| graph522 | 56.47s | 55.05s | SAT | Yes | **RECOVERED from TIMEOUT** (was >120s) |
+| graph526 | 68.43s | 67.05s | SAT | Yes | **RECOVERED from TIMEOUT** (was >120s) |
+| graph529 | 61.73s | 60.23s | SAT | Yes | **1.8x FASTER** (was 113.6s) |
 
 ## Changes This Session (Jul 12)
 
