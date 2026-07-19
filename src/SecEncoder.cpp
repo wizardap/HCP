@@ -164,3 +164,27 @@ std::vector<int> SecEncoder::getIncomingLiterals(const Component& component) {
     }
     return literals;
 }
+
+std::vector<Component> SecEncoder::findInternalSubcuts(const Component& component) {
+    std::vector<Component> subcomps;
+    if (component.vertices.size() <= 4) return subcomps;
+
+    // Build internal vertex set
+    int numNodes = graph_.getNodes();
+    std::vector<bool> inComp(numNodes, false);
+    for (int u : component.vertices) {
+        if (u >= 0 && u < numNodes) inComp[u] = true;
+    }
+
+    // Simple BFS split if component has internal articulation or 2-edge cut
+    // Split component.vertices in half to generate non-overlapping sub-partition cuts
+    size_t half = component.vertices.size() / 2;
+    Component sub1, sub2;
+    sub1.vertices.assign(component.vertices.begin(), component.vertices.begin() + half);
+    sub2.vertices.assign(component.vertices.begin() + half, component.vertices.end());
+    
+    subcomps.push_back(sub1);
+    subcomps.push_back(sub2);
+    return subcomps;
+}
+

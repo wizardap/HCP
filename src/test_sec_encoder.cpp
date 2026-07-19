@@ -60,6 +60,19 @@ int main() {
     // No outgoing, incoming, or DFJ clauses for full graph component
     assert(clauses2.empty());
 
+    // Test 3: findInternalSubcuts behavior
+    auto subcuts4 = encoder.findInternalSubcuts(comp2);
+    assert(subcuts4.empty()); // size <= 4 returns empty
+
+    Component comp5;
+    comp5.vertices = {0, 1, 2, 3, 4, 5};
+    Graph g6(6, 12);
+    SecEncoder encoder6(g6);
+    auto subcuts6 = encoder6.findInternalSubcuts(comp5);
+    assert(subcuts6.size() == 2);
+    assert(subcuts6[0].vertices.size() == 3);
+    assert(subcuts6[1].vertices.size() == 3);
+
     std::cout << "SecEncoder tests passed successfully!\n";
     return 0;
 }

@@ -26,6 +26,8 @@ public:
     void startAuxAt(int base);
     int getNextAuxBase() const { return nextAuxBase_; }
     
+    std::vector<Component> findInternalSubcuts(const Component& component);
+    
 private:
     const Graph& graph_;
     int nextAuxBase_;
