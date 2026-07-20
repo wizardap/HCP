@@ -377,6 +377,15 @@ void testTwoCompThresholdConfig() {
     std::cout << "  twoCompThreshold config test passed!\n";
 }
 
+void testAdaptiveCycleModeConfig() {
+    std::cout << "Testing adaptive cycle mode config...\n";
+    Solver solver;
+    TEST_ASSERT(solver.getCycleMode() == Solver::CycleMode::FIXED);
+    solver.setCycleMode(Solver::CycleMode::ADAPTIVE_BOUNDED);
+    TEST_ASSERT(solver.getCycleMode() == Solver::CycleMode::ADAPTIVE_BOUNDED);
+    std::cout << "  testAdaptiveCycleModeConfig PASS\n";
+}
+
 int main() {
     testGraphFileExists();
     testEncodingProducesValidCnf();
@@ -389,6 +398,7 @@ int main() {
     testOrderIndependentHash();
     testBuildBoundaryClause();
     testTwoCompThresholdConfig();
+    testAdaptiveCycleModeConfig();
     std::cout << "All graph tests passed successfully!\n";
     return 0;
 }

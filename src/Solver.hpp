@@ -2,6 +2,7 @@
 #define SOLVER_HPP
 
 #include <string>
+#include <vector>
 #include <memory>
 #include <cstdint>
 #include <unordered_map>
@@ -44,6 +45,11 @@ public:
         ERROR
     };
 
+    enum class CycleMode {
+        FIXED,
+        ADAPTIVE_BOUNDED
+    };
+
     enum class AtMostOneOption {
         DEFAULT,
         PBLIB
@@ -82,9 +88,13 @@ private:
     int cutThreshold_ = 100;
     int ghAtLeast2Threshold_ = 4;  // Gomory-Hu: use at-least-2 for cuts with weight <= this
     int twoCompThreshold_ = 20;    // trigger 2-comp strategy after this many consecutive 2-comp iterations
+    CycleMode cycleMode_ = CycleMode::FIXED;
+    int phase1MaxIters_ = 300;
+    int phase2MaxIters_ = 500;
+    std::vector<std::vector<int>> accumulatedSecClauses_;
 
 public:
-    Solver(const std::string& gFile) 
+    Solver(const std::string& gFile = "") 
         : graphFile(gFile), cycle(2), amoOption(AtMostOneOption::DEFAULT), 
           symOption(SymmetryOption::DEFAULT),
           startNodeOption(StartNodeOption::MIN_DEGREE), specificStartNode(0), 
@@ -95,6 +105,8 @@ public:
 
     void setCycle(int c) { cycle = c; }
     int getCycle() const { return cycle; }
+    void setCycleMode(CycleMode mode) { cycleMode_ = mode; }
+    CycleMode getCycleMode() const { return cycleMode_; }
     void setAtMostOneOption(AtMostOneOption opt) { amoOption = opt; }
     void setStartNodeOption(StartNodeOption opt, int node = 0) { 
         startNodeOption = opt; 
@@ -118,6 +130,7 @@ public:
 
     bool run();
     SolveResult runIncremental(int64_t timeLimitMs = 600000);
+    bool runIncrementalAdaptive123(int64_t totalTimeLimitMs);
 };
 
 #endif

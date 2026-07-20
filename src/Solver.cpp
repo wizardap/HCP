@@ -903,6 +903,11 @@ std::vector<std::vector<int>> find2EdgeConnectedBlocks(const Graph& g) {
     return blocks;
 }
 
+bool Solver::runIncrementalAdaptive123(int64_t totalTimeLimitMs) {
+    (void)totalTimeLimitMs;
+    return false;
+}
+
 #ifndef TESTING
 
 static int computeAutoScaleCycle(int nNode) {
