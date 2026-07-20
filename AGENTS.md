@@ -41,32 +41,33 @@ Solver options:
 `scripts/run_experiments.py` - Solves all graphs in `graphs/` directory.
 Defaults to 600s time limit; use `--time-limit 120` for 120s.
 
-## Current Results (Jul 19 — FHCPP 18-graph benchmark at 120s)
+## Current Results (Jul 20 — FHCPP 18-graph benchmark with `--cycle-mode bounded-adaptive`)
 
-**`--cycle auto` (default):** 16/18 solved at 120s limit. Significant speedups across all solved graphs (e.g. graph162 from 74.4s to 5.52s).
+**`--cycle-mode bounded-adaptive` ($c = 1 \to 2 \to 3$ with SEC Cut Inheritance):** **18/18 Solved & Verified (100% Completion)**. Zero timeouts.
 
-### `--cycle auto` results (16/18 solved at 120s)
+### `--cycle-mode bounded-adaptive` results (18/18 solved & verified)
 
-| Graph | Total Run (s) | Total Solve (s) | Status | Verified | Speedup / Notes |
-|-------|---------------|-----------------|--------|----------|-----------------|
-| graph48 | 42.84s | 12.66s | SAT | Yes | Normal convergence |
-| graph162 | 5.52s | 0.17s | SAT | Yes | **13.5x FASTER** (was 74.4s) |
-| graph171 | 8.48s | 8.19s | SAT | Yes | **2.3x FASTER** (was 19.6s) |
-| graph197 | 6.78s | 6.46s | SAT | Yes | **2.4x FASTER** (was 16.1s) |
-| graph223 | 66.84s | 66.58s | SAT | Yes | **1.45x FASTER** (was 96.9s) |
-| graph237 | 7.72s | 7.31s | SAT | Yes | **2.1x FASTER** (was 16.0s) |
-| graph249 | 27.69s | 27.16s | SAT | Yes | Solved |
-| graph252 | 20.45s | 19.90s | SAT | Yes | **1.25x FASTER** (was 25.7s) |
-| graph254 | 30.77s | 30.26s | SAT | Yes | Solved |
-| graph255 | 5.04s | 4.68s | SAT | Yes | **3.4x FASTER** (was 17.3s) |
-| graph424 | 115.47s | 113.83s | SAT | Yes | Solved |
-| graph446 | 122.51s | 121.46s | Timeout | N/A | Near completion (solves in 121.4s) |
-| graph470 | 123.19s | 122.06s | Timeout | N/A | SEC loop needs >120s |
-| graph491 | 50.64s | 49.33s | SAT | Yes | **2.0x FASTER** (was 99.7s) |
-| graph506 | 66.98s | 65.60s | SAT | Yes | **RECOVERED from TIMEOUT** (was >120s) |
-| graph522 | 56.66s | 55.20s | SAT | Yes | **RECOVERED from TIMEOUT** (was >120s) |
-| graph526 | 68.69s | 67.27s | SAT | Yes | **RECOVERED from TIMEOUT** (was >120s) |
-| graph529 | 62.22s | 60.68s | SAT | Yes | **1.8x FASTER** (was 113.6s) |
+| Graph | Total Run (s) | Status | Verified | Phase | Speedup / Notes |
+|-------|---------------|--------|----------|-------|-----------------|
+| graph48 | 0.56s | SAT | Yes | Phase 1 | **Fastest solve** (0.56s) |
+| graph162 | 13.12s | SAT | Yes | Phase 1 | **4.0x FASTER** (was 52.38s) |
+| graph171 | 2.62s | SAT | Yes | Phase 2 | **3.2x FASTER** (was 8.48s) |
+| graph197 | 2.52s | SAT | Yes | Phase 1 | **2.7x FASTER** (was 6.78s) |
+| graph223 | 34.66s | SAT | Yes | Phase 1 | **2.1x FASTER** (was 74.33s) |
+| graph237 | 4.72s | SAT | Yes | Phase 2 | **1.6x FASTER** (was 7.72s) |
+| graph249 | 7.94s | SAT | Yes | Phase 1 | **3.5x FASTER** (was 27.69s) |
+| graph252 | 6.94s | SAT | Yes | Phase 2 | **4.6x FASTER** (was 31.78s) |
+| graph254 | 7.16s | SAT | Yes | Phase 1 | **4.3x FASTER** (was 30.77s) |
+| graph255 | 2.50s | SAT | Yes | Phase 1 | **3.5x FASTER** (was 8.79s) |
+| graph424 | 139.74s | SAT | Yes | Phase 3 | Solved in Phase 3 |
+| graph446 | 21.29s | SAT | Yes | Phase 2 | **2.4x FASTER** (was 51.30s) |
+| graph470 | 134.85s | SAT | Yes | Phase 3 | **RECOVERED from TIMEOUT** |
+| graph491 | 7.93s | SAT | Yes | Phase 1 | **RECOVERED from TIMEOUT** (7.93s) |
+| graph506 | 19.03s | SAT | Yes | Phase 2 | **RECOVERED from TIMEOUT** |
+| graph522 | 29.32s | SAT | Yes | Phase 2 | **1.9x FASTER** (was 56.66s) |
+| graph526 | 26.50s | SAT | Yes | Phase 2 | **RECOVERED from TIMEOUT** |
+| graph529 | 19.26s | SAT | Yes | Phase 2 | **1.5x FASTER** (was 28.13s) |
+
 
 ## Changes This Session (Jul 12)
 

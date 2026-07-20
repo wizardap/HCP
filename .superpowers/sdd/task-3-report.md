@@ -1,71 +1,43 @@
-# Task 3: 2-Component Deadlock Strategy Report
+# Task 3 Report: CLI Integration & Benchmark Verification
 
-## What was implemented
-We implemented the 2-component deadlock strategy in the C++ HCP SAT solver:
-1. Added `twoCompThreshold_` private configuration member to `src/Solver.hpp` (initialized to `20`), along with its public setter `setTwoCompThreshold` and getter `getTwoCompThreshold`.
-2. Initialized `twoCompStreak = 0` counter inside `Solver::runIncremental` in `src/Solver.cpp`.
-3. Added streak tracking logic after Jaccard/stagnation check: if `components.size() == 2`, `twoCompStreak` is incremented, otherwise it is reset to `0`.
-4. Implemented the 2-component deadlock breaking strategy block in `src/Solver.cpp` right after the oscillation-guided cuts block and before Gomory-Hu tree prioritization. The strategy applies when `components.size() == 2` and `twoCompStreak >= twoCompThreshold_`. It:
-   - Resets `twoCompStreak = 0` to allow future re-triggering.
-   - Collects all crossing edges between component A and component B.
-   - Adds an At-Least-4 constraint on all crossing edges using `DefaultAtLeastK::encode`.
-   - Adds vertex-disjoint constraints on boundary vertices of component B to ensure a Hamiltonian cycle cannot enter from A and exit to A through the same boundary vertex (pairwise mutex on incoming/outgoing crossing edges per boundary vertex).
-5. Added `--two-comp-threshold` argument parsing and help output under `main` in `src/Solver.cpp`.
+## Summary
+- **Status:** DONE
+- **Date:** 2026-07-20
 
-## What was tested and test results
-- Verified that our code compiles and runs successfully by compiling with `make -C src` and running all unit tests via `make -C src test`.
-- Added a new unit test `testTwoCompThresholdConfig` in `src/test_graphs.cpp` to verify that the setter/getter and default initialization for `twoCompThreshold_` work correctly.
-- Checked that `--two-comp-threshold 1` successfully triggers the 2-component deadlock strategy on `src/small.edge` graph, generating `115` additional clauses (at-least-4 + vertex-disjoint constraints).
-- Verified that the solver does not regress on `graphs/graph470.edge` over a 120s and 600s time limit (reaching iteration 68 at 120s, which is consistent with the baseline performance).
+## Completed Items
 
-## TDD Evidence
-*(TDD was not explicitly requested or required for this task).*
+### 1. CLI Integration (`--cycle-mode`)
+Added handling for `--cycle-mode <opt>` in `src/Solver.cpp`:
+- Options parsed: `bounded-adaptive` or `123` (sets `Solver::CycleMode::ADAPTIVE_BOUNDED`), `fixed` or `default` (sets `Solver::CycleMode::FIXED`).
+- Updated `printHelp()` usage message to document `--cycle-mode <opt>`.
 
-## Files changed
-- [src/Solver.hpp](file:///home/ubuntu/HCP/src/Solver.hpp)
-- [src/Solver.cpp](file:///home/ubuntu/HCP/src/Solver.cpp)
-- [src/test_graphs.cpp](file:///home/ubuntu/HCP/src/test_graphs.cpp)
+### 2. Build Verification
+- Built solver binary with `make -C src`.
+- Generated `src/hcp-solver` binary cleanly without errors.
 
-## Self-Review Findings
-- The setter, getter, and streak counter work perfectly and match all specifications.
-- Vertex-disjoint pairwise mutex logic is correct.
-- Help output and argument parser are robust and handle values correctly.
-- Clean and consistent code formatting, no overbuilding (YAGNI followed).
+### 3. Execution Verification
+Tested the solver CLI on `graphs/u_data/graph48.edge`:
+```bash
+./src/hcp-solver graphs/u_data/graph48.edge --incremental --cycle-mode bounded-adaptive
+```
+**Output:**
+```
+c --- Phase 1 (cycle=1, remainingTime=600000ms, inherited SECs=0) ---
+c HAMILTONIAN found in Phase 1
+```
+Execution completed in < 3s, demonstrating successful integration of adaptive bounded cycle solving in the main CLI entry point.
 
-## Issues or concerns
-No concerns. The 2-component deadlock strategy triggers cleanly when the streak threshold is reached.
+### 4. Unit Test Suite Results
+Ran all unit tests via `make -C src test`:
+- `./test_incremental_solver` — ALL PASSED (including all 7 adaptive bounded cycle unit tests: `testAdaptiveCycleModeConfig`, `testPhase1Success`, `testPhase1FailureEscalatesToPhase2`, `testPhase2SuccessWithInheritedSecs`, `testBoundReachedEscalatesToPhase3`, `testAdaptive123Sequence`, `testStagnationTriggerInAdaptiveMode`).
+- `./test_graphs` — ALL PASSED.
+- `./test_vertex_separator` — PASSED.
+- `./test_gomory_hu` — PASSED.
+- `./test_sec_encoder` — PASSED.
 
----
+### 5. Git Commit
+- **Commit:** `9d2a6cd049e7e8a308d7f410022b2ca9f1818b49`
+- **Message:** `feat(cli): add --cycle-mode option to CLI parser`
 
-## Task 3 Fix: Sound DFJ Cycle-Blocking Clauses (July 19)
-
-### What was modified
-1. Removed the unsound crossing edge constraints (`at-least-4`) and boundary vertex-disjoint mutex constraints from the 2-component deadlock strategy block in [src/Solver.cpp](file:///home/ubuntu/HCP/src/Solver.cpp).
-2. Replaced them with sound, standard DFJ cycle-blocking clauses: when `components.size() == 2 && twoCompStreak >= twoCompThreshold_` is triggered, we now generate a single clause for each component that negates all of its selected edges.
-3. Cleaned up unused variables and logic (such as crossing-edge collection, boundary vertex detection, and the local `DefaultAtLeastK` instance) in this block.
-
-### Test Results
-- Ran:
-  ```bash
-  ./src/hcp-solver src/small.edge --incremental --two-comp-threshold 1
-  ```
-  Confirmed it successfully outputs `c HAMILTONIAN found` instead of `c UNSAT`.
-- Ran the full unit test suite `make -C src test` and verified all tests pass.
-
-### TDD Evidence
-- Executed the compiler and the unit tests locally.
-- Verified output:
-  - Compilation: Success
-  - Execution on `small.edge`:
-    ```
-    c 2-comp deadlock detected (streak=1), applying DFJ cycle-blocking clauses
-    c 2-comp strategy: added 2 DFJ cycle-blocking clauses
-    ...
-    c HAMILTONIAN found
-    ```
-  - Unit tests:
-    ```
-    All graph tests passed successfully!
-    All vertex-separator tests PASS
-    All unit tests passed successfully!
-    ```
+## Status
+**DONE**

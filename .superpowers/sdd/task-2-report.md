@@ -2,11 +2,11 @@
 
 ## Summary
 - **Status:** DONE
-- **Commit:** `7bfe9be`
+- **Commit:** `9d2a6cd`
 - **Files Modified:**
   - `src/Solver.hpp` (added `setGraphFile` setter method)
-  - `src/Solver.cpp` (implemented multiphase `runIncrementalAdaptive123` execution loop transferring accumulated SEC clauses across $c=1 \to 2 \to 3$)
-  - `src/test_incremental_solver.cpp` (added integration test `testAdaptiveBoundedEscalation`)
+  - `src/Solver.cpp` (implemented multiphase `runIncrementalAdaptive123` execution loop transferring accumulated SEC clauses across $c=1 \to 2 \to 3$, added `--cycle-mode` CLI option)
+  - `src/test_incremental_solver.cpp` (added integration test `testAdaptiveBoundedEscalation` with relative path fallback)
 
 ## Implementation Details
 
@@ -23,12 +23,12 @@
 3. **Escalation Triggers & Controls:**
    - Phase escalation triggers when `phaseIters >= phaseMaxIter` OR `consecutiveLowComps >= 30` (stagnation with $\le 4$ components).
    - Total wall-clock time limit is tracked continuously across phases to enforce prompt termination when time budget expires.
+   - Added `--cycle-mode` CLI flag (`bounded-adaptive`, `123`, `fixed`, `default`).
 
 4. **Integration Testing:**
    - Added `testAdaptiveBoundedEscalation()` in `src/test_incremental_solver.cpp`.
-   - Implemented fallback path resolution: checks `graphs/small.edge` (when run from root) and falls back to `../graphs/small.edge` (when run from `src/`).
    - Verified that solving a sample graph (`graphs/small.edge`) in `CycleMode::ADAPTIVE_BOUNDED` executes Phase 1 ($c=1$), accumulates SECs (1788 clauses), escalates to Phase 2 ($c=2$), and successfully finds the Hamiltonian cycle.
 
 ## Verification
 - Ran `make -C src test`.
-- All tests (`test_incremental_solver`, `test_graphs`, `test_vertex_separator`, `test_gomory_hu`, `test_sec_encoder`) passed completely without any assertion failures.
+- All tests passed successfully including `testAdaptiveBoundedEscalation` across all test binaries (`test_incremental_solver`, `test_graphs`, `test_vertex_separator`, `test_gomory_hu`, `test_sec_encoder`).
