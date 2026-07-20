@@ -301,6 +301,16 @@ void testInternalMinCut() {
     std::cout << "testInternalMinCut passed!\n";
 }
 
+void testAdaptiveBoundedEscalation() {
+    std::cout << "Testing Adaptive Bounded Escalation...\n";
+    Solver solver;
+    solver.setGraphFile("graphs/small.edge");
+    solver.setCycleMode(Solver::CycleMode::ADAPTIVE_BOUNDED);
+    auto res = solver.runIncremental(10000);
+    TEST_ASSERT(res == Solver::SolveResult::HAMILTONIAN);
+    std::cout << "testAdaptiveBoundedEscalation PASS\n";
+}
+
 int main() {
     testVariableManager();
     testIncrementalSolverBasic();
@@ -313,6 +323,7 @@ int main() {
     testDinicMaxFlow();
     testGetIncomingLiterals();
     testInternalMinCut();
+    testAdaptiveBoundedEscalation();
     std::cout << "All unit tests passed successfully!\n";
     return 0;
 }

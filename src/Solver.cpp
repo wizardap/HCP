@@ -199,6 +199,11 @@ std::vector<int> buildBoundaryClause(
 }
 
 Solver::SolveResult Solver::runIncremental(int64_t timeLimitMs) {
+    if (cycleMode_ == CycleMode::ADAPTIVE_BOUNDED) {
+        bool res = runIncrementalAdaptive123(timeLimitMs);
+        return res ? SolveResult::HAMILTONIAN : SolveResult::TIMEOUT;
+    }
+
     Graph g;
     if (!g.loadFromFile(graphFile, true)) { // Pass true for directed edge indices mapping
         std::cerr << "c Error: could not open graph file " << graphFile << "\n";
@@ -904,7 +909,146 @@ std::vector<std::vector<int>> find2EdgeConnectedBlocks(const Graph& g) {
 }
 
 bool Solver::runIncrementalAdaptive123(int64_t totalTimeLimitMs) {
-    (void)totalTimeLimitMs;
+    auto startTime = std::chrono::steady_clock::now();
+    accumulatedSecClauses_.clear();
+
+    int cycleValues[3] = {1, 2, 3};
+    int maxIters[3] = {phase1MaxIters_, phase2MaxIters_, 100000};
+
+    for (int phase = 0; phase < 3; ++phase) {
+        int currentCycle = cycleValues[phase];
+        int phaseMaxIter = maxIters[phase];
+
+        auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - startTime).count();
+        int64_t remainingTimeMs = totalTimeLimitMs - elapsedMs;
+        if (remainingTimeMs <= 0) {
+            std::cerr << "c TIMEOUT before phase " << (phase + 1) << "\n";
+            return false;
+        }
+
+        std::cerr << "c --- Phase " << (phase + 1) << " (cycle=" << currentCycle 
+                  << ", remainingTime=" << remainingTimeMs << "ms, inherited SECs=" 
+                  << accumulatedSecClauses_.size() << ") ---\n";
+
+        Graph g;
+        if (!g.loadFromFile(graphFile, true)) return false;
+
+        std::unique_ptr<IAtMostOne> amo;
+        if (amoOption == AtMostOneOption::PBLIB) {
+            amo.reset(new PbLibAtMostOne());
+        } else {
+            amo.reset(new DefaultAtMostOne());
+        }
+
+        std::unique_ptr<ISymmetryBreaker> sym;
+        if (symOption == SymmetryOption::DEFAULT) {
+            sym.reset(new DefaultSymmetryBreaker());
+        } else if (symOption == SymmetryOption::NONE) {
+            sym.reset(new NoSymmetryBreaker());
+        }
+
+        int sNode = -1;
+        if (startNodeOption == StartNodeOption::MIN_DEGREE) sNode = -1;
+        else if (startNodeOption == StartNodeOption::MAX_DEGREE) sNode = -2;
+        else if (startNodeOption == StartNodeOption::FIRST_NODE) sNode = -3;
+        else if (startNodeOption == StartNodeOption::SPECIFIC_NODE) sNode = specificStartNode;
+
+        VariableManager vm(2 * g.getEdges() + 1);
+        IncrementalSolver isolver(remainingTimeMs);
+
+        HcpEncoder encoder(g, currentCycle, *amo, *sym, sNode, vm);
+        encoder.encodeBase(isolver);
+
+        if (preprocess_) {
+            GraphPreprocessor pp(g);
+            if (pp.hasBridge()) {
+                std::cerr << "c Preprocessing: graph has a bridge — no Hamiltonian Cycle possible\n";
+                return false;
+            }
+
+            for (int u : pp.getDegree2Vertices()) {
+                for (auto& [v, _] : g.getNeighbors(u)) {
+                    int fwd = g.getAdj(u, v);
+                    int bwd = g.getAdj(v, u);
+                    if (fwd > 0 && bwd > 0) {
+                        isolver.addClause({fwd, bwd});
+                    }
+                }
+            }
+
+            for (const auto& ep : pp.getTwoEdgeCuts()) {
+                int f1 = g.getAdj(ep.u1, ep.v1);
+                int b1 = g.getAdj(ep.v1, ep.u1);
+                int f2 = g.getAdj(ep.u2, ep.v2);
+                int b2 = g.getAdj(ep.v2, ep.u2);
+                if (f1 <= 0 || b1 <= 0 || f2 <= 0 || b2 <= 0) continue;
+                isolver.addClause({f1, b1});
+                isolver.addClause({f2, b2});
+                isolver.addClause({-f1, -f2});
+                isolver.addClause({-b1, -b2});
+            }
+        }
+
+        // Inject inherited SEC clauses from previous phases
+        for (const auto& clause : accumulatedSecClauses_) {
+            isolver.addClause(clause);
+        }
+
+        int phaseIters = 0;
+        int consecutiveLowComps = 0;
+
+        while (true) {
+            auto loopElapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - startTime).count();
+            if (loopElapsed >= totalTimeLimitMs) {
+                std::cerr << "c TIMEOUT in Phase " << (phase + 1) << " loop\n";
+                return false;
+            }
+
+            phaseIters++;
+            auto result = isolver.solve();
+
+            if (result == IncrementalSolver::Result::UNSAT || result == IncrementalSolver::Result::TIMEOUT) {
+                if (phase == 2) return false;
+                std::cerr << "c Phase " << (phase + 1) << " ended (" << (result == IncrementalSolver::Result::UNSAT ? "UNSAT" : "TIMEOUT") << "). Escalating...\n";
+                break;
+            }
+
+            if (result == IncrementalSolver::Result::SAT) {
+                auto model = isolver.getModel();
+                auto components = SubtourDetector::detect(model, g);
+
+                if (components.empty()) {
+                    std::cerr << "c HAMILTONIAN found in Phase " << (phase + 1) << "\n";
+                    return true;
+                }
+
+                SecEncoder secEncoder(g);
+                auto secClauses = secEncoder.encodeSecs(components);
+                for (const auto& clause : secClauses) {
+                    isolver.addClause(clause);
+                    accumulatedSecClauses_.push_back(clause); // Store for transfer
+                }
+
+                if (components.size() <= 4) {
+                    consecutiveLowComps++;
+                } else {
+                    consecutiveLowComps = 0;
+                }
+
+                // Check escalation conditions for phase 0 (c=1) and phase 1 (c=2)
+                if (phase < 2) {
+                    if (phaseIters >= phaseMaxIter || consecutiveLowComps >= 30) {
+                        std::cerr << "c Phase " << (phase + 1) << " hit escalation threshold (iters=" 
+                                  << phaseIters << ", lowComps=" << consecutiveLowComps << "). Escalating to cycle=" 
+                                  << cycleValues[phase + 1] << "...\n";
+                        break;
+                    }
+                }
+            }
+        }
+    }
     return false;
 }
 
