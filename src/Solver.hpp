@@ -103,6 +103,7 @@ public:
           useVertexSep_(true), vtxSepThreshold_(4), skipVertexDisjoint_(false),
           precomputeBlocks_(true) {}
 
+    void setGraphFile(const std::string& f) { graphFile = f; }
     void setCycle(int c) { cycle = c; }
     int getCycle() const { return cycle; }
     void setCycleMode(CycleMode mode) { cycleMode_ = mode; }
