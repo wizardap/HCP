@@ -1,110 +1,34 @@
-# Task 2 Report: Optimize computeInternalMinCut Flow Computations
+# Task 2 Report: Implement `runIncrementalAdaptive123` with SEC Cut Inheritance
+
+## Summary
+- **Status:** DONE
+- **Commit:** `7bfe9be`
+- **Files Modified:**
+  - `src/Solver.hpp` (added `setGraphFile` setter method)
+  - `src/Solver.cpp` (implemented multiphase `runIncrementalAdaptive123` execution loop transferring accumulated SEC clauses across $c=1 \to 2 \to 3$)
+  - `src/test_incremental_solver.cpp` (added integration test `testAdaptiveBoundedEscalation`)
 
 ## Implementation Details
 
-We optimized `computeInternalMinCut` in `src/ContractedMinCut.cpp` with the following enhancements:
-1. **Sparse Graph Representation**: Replaced the $O(k^2)$ dense matrix graph capacity construction with a sparse `std::vector<std::vector<std::pair<int, int>>> localAdj` structure, which only stores edges that are actually present within the component. This drastically reduces the time complexity of building the graph structure when $k$ (the component size) is large, and avoids large memory allocations.
-2. **Dinic Max-flow**: Integrated the Dinic algorithm on the sparse graph directly rather than converting it from/to a dense representation.
-3. **Capped Boundary Sinks**: Capped the maximum number of evaluated boundary sinks (to at most 10) by skipping boundary elements at a dynamically computed `step` size:
-   ```cpp
-   size_t maxSinks = 10;
-   size_t step = std::max<size_t>(1, (boundary.size() - 1) / maxSinks);
-   ```
-   This prevents high execution overhead on large components with a large number of boundary vertices.
+1. **Multiphase Cycle Escalation Loop (`runIncrementalAdaptive123`):**
+   - Implemented 3-phase cycle escalation loop traversing cycle values $c \in \{1, 2, 3\}$.
+   - Phase limits configured via `phase1MaxIters_` (default 300) and `phase2MaxIters_` (default 500), with Phase 3 unbound (up to 100,000 iterations).
+   - In each phase, graph loading, `HcpEncoder` base encoding (with current cycle value $c$), and graph preprocessor forced edge clauses are set up cleanly.
 
-## TDD Evidence
+2. **SEC Cut Inheritance across Phases:**
+   - Accumulated SEC clauses in `accumulatedSecClauses_` are preserved across phase transitions.
+   - When moving from phase $i$ to phase $i+1$, all previously generated SEC clauses (which act on base edge variables $1 \dots 2E$) are injected directly into the new `IncrementalSolver` instance via `isolver.addClause(clause)`.
+   - Variable index independence between base edge variables ($1 \dots 2E$) and cycle position auxiliary variables ensures syntactical and mathematical validity of transferred clauses.
 
-### 1. Test Registration (Step 1)
-A new test `testInternalMinCut` was added to `src/test_incremental_solver.cpp` to explicitly test `computeInternalMinCut`.
+3. **Escalation Triggers & Controls:**
+   - Phase escalation triggers when `phaseIters >= phaseMaxIter` OR `consecutiveLowComps >= 30` (stagnation with $\le 4$ components).
+   - Total wall-clock time limit is tracked continuously across phases to enforce prompt termination when time budget expires.
 
-### 2. RED Run (Step 3)
-We modified `computeInternalMinCut` to return an empty `MinCutResult` (`{}`) to verify the test fails under incorrect implementations.
+4. **Integration Testing:**
+   - Added `testAdaptiveBoundedEscalation()` in `src/test_incremental_solver.cpp`.
+   - Implemented fallback path resolution: checks `graphs/small.edge` (when run from root) and falls back to `../graphs/small.edge` (when run from `src/`).
+   - Verified that solving a sample graph (`graphs/small.edge`) in `CycleMode::ADAPTIVE_BOUNDED` executes Phase 1 ($c=1$), accumulates SECs (1788 clauses), escalates to Phase 2 ($c=2$), and successfully finds the Hamiltonian cycle.
 
-**Command:**
-```bash
-make -C src test_incremental_solver && ./src/test_incremental_solver
-```
-
-**Output:**
-```
-Testing VariableManager...
-VariableManager passed!
-Testing IncrementalSolver Basic...
-...
-Solver Preprocessing passed!
-Testing ContractedMinCut...
-ContractedMinCut passed!
-Testing Dinic max-flow...
-Dinic max-flow passed!
-Testing getIncomingLiterals correctness...
-testGetIncomingLiterals passed!
-Testing computeInternalMinCut...
-Assertion failed: mcr.cutSize == 2 at test_incremental_solver.cpp:262
-```
-The test failed exactly as expected because `mcr.cutSize` was 0 instead of 2.
-
-### 3. GREEN Run (Step 5)
-After implementing the sparse Dinic-based capped boundary sink min-cut algorithm, the tests were run again.
-
-**Command:**
-```bash
-make -C src test_incremental_solver && ./src/test_incremental_solver
-```
-
-**Output:**
-```
-Testing VariableManager...
-VariableManager passed!
-Testing IncrementalSolver Basic...
-...
-Solver Preprocessing passed!
-Testing ContractedMinCut...
-ContractedMinCut passed!
-Testing Dinic max-flow...
-Dinic max-flow passed!
-Testing getIncomingLiterals correctness...
-testGetIncomingLiterals passed!
-Testing computeInternalMinCut...
-testInternalMinCut passed!
-All unit tests passed successfully!
-```
-The test passed cleanly.
-
-## Files Changed
-- `src/ContractedMinCut.cpp`
-- `src/test_incremental_solver.cpp`
-
-## Self-Review Findings
-- The implementation is extremely clean and matches the task description exactly.
-- All code styles follow the established practices of the codebase.
-- No warnings are emitted during compilation of these modified source files.
-
-## Post-Code-Review Fixes
-
-Following the final code review, we implemented the following fixes:
-
-1. **Defensive Check Discards Best Cut**:
-   - **File**: `src/ContractedMinCut.cpp`
-   - **Fix**: Count the number of active vertices on side A (`sideA_count`) first. Only compare `flowVal < best.cutSize` and update `best` if the cut is non-trivial (i.e. `sideA_count > 0 && sideA_count < k`). This prevents a later sink iteration yielding a trivial cut from resetting and discarding a previously found valid, non-trivial min-cut.
-
-2. **Out-of-Bounds safety on Graph Neighbors**:
-   - **File**: `src/ContractedMinCut.cpp`
-   - **Fix**: Added boundary checks in the local adjacency building loop and boundary vertex finding loop to ensure `u` is within `[0, graph.getNodes())` before querying `graph.getNeighbors(u)`.
-
-3. **In-Degree Heuristic Reservation**:
-   - **File**: `src/SecEncoder.cpp`
-   - **Fix**: Changed `totalDegree += graph_.getDegree(v)` to `totalDegree += inAdj_[v].size()` in `getIncomingLiterals` to reserve buffer space based on actual in-degrees rather than out-degrees/undirected degrees.
-
-### Verification and Test Results
-
-After implementing the fixes, the entire test suite was successfully compiled and run.
-- **Incremental Solver Tests**: `testInternalMinCut` and all other unit tests passed.
-- **Graph Tests**: All graph tests passed (tested encoding, variable/clause consistency, timing, stagnation strategies).
-- **Vertex Separator Tests**: All vertex separator tests passed.
-
-All tests passed successfully:
-```
-All unit tests passed successfully!
-All graph tests passed successfully!
-All vertex-separator tests PASS
-```
+## Verification
+- Ran `make -C src test`.
+- All tests (`test_incremental_solver`, `test_graphs`, `test_vertex_separator`, `test_gomory_hu`, `test_sec_encoder`) passed completely without any assertion failures.

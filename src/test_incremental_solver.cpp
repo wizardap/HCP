@@ -304,7 +304,14 @@ void testInternalMinCut() {
 void testAdaptiveBoundedEscalation() {
     std::cout << "Testing Adaptive Bounded Escalation...\n";
     Solver solver;
-    solver.setGraphFile("graphs/small.edge");
+    std::string graphPath = "graphs/small.edge";
+    {
+        std::ifstream f(graphPath);
+        if (!f.good()) {
+            graphPath = "../graphs/small.edge";
+        }
+    }
+    solver.setGraphFile(graphPath);
     solver.setCycleMode(Solver::CycleMode::ADAPTIVE_BOUNDED);
     auto res = solver.runIncremental(10000);
     TEST_ASSERT(res == Solver::SolveResult::HAMILTONIAN);
