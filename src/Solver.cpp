@@ -833,6 +833,7 @@ void printHelp(const char* progName) {
     std::cout << "Usage: " << progName << " <graph.dimacs> [options]\n"
               << "Options:\n"
               << "  -c, --cycle <int|auto>  Cycle multiplier (default: 2, auto: 3*5*7*2^k > nNode, fallback to 2)\n"
+              << "  --cycle-mode <opt>      Cycle selection mode: fixed (default), bounded-adaptive (or 123)\n"
               << "  -a, --amo <opt>         AtMostOne module: default, pblib\n"
               << "  -s, --start <opt>       Start node: min (min degree), max (max degree), first (node 0), or node index\n"
               << "  -b, --sym-break <opt>   Symmetry breaking module: default, none\n"
@@ -1117,6 +1118,21 @@ int main(int argc, char** argv) {
                 }
             } else {
                 std::cerr << "Error: -c/--cycle requires a value\n";
+                return 1;
+            }
+        } else if (arg == "--cycle-mode") {
+            if (i + 1 < argc) {
+                std::string modeStr = argv[++i];
+                if (modeStr == "bounded-adaptive" || modeStr == "123") {
+                    solver.setCycleMode(Solver::CycleMode::ADAPTIVE_BOUNDED);
+                } else if (modeStr == "fixed" || modeStr == "default") {
+                    solver.setCycleMode(Solver::CycleMode::FIXED);
+                } else {
+                    std::cerr << "Error: unknown --cycle-mode \"" << modeStr << "\"\n";
+                    return 1;
+                }
+            } else {
+                std::cerr << "Error: --cycle-mode requires a value\n";
                 return 1;
             }
         } else if (arg == "-a" || arg == "--amo") {
