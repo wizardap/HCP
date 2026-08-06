@@ -14,7 +14,7 @@ use crate::encoder::*;
 // use crate::file_operations;
 
 
-pub fn solve_hamilton(g:Graph, _s:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32, degree_order:i32, arcs_order:i32, instant:Instant) {
+pub fn solve_hamilton(g:Graph, _s:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32, degree_order:i32, arcs_order:i32, three_opt: i32, instant:Instant) {
     let now = instant.elapsed();
     let mut encoder = Encoder::new();
     unsafe{
@@ -26,7 +26,7 @@ pub fn solve_hamilton(g:Graph, _s:i32, block_method: i32,symmetry: i32 ,opt:i32,
         println!("encodhing time = {:?}",instant.elapsed()-now);
         
         // cegar関数により、解を求め、increment数と追加したblock節の合計を返す
-        let (increment,block) = cegar(&mut encoder,solver,0,0, g,block_method, opt,instant,instant.elapsed());
+        let (increment,block) = cegar(&mut encoder,solver,0,0, g,block_method, opt, three_opt, instant,instant.elapsed());
         Solver_delete(solver);
         println!("overall incremented number = {}",increment);
         // println!("overall number of added block clauses = {}",block);
@@ -34,7 +34,7 @@ pub fn solve_hamilton(g:Graph, _s:i32, block_method: i32,symmetry: i32 ,opt:i32,
     
 }
 
-fn cegar(encoder: &mut Encoder,solver:*mut Solver,mut count: i32,block_count:i32, g:Graph,block_method: i32, opt:i32, instant:Instant,previous_time:Duration) ->(i32,i32) {
+fn cegar(encoder: &mut Encoder,solver:*mut Solver,mut count: i32,block_count:i32, g:Graph,block_method: i32, opt:i32, three_opt: i32, instant:Instant,previous_time:Duration) ->(i32,i32) {
     //SATソルバーで解を求める
     unsafe{
         let res = Solver_solve(solver);
@@ -68,7 +68,7 @@ fn cegar(encoder: &mut Encoder,solver:*mut Solver,mut count: i32,block_count:i32
                 if opt == 0{
                     get_blocking_clauses(&sol_cycles,solver,encoder,&g,block_method);
                 }else if opt >= 1{
-                    let cycles = two_opt(&sol_cycles,solver,encoder,&g,block_method,opt);
+                    let cycles = two_opt(&sol_cycles,solver,encoder,&g,block_method,opt,three_opt);
                     if cycles.len() == 1{
                         let flat: Vec<i32> = cycles.into_iter().flatten().collect();
                         let line = flat.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
@@ -100,7 +100,7 @@ fn cegar(encoder: &mut Encoder,solver:*mut Solver,mut count: i32,block_count:i32
                 println!("add block clauses time = {:?}", add_block_clauses_time);
                 println!("increment time = {:?}", time);
                 
-                return cegar(encoder,solver, count,block_count, g, block_method,opt,instant,now);
+                return cegar(encoder,solver, count,block_count, g, block_method,opt,three_opt,instant,now);
             }
         }else{
             println!("s UNSATISFIABLE");
@@ -151,7 +151,7 @@ fn get_solution_cycles(sol_arcs: Vec<(i32, i32)>) -> Vec<Vec<i32>> {
 
 //2-optアルゴリズム
 //ブロック節と、つながって新たに見つかった閉路を返す
-fn two_opt(sol_cycles:&Vec<Vec<i32>>,solver:*mut Solver,encoder: &mut Encoder,g:&Graph,block_method:i32,opt:i32) -> Vec<Vec<i32>>{
+fn two_opt(sol_cycles:&Vec<Vec<i32>>,solver:*mut Solver,encoder: &mut Encoder,g:&Graph,block_method:i32,opt:i32,three_opt:i32) -> Vec<Vec<i32>>{
     // let mut block_clauses = Vec::new();
     let mut cycles = sol_cycles.to_vec();
     let mut merged = true;

@@ -44,7 +44,7 @@ fn main() {
     // println!("solver={},encoding={}",solver,encoding);
     // println!("{:?}",g);
     println!("file input time = {:?}", time1);
-    hcp_solver::solve_hamilton(g, solver, blocking, symmetry, two_opt, loop_prohibition,degree_order,arcs_order,instant);
+    hcp_solver::solve_hamilton(g, solver, blocking, symmetry, two_opt, loop_prohibition,degree_order,arcs_order,three_opt,instant);
     let time2 = instant.elapsed() - time1;
 
     // println!("solving time = {:?} sec",instant2.elapsed().as_secs());
