@@ -175,31 +175,47 @@ fn two_opt(sol_cycles:&Vec<Vec<i32>>,solver:*mut Solver,encoder: &mut Encoder,g:
         active_cycles_number.push(i);
     }
 
-    while merged{
- 
-        let (new_merged,merged_numbers,new_cycle) = merge_cycles(&cycles,g,&mut cache_vertex,&active_cycles_number,opt);
+    while merged {
+        let (new_merged, merged_numbers, new_cycle) = merge_cycles(&cycles, g, &mut cache_vertex, &active_cycles_number, opt);
         merged = new_merged;
-        
-        if merged{
+
+        if merged {
             cycles.push(new_cycle.clone());
             active_cycles_number.swap_remove(merged_numbers.1);
             active_cycles_number.swap_remove(merged_numbers.0);
-            active_cycles_number.push(cycles.len()-1);
+            active_cycles_number.push(cycles.len() - 1);
         }
 
-        if active_cycles_number.len() == 1 || !merged{
-            break
+        if active_cycles_number.len() == 1 {
+            break;
         }
-        if opt==1 || opt == 4{
+
+        // 3-opt fallback: when 2-opt is stuck and there are >= 3 cycles left
+        if !merged && three_opt == 1 && active_cycles_number.len() >= 3 {
+            let (three_merged, three_indices, three_cycle) = merge_three_cycles(&cycles, g, &active_cycles_number);
+            if three_merged {
+                cycles.push(three_cycle.clone());
+                // Remove in reverse index order to avoid shifting issues
+                let (ia, ib, ic) = three_indices;
+                let mut remove_indices = [ia, ib, ic];
+                remove_indices.sort_unstable_by(|a, b| b.cmp(a)); // descending
+                for &idx in &remove_indices {
+                    active_cycles_number.swap_remove(idx);
+                }
+                active_cycles_number.push(cycles.len() - 1);
+                merged = true; // reset loop — re-try 2-opt on the new cycle set
+                cache_vertex.clear(); // reset 2-opt cache for fresh attempt
+                continue;
+            }
+        }
+
+        if !merged {
+            break;
+        }
+
+        if opt == 1 || opt == 4 {
             get_blocking_clauses(&vec!(new_cycle), solver, encoder, g, block_method);
-        }else{
-            // if block_method >= 10{
-            //     let active_cycles = get_active_cycles(&cycles, &active_cycles_number);
-            //     let subclauses = get_blocking_clauses(&active_cycles,solver,encoder,&g,block_method+100);
-            //     if subclauses.len() != 0{
-            //         block_clauses.extend(subclauses);
-            //     }
-            // }
+        } else {
             maximam_cycles = new_cycle;
         }
     }
@@ -249,6 +265,29 @@ fn merge_cycles(cycles:&Vec<Vec<i32>>,g:&Graph,cache_vertex:&mut HashSet<usize>,
     }
     
     (false,(0,0),vec!())
+}
+
+/// Try to merge a triplet of active cycles using a 3-edge swap.
+/// Returns (merged, (idx1, idx2, idx3), new_cycle).
+fn merge_three_cycles(
+    cycles: &Vec<Vec<i32>>,
+    g: &Graph,
+    active_cycles_number: &Vec<usize>,
+) -> (bool, (usize, usize, usize), Vec<i32>) {
+    let n = active_cycles_number.len();
+    for a in 0..n {
+        for b in a+1..n {
+            for c in b+1..n {
+                let ci = active_cycles_number[a];
+                let cj = active_cycles_number[b];
+                let ck = active_cycles_number[c];
+                if let Some(new_cycle) = swap_three_nodes(&cycles[ci], &cycles[cj], &cycles[ck], g) {
+                    return (true, (a, b, c), new_cycle);
+                }
+            }
+        }
+    }
+    (false, (0, 0, 0), vec![])
 }
 
 
