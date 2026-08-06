@@ -352,20 +352,20 @@ fn cycle_join_three(
     if config == 0 {
         // Route: c1[0..=i] -> c2 starting from j+1 -> c3 starting from k+1 -> back
         new_cycle.extend(&c1[0..=i]);
-        new_cycle.extend(&c2[(j+1)%c2.len()..]);
-        new_cycle.extend(&c2[..=(j)]);
-        new_cycle.extend(&c3[(k+1)%c3.len()..]);
-        new_cycle.extend(&c3[..=(k)]);
+        new_cycle.extend(&c2[j+1..]);
+        new_cycle.extend(&c2[..=j]);
+        new_cycle.extend(&c3[k+1..]);
+        new_cycle.extend(&c3[..=k]);
         if i + 1 < c1.len() {
             new_cycle.extend(&c1[i+1..]);
         }
     } else {
         // Config B: Route: c1[0..=i] -> c3 starting from k+1 -> c2 starting from j+1
         new_cycle.extend(&c1[0..=i]);
-        new_cycle.extend(&c3[(k+1)%c3.len()..]);
-        new_cycle.extend(&c3[..=(k)]);
-        new_cycle.extend(&c2[(j+1)%c2.len()..]);
-        new_cycle.extend(&c2[..=(j)]);
+        new_cycle.extend(&c3[k+1..]);
+        new_cycle.extend(&c3[..=k]);
+        new_cycle.extend(&c2[j+1..]);
+        new_cycle.extend(&c2[..=j]);
         if i + 1 < c1.len() {
             new_cycle.extend(&c1[i+1..]);
         }
