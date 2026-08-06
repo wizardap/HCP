@@ -308,7 +308,70 @@ fn cycle_join(cycle1:&Vec<i32>,cycle2:&Vec<i32>,i:usize,j:usize,reverse:bool) ->
     Some(new_cycle)
 }
 
+/// Try to merge three directed cycles by a 3-edge swap.
+/// Tries two reconnection configurations for each (i, j, k) position.
+/// Config A (0): C1 -> C2 -> C3 -> C1  (u1->v2, u2->v3, u3->v1)
+/// Config B (1): C1 -> C3 -> C2 -> C1  (u1->v3, u3->v2, u2->v1)
+fn swap_three_nodes(c1: &Vec<i32>, c2: &Vec<i32>, c3: &Vec<i32>, g: &Graph) -> Option<Vec<i32>> {
+    for i in 0..c1.len() {
+        let u1 = c1[i];
+        let v1 = c1[(i + 1) % c1.len()];
+        let adjs_u1 = g.adjacency_list.get(&u1).unwrap();
 
+        for j in 0..c2.len() {
+            let u2 = c2[j];
+            let v2 = c2[(j + 1) % c2.len()];
+            let adjs_u2 = g.adjacency_list.get(&u2).unwrap();
+
+            for k in 0..c3.len() {
+                let u3 = c3[k];
+                let v3 = c3[(k + 1) % c3.len()];
+                let adjs_u3 = g.adjacency_list.get(&u3).unwrap();
+
+                // Config A: u1->v2, u2->v3, u3->v1
+                if adjs_u1.contains(&v2) && adjs_u2.contains(&v3) && adjs_u3.contains(&v1) {
+                    return cycle_join_three(c1, c2, c3, i, j, k, 0);
+                }
+                // Config B: u1->v3, u3->v2, u2->v1
+                if adjs_u1.contains(&v3) && adjs_u3.contains(&v2) && adjs_u2.contains(&v1) {
+                    return cycle_join_three(c1, c2, c3, i, j, k, 1);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Reconstruct a single merged cycle from three directed cycles given cut positions.
+fn cycle_join_three(
+    c1: &Vec<i32>, c2: &Vec<i32>, c3: &Vec<i32>,
+    i: usize, j: usize, k: usize,
+    config: u8,
+) -> Option<Vec<i32>> {
+    let mut new_cycle = Vec::new();
+    if config == 0 {
+        // Route: c1[0..=i] -> c2 starting from j+1 -> c3 starting from k+1 -> back
+        new_cycle.extend(&c1[0..=i]);
+        new_cycle.extend(&c2[(j+1)%c2.len()..]);
+        new_cycle.extend(&c2[..=(j)]);
+        new_cycle.extend(&c3[(k+1)%c3.len()..]);
+        new_cycle.extend(&c3[..=(k)]);
+        if i + 1 < c1.len() {
+            new_cycle.extend(&c1[i+1..]);
+        }
+    } else {
+        // Config B: Route: c1[0..=i] -> c3 starting from k+1 -> c2 starting from j+1
+        new_cycle.extend(&c1[0..=i]);
+        new_cycle.extend(&c3[(k+1)%c3.len()..]);
+        new_cycle.extend(&c3[..=(k)]);
+        new_cycle.extend(&c2[(j+1)%c2.len()..]);
+        new_cycle.extend(&c2[..=(j)]);
+        if i + 1 < c1.len() {
+            new_cycle.extend(&c1[i+1..]);
+        }
+    }
+    Some(new_cycle)
+}
 
 fn get_blocking_clauses(sol_cycles:&Vec<Vec<i32>>,solver:*mut Solver,encoder: &mut Encoder,g:&Graph, block_method:i32){
 
