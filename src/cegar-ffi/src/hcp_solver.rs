@@ -205,6 +205,11 @@ fn two_opt(sol_cycles:&Vec<Vec<i32>>,solver:*mut Solver,encoder: &mut Encoder,g:
                 active_cycles_number.push(cycles.len() - 1);
                 merged = true; // reset loop — re-try 2-opt on the new cycle set
                 cache_vertex.clear(); // reset 2-opt cache for fresh attempt
+                if opt == 1 || opt == 4 {
+                    get_blocking_clauses(&vec!(three_cycle.clone()), solver, encoder, g, block_method);
+                } else {
+                    maximam_cycles = three_cycle;
+                }
                 continue;
             }
         }
