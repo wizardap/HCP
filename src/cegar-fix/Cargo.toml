@@ -1,0 +1,19 @@
+[package]
+name = "cegar-fix"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.93"
+clap = "3.0.5"
+env_logger = "0.11.5"
+log = "0.4.22"
+rustsat = "0.6.1"
+# rustsat-cadical = {version="0.4.1",features=["v2-0-0"]}
+# rustsat-cadical = {version="0.4.1",features=["v1-9-5"]}
+# rustsat-cadical = {version="0.4.1",features=["v2-1-0"]}
+rustsat-cadical = {version="0.4.1",features=["v1-9-4"]}
+# rustsat-kissat = "0.3.1"
+# rustsat-minisat = "0.4.1"
