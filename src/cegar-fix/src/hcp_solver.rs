@@ -3,7 +3,7 @@ use rustsat::types::*;
 use rustsat::solvers::*;
 use rustsat::clause;
 use rustsat_cadical::Config;
-use std::collections::{BTreeMap,HashSet};
+use std::collections::{BTreeMap,HashMap,HashSet};
 use std::time::{Instant,Duration};
 // use crate::encoder;
 use crate::graph::*;
@@ -203,7 +203,7 @@ fn get_solution_cycles(sol_arcs: Vec<(i32, i32)>) -> Vec<Vec<i32>> {
 
 //2-optアルゴリズム
 //ブロック節と、つながって新たに見つかった閉路を返す
-fn two_opt(sol_cycles:&Vec<Vec<i32>>,encoder: &mut Encoder,g:&Graph,block_method:i32,balanced:i32,opt:i32,_three_opt:i32) -> (Vec<Clause>,Vec<Vec<i32>>){
+fn two_opt(sol_cycles:&Vec<Vec<i32>>,encoder: &mut Encoder,g:&Graph,block_method:i32,balanced:i32,opt:i32,three_opt:i32) -> (Vec<Clause>,Vec<Vec<i32>>){
     let mut block_clauses = Vec::new();
     let mut cycles = sol_cycles.to_vec();
     let mut merged = true;
@@ -236,6 +236,35 @@ fn two_opt(sol_cycles:&Vec<Vec<i32>>,encoder: &mut Encoder,g:&Graph,block_method
             active_cycles_number.swap_remove(merged_numbers.1);
             active_cycles_number.swap_remove(merged_numbers.0);
             active_cycles_number.push(cycles.len()-1);
+        }
+
+        if !merged && three_opt == 1 && active_cycles_number.len() >= 3 {
+            let (three_block_clauses, three_merged, three_indices, three_cycle) = merge_three_cycles(&cycles, encoder, g, block_method, balanced, &active_cycles_number);
+            if three_merged {
+                cycles.push(three_cycle.clone());
+                let (ia, ib, ic) = three_indices;
+                let mut remove_indices = [ia, ib, ic];
+                remove_indices.sort_unstable_by(|a, b| b.cmp(a));
+                for &idx in &remove_indices {
+                    active_cycles_number.swap_remove(idx);
+                }
+                active_cycles_number.push(cycles.len() - 1);
+                merged = true;
+                cache_vertex.clear();
+                if opt == 1 || opt == 4 {
+                    block_clauses.extend(three_block_clauses);
+                } else {
+                    if block_method >= 10 {
+                        let active_cycles = get_active_cycles(&cycles, &active_cycles_number);
+                        let subclauses = get_blocking_clauses(&active_cycles, encoder, &g, block_method + 100, balanced);
+                        if subclauses.len() != 0 {
+                            block_clauses.extend(subclauses);
+                        }
+                    }
+                    maximam_block_clauses = three_block_clauses;
+                }
+                continue;
+            }
         }
 
         if active_cycles_number.len() == 1 || !merged{
@@ -360,7 +389,122 @@ fn cycle_join(cycle1:&Vec<i32>,cycle2:&Vec<i32>,i:usize,j:usize,reverse:bool) ->
     Some(new_cycle)
 }
 
+/// Try to merge three directed cycles by a 3-edge swap.
+/// Config A (0): C1 -> C2 -> C3 -> C1  (u1->v2, u2->v3, u3->v1)
+/// Config B (1): C1 -> C3 -> C2 -> C1  (u1->v3, u3->v2, u2->v1)
+fn swap_three_nodes(c1: &Vec<i32>, c2: &Vec<i32>, c3: &Vec<i32>, g: &Graph) -> Option<Vec<i32>> {
+    for i in 0..c1.len() {
+        let u1 = c1[i];
+        let v1 = c1[(i + 1) % c1.len()];
+        let adjs_u1 = g.adjacency_list.get(&u1).unwrap();
 
+        for j in 0..c2.len() {
+            let u2 = c2[j];
+            let v2 = c2[(j + 1) % c2.len()];
+            let adjs_u2 = g.adjacency_list.get(&u2).unwrap();
+
+            for k in 0..c3.len() {
+                let u3 = c3[k];
+                let v3 = c3[(k + 1) % c3.len()];
+                let adjs_u3 = g.adjacency_list.get(&u3).unwrap();
+
+                // Config A: u1->v2, u2->v3, u3->v1
+                if adjs_u1.contains(&v2) && adjs_u2.contains(&v3) && adjs_u3.contains(&v1) {
+                    return cycle_join_three(c1, c2, c3, i, j, k, 0);
+                }
+                // Config B: u1->v3, u3->v2, u2->v1
+                if adjs_u1.contains(&v3) && adjs_u3.contains(&v2) && adjs_u2.contains(&v1) {
+                    return cycle_join_three(c1, c2, c3, i, j, k, 1);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Reconstruct a single merged cycle from three directed cycles given cut positions.
+fn cycle_join_three(
+    c1: &Vec<i32>, c2: &Vec<i32>, c3: &Vec<i32>,
+    i: usize, j: usize, k: usize,
+    config: u8,
+) -> Option<Vec<i32>> {
+    let mut new_cycle = Vec::new();
+    if config == 0 {
+        new_cycle.extend(&c1[0..=i]);
+        new_cycle.extend(&c2[j+1..]);
+        new_cycle.extend(&c2[..=j]);
+        new_cycle.extend(&c3[k+1..]);
+        new_cycle.extend(&c3[..=k]);
+        if i + 1 < c1.len() {
+            new_cycle.extend(&c1[i+1..]);
+        }
+    } else {
+        new_cycle.extend(&c1[0..=i]);
+        new_cycle.extend(&c3[k+1..]);
+        new_cycle.extend(&c3[..=k]);
+        new_cycle.extend(&c2[j+1..]);
+        new_cycle.extend(&c2[..=j]);
+        if i + 1 < c1.len() {
+            new_cycle.extend(&c1[i+1..]);
+        }
+    }
+    Some(new_cycle)
+}
+
+/// Try to merge a triplet of active cycles using candidate graph filtering.
+fn merge_three_cycles(
+    cycles: &Vec<Vec<i32>>,
+    encoder: &mut Encoder,
+    g: &Graph,
+    block_method: i32,
+    balanced: i32,
+    active_cycles_number: &Vec<usize>,
+) -> (Vec<Clause>, bool, (usize, usize, usize), Vec<i32>) {
+    let n = active_cycles_number.len();
+
+    let mut vertex_to_active: HashMap<i32, usize> = HashMap::new();
+    for (active_idx, &cycle_idx) in active_cycles_number.iter().enumerate() {
+        for &v in &cycles[cycle_idx] {
+            vertex_to_active.insert(v, active_idx);
+        }
+    }
+
+    let mut cycle_neighbors: Vec<HashSet<usize>> = vec![HashSet::new(); n];
+    for (active_idx, &cycle_idx) in active_cycles_number.iter().enumerate() {
+        for &u in &cycles[cycle_idx] {
+            if let Some(adjs) = g.adjacency_list.get(&u) {
+                for &v in adjs {
+                    if let Some(&neighbor_active) = vertex_to_active.get(&v) {
+                        if neighbor_active != active_idx {
+                            cycle_neighbors[active_idx].insert(neighbor_active);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    for a in 0..n {
+        let neighbors_a: Vec<usize> = cycle_neighbors[a].iter()
+            .filter(|&&b| b > a)
+            .cloned()
+            .collect();
+        for &b in &neighbors_a {
+            for &c in &cycle_neighbors[b] {
+                if c <= b { continue; }
+                if !cycle_neighbors[a].contains(&c) { continue; }
+                let ci = active_cycles_number[a];
+                let cj = active_cycles_number[b];
+                let ck = active_cycles_number[c];
+                if let Some(new_cycle) = swap_three_nodes(&cycles[ci], &cycles[cj], &cycles[ck], g) {
+                    let new_block_clauses = get_blocking_clauses(&vec!(new_cycle.clone()), encoder, g, block_method, balanced);
+                    return (new_block_clauses, true, (a, b, c), new_cycle);
+                }
+            }
+        }
+    }
+    (vec![], false, (0, 0, 0), vec![])
+}
 
 fn get_blocking_clauses(sol_cycles:&Vec<Vec<i32>>,encoder: &mut Encoder,g:&Graph, block_method:i32,balanced:i32) -> Vec<Clause>{
 
