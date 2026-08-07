@@ -147,7 +147,6 @@ pub fn get_options() -> clap::ArgMatches {
         )
         .arg(
             Arg::with_name("set-configration")
-                .short('f')
                 .long("set-configration")
                 .value_name("n")
                 .help("cadical set configration:
@@ -175,6 +174,14 @@ pub fn get_options() -> clap::ArgMatches {
     0: (default)
     1: ascending order by degree
     2: descending order by degree")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("cegar-fallback")
+                .short('f')
+                .long("cegar-fallback")
+                .value_name("n")
+                .help("CEGAR hard blocking fallback option:\n 0: Disabled (default)\n 1: Enabled")
                 .takes_value(true),
         )
         .get_matches();
