@@ -5,7 +5,7 @@ use libc::c_int;
 // use rustsat::types::*;
 // use rustsat::clause;
 
-use std::collections::{BTreeMap,HashSet};
+use std::collections::{BTreeMap,HashMap,HashSet};
 use std::time::{Instant,Duration};
 use std::vec;
 // use crate::encoder;
@@ -273,6 +273,7 @@ fn merge_cycles(cycles:&Vec<Vec<i32>>,g:&Graph,cache_vertex:&mut HashSet<usize>,
 }
 
 /// Try to merge a triplet of active cycles using a 3-edge swap.
+/// Uses a candidate graph to only examine triplets with inter-cycle edges.
 /// Returns (merged, (idx1, idx2, idx3), new_cycle).
 fn merge_three_cycles(
     cycles: &Vec<Vec<i32>>,
@@ -280,9 +281,41 @@ fn merge_three_cycles(
     active_cycles_number: &Vec<usize>,
 ) -> (bool, (usize, usize, usize), Vec<i32>) {
     let n = active_cycles_number.len();
+
+    // Step 1: Build vertex -> active-index mapping
+    let mut vertex_to_active: HashMap<i32, usize> = HashMap::new();
+    for (active_idx, &cycle_idx) in active_cycles_number.iter().enumerate() {
+        for &v in &cycles[cycle_idx] {
+            vertex_to_active.insert(v, active_idx);
+        }
+    }
+
+    // Step 2: Build cycle neighbor sets (candidate graph)
+    let mut cycle_neighbors: Vec<HashSet<usize>> = vec![HashSet::new(); n];
+    for (active_idx, &cycle_idx) in active_cycles_number.iter().enumerate() {
+        for &u in &cycles[cycle_idx] {
+            if let Some(adjs) = g.adjacency_list.get(&u) {
+                for &v in adjs {
+                    if let Some(&neighbor_active) = vertex_to_active.get(&v) {
+                        if neighbor_active != active_idx {
+                            cycle_neighbors[active_idx].insert(neighbor_active);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Step 3: Enumerate only connected triplets
     for a in 0..n {
-        for b in a+1..n {
-            for c in b+1..n {
+        let neighbors_a: Vec<usize> = cycle_neighbors[a].iter()
+            .filter(|&&b| b > a)
+            .cloned()
+            .collect();
+        for &b in &neighbors_a {
+            for &c in &cycle_neighbors[b] {
+                if c <= b { continue; }
+                if !cycle_neighbors[a].contains(&c) { continue; }
                 let ci = active_cycles_number[a];
                 let cj = active_cycles_number[b];
                 let ck = active_cycles_number[c];
