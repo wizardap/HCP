@@ -131,9 +131,14 @@ fn cegar(encoder: &mut Encoder,mut solver: rustsat_cadical::CaDiCaL<'_, '_>, mtz
             let mut mtz_clauses: Vec<Clause> = Vec::new();
             if mtz_stall > 0 && stall_count >= mtz_stall && remaining_cycle_count > 1 {
                 let smallest_cycle = active_cycles.iter().min_by_key(|c| c.len()).unwrap();
-                println!("MTZ stall detected (stall_count={}), injecting partial MTZ for {} vertices", stall_count, smallest_cycle.len());
-                mtz_clauses = inject_partial_mtz(smallest_cycle, &g, encoder, g.adjacency_list.len());
-                println!("MTZ clauses added = {}", mtz_clauses.len());
+                // Only inject MTZ if the smallest cycle is small enough (<= 100 vertices) to prevent clause explosion
+                if smallest_cycle.len() <= 100 {
+                    println!("MTZ stall detected (stall_count={}), injecting partial MTZ for {} vertices", stall_count, smallest_cycle.len());
+                    mtz_clauses = inject_partial_mtz(smallest_cycle, &g, encoder, g.adjacency_list.len());
+                    println!("MTZ clauses added = {}", mtz_clauses.len());
+                } else {
+                    println!("MTZ stall detected but smallest cycle is too large ({} vertices > 100), skipping MTZ injection", smallest_cycle.len());
+                }
                 stall_count = 0;
             }
 
@@ -546,12 +551,12 @@ fn inject_partial_mtz(
     let source = k_vertices[0];  // Pick first vertex as source
     let k_set: HashSet<i32> = k_vertices.iter().cloned().collect();
     
-    // Create order variables: order_vars[v] = vec of n-1 literals
-    // order_vars[v][t] = 1 iff position(v) >= t+1, for t = 0..n-2
     let mut order_vars: HashMap<i32, Vec<Lit>> = HashMap::new();
+    let k_len = k_vertices.len();
     for &v in k_vertices.iter() {
         let mut vars = Vec::new();
-        for _t in 0..n-1 {
+        // Allocate order variables corresponding to positions within K (1..k_len-1)
+        for _t in 0..k_len-1 {
             let lit = encoder.instance.new_lit();
             vars.push(lit);
         }
