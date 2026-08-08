@@ -184,6 +184,13 @@ pub fn get_options() -> clap::ArgMatches {
                 .help("CEGAR hard blocking fallback option:\n 0: Disabled (default)\n 1: Enabled")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("mtz-stall")
+                .long("mtz-stall")
+                .value_name("n")
+                .help("Partial MTZ injection stall threshold:\n 0: Disabled (default)\n N: Inject MTZ after N stall iterations")
+                .takes_value(true),
+        )
         .get_matches();
 }
 

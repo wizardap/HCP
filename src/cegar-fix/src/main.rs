@@ -28,6 +28,7 @@ fn main() {
     let degree_order = matches.value_of_t::<i32>("degree-order").unwrap_or(0);
     let arcs_order = matches.value_of_t::<i32>("arcs-order").unwrap_or(0);
     let cegar_fallback = matches.value_of_t::<i32>("cegar-fallback").unwrap_or(0);
+    let mtz_stall = matches.value_of_t::<i32>("mtz-stall").unwrap_or(0);
     // solver,encodingのオプションを&strで受け取る
     let input_filename = matches.value_of("input").unwrap_or("default");
     let output_foldername = matches.value_of("output").unwrap_or("default");
@@ -45,7 +46,7 @@ fn main() {
     // println!("solver={},encoding={}",solver,encoding);
     // println!("{:?}",g);
     println!("file input time = {:?}", time1);
-    hcp_solver::solve_hamilton(g, solver, encoding, blocking, symmetry, two_opt, loop_prohibition, cnf_normalize, balanced, de_arcify,config,degree_order,arcs_order,three_opt,cegar_fallback,instant,output_foldername);
+    hcp_solver::solve_hamilton(g, solver, encoding, blocking, symmetry, two_opt, loop_prohibition, cnf_normalize, balanced, de_arcify,config,degree_order,arcs_order,three_opt,cegar_fallback,mtz_stall,instant,output_foldername);
     let time2 = instant.elapsed() - time1;
 
     // println!("solving time = {:?} sec",instant2.elapsed().as_secs());

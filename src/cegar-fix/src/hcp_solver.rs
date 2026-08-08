@@ -11,7 +11,7 @@ use crate::encoder::*;
 use crate::file_operations;
 
 
-pub fn solve_hamilton(g:Graph, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, cegar_fallback:i32, instant:Instant,output_folder:&str) {
+pub fn solve_hamilton(g:Graph, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, cegar_fallback:i32, mtz_stall:i32, instant:Instant,output_folder:&str) {
     let now = instant.elapsed();
     let mut encoder = Encoder::new();
     // グラフをcnf形式に変形し、cnfへ格納
@@ -56,12 +56,12 @@ pub fn solve_hamilton(g:Graph, _s:i32, encode_method:i32, block_method: i32,symm
         let _ = solver.add_cnf(cnf);
     }
     // cegar関数により、解を求め、increment数と追加したblock節の合計を返す
-    let (increment,block) = cegar(&mut encoder,solver,0,0, g, block_method, opt, three_opt, cegar_fallback, instant,cnf_normalize,balanced ,instant.elapsed(),current_cnf,output_folder);
+    let (increment,block) = cegar(&mut encoder,solver,mtz_stall,0,999999,0,0, g, block_method, opt, three_opt, cegar_fallback, instant,cnf_normalize,balanced ,instant.elapsed(),current_cnf,output_folder);
     println!("overall incremented number = {}",increment);
     println!("overall number of added block clauses = {}",block);
 }
 
-fn cegar(encoder: &mut Encoder,mut solver: rustsat_cadical::CaDiCaL<'_, '_>,mut count: i32, mut clause_count: i32, g:Graph, block_method: i32,opt:i32, three_opt: i32, cegar_fallback:i32, instant:Instant, cnf_normalize:i32,balanced:i32, previous_time:Duration,previous_cnf:Cnf,output_folder:&str) ->(i32,i32) {
+fn cegar(encoder: &mut Encoder,mut solver: rustsat_cadical::CaDiCaL<'_, '_>, mtz_stall: i32, mut stall_count: i32, mut prev_subcycle_count: i32, mut count: i32, mut clause_count: i32, g:Graph, block_method: i32,opt:i32, three_opt: i32, cegar_fallback:i32, instant:Instant, cnf_normalize:i32,balanced:i32, previous_time:Duration,previous_cnf:Cnf,output_folder:&str) ->(i32,i32) {
     //SATソルバーで解を求める
     let res = solver.solve().unwrap();
     let now = instant.elapsed();
@@ -92,12 +92,13 @@ fn cegar(encoder: &mut Encoder,mut solver: rustsat_cadical::CaDiCaL<'_, '_>,mut 
             println!("number of subcycles found = {}",sol_cycles.len());
             println!("sat solution cycle lengths map (length:number) = {:?}",map_cycle_lengths(&sol_cycles));
         //閉路が二つ以上であれば、ソルバーにブロック節を加えて、もう一度解を求める
-            let block_clauses = 
+            let (block_clauses, remaining_cycle_count) = 
                 if opt == 0{
-                    get_blocking_clauses(&sol_cycles,encoder,&g, block_method,balanced)
+                    (get_blocking_clauses(&sol_cycles,encoder,&g, block_method,balanced), sol_cycles.len())
                 }else if opt >= 1{
                     let (clauses,cycles) = two_opt(&sol_cycles,encoder,&g,block_method,balanced,opt,three_opt,cegar_fallback);
-                    if cycles.len() == 1{
+                    let remaining = cycles.len();
+                    if remaining == 1{
                         let flat: Vec<i32> = cycles.into_iter().flatten().collect();
                         let line = flat.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
                         let now = instant.elapsed();
@@ -113,16 +114,36 @@ fn cegar(encoder: &mut Encoder,mut solver: rustsat_cadical::CaDiCaL<'_, '_>,mut 
                         println!("s SATISFIABLE");
                         return (count, clause_count);
                     }
-                    clauses
+                    (clauses, remaining)
                 }else{
                     panic!("2-opt option \n-t 0:2-opt off\n-t 1,2,3:2-opt on");
                 };
+
+            // Stall detection
+            if remaining_cycle_count as i32 >= prev_subcycle_count {
+                stall_count += 1;
+            } else {
+                stall_count = 0;
+            }
+            prev_subcycle_count = remaining_cycle_count as i32;
+
+            // MTZ injection when stalled
+            let mut mtz_clauses: Vec<Clause> = Vec::new();
+            if mtz_stall > 0 && stall_count >= mtz_stall && remaining_cycle_count > 1 {
+                let smallest_cycle = sol_cycles.iter().min_by_key(|c| c.len()).unwrap();
+                println!("MTZ stall detected (stall_count={}), injecting partial MTZ for {} vertices", stall_count, smallest_cycle.len());
+                mtz_clauses = inject_partial_mtz(smallest_cycle, &g, encoder, g.adjacency_list.len());
+                println!("MTZ clauses added = {}", mtz_clauses.len());
+                stall_count = 0;
+            }
+
             // let block_clauses = get_blocking_clauses(&sol_cycles,encoder,&g, block_method,balanced);
             // println!("increment");
             // println!("add_clauses:{:?}",block_clauses);
             let mut cnf = Cnf::new();
             // clause_count += block_clauses.len() as i32;
             cnf.extend(block_clauses);
+            cnf.extend(mtz_clauses);
             // println!("{:?}",cnf);
             count += 1;
             
@@ -154,7 +175,7 @@ fn cegar(encoder: &mut Encoder,mut solver: rustsat_cadical::CaDiCaL<'_, '_>,mut 
             println!("add block clauses time = {:?}", add_block_clauses_time);
             println!("increment time = {:?}", time);
             
-            return cegar(encoder,solver, count, clause_count,g, block_method,opt,three_opt,cegar_fallback,instant,cnf_normalize ,balanced,now,current_cnf,output_folder);
+            return cegar(encoder,solver, mtz_stall, stall_count, prev_subcycle_count, count, clause_count,g, block_method,opt,three_opt,cegar_fallback,instant,cnf_normalize ,balanced,now,current_cnf,output_folder);
         }
     }else{
         println!("s UNSATISFIABLE");
@@ -507,6 +528,91 @@ fn merge_three_cycles(
         }
     }
     (vec![], false, (0, 0, 0), vec![])
+}
+
+/// Inject Partial MTZ ordering constraints for a set of vertices K.
+/// Uses ORDER encoding: for each v in K, creates n-1 boolean variables
+/// o[v][t] where o[v][t] = 1 iff position(v) >= t+1.
+///
+/// Prevents ANY subtour entirely within K\{source}.
+fn inject_partial_mtz(
+    k_vertices: &Vec<i32>,
+    g: &Graph,
+    encoder: &mut Encoder,
+    n: usize,
+) -> Vec<Clause> {
+    
+    let mut clauses: Vec<Clause> = Vec::new();
+    let source = k_vertices[0];  // Pick first vertex as source
+    let k_set: HashSet<i32> = k_vertices.iter().cloned().collect();
+    
+    // Create order variables: order_vars[v] = vec of n-1 literals
+    // order_vars[v][t] = 1 iff position(v) >= t+1, for t = 0..n-2
+    let mut order_vars: HashMap<i32, Vec<Lit>> = HashMap::new();
+    for &v in k_vertices.iter() {
+        let mut vars = Vec::new();
+        for _t in 0..n-1 {
+            let lit = encoder.instance.new_lit();
+            vars.push(lit);
+        }
+        order_vars.insert(v, vars);
+    }
+    
+    // 1. Monotonicity: o[v][t+1] → o[v][t]
+    //    Clause: ¬o[v][t+1] ∨ o[v][t]
+    for &v in k_vertices.iter() {
+        let vars = &order_vars[&v];
+        for t in 0..vars.len()-1 {
+            clauses.push(clause!(!vars[t+1], vars[t]));
+        }
+    }
+    
+    // 3. Source constraint: position(source) = 0 → o[source][t] = 0 for all t
+    for lit in order_vars[&source].iter() {
+        clauses.push(clause!(!*lit));
+    }
+    
+    // 4. MTZ constraints: for each directed edge (u,v) where u,v ∈ K\{source}
+    //    x_{u,v} = 1 → position(v) >= position(u) + 1
+    //    Clause: ¬x_{u,v} ∨ ¬o[u][t] ∨ o[v][t+1]  for t = 0..n-3
+    //    Also:   ¬x_{u,v} ∨ o[v][0]  (position(v) >= 1 when arc is selected)
+    for &u in k_vertices.iter() {
+        if let Some(adjs) = g.adjacency_list.get(&u) {
+            for &v in adjs.iter() {
+                if !k_set.contains(&v) { continue; }  // Only edges within K
+                if v == source && u == source { continue; } // Skip self-loops
+                
+                let x_uv = match encoder.graph_lit_map.get(&(u, v)) {
+                    Some(lit) => *lit,
+                    None => continue,  // Edge doesn't exist in encoding
+                };
+                
+                if u == source {
+                    // Edge from source: x_{s,v} → position(v) >= 1
+                    let o_v = &order_vars[&v];
+                    clauses.push(clause!(!x_uv, o_v[0]));
+                } else if v == source {
+                    // Edge TO source: no MTZ constraint needed
+                    // (source can be at position 0 and receive edge from position n-1)
+                    continue;
+                } else {
+                    // Edge between non-source K vertices
+                    let o_u = &order_vars[&u];
+                    let o_v = &order_vars[&v];
+                    
+                    // x_{u,v} → position(v) >= 1
+                    clauses.push(clause!(!x_uv, o_v[0]));
+                    
+                    // x_{u,v} ∧ o[u][t] → o[v][t+1] for t = 0..n-3
+                    for t in 0..o_u.len()-1 {
+                        clauses.push(clause!(!x_uv, !o_u[t], o_v[t+1]));
+                    }
+                }
+            }
+        }
+    }
+    
+    clauses
 }
 
 fn get_blocking_clauses(sol_cycles:&Vec<Vec<i32>>,encoder: &mut Encoder,g:&Graph, block_method:i32,balanced:i32) -> Vec<Clause>{
