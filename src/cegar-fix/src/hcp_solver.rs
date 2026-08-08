@@ -92,9 +92,9 @@ fn cegar(encoder: &mut Encoder,mut solver: rustsat_cadical::CaDiCaL<'_, '_>, mtz
             println!("number of subcycles found = {}",sol_cycles.len());
             println!("sat solution cycle lengths map (length:number) = {:?}",map_cycle_lengths(&sol_cycles));
         //閉路が二つ以上であれば、ソルバーにブロック節を加えて、もう一度解を求める
-            let (block_clauses, remaining_cycle_count) = 
+            let (block_clauses, remaining_cycle_count, active_cycles) = 
                 if opt == 0{
-                    (get_blocking_clauses(&sol_cycles,encoder,&g, block_method,balanced), sol_cycles.len())
+                    (get_blocking_clauses(&sol_cycles,encoder,&g, block_method,balanced), sol_cycles.len(), sol_cycles.clone())
                 }else if opt >= 1{
                     let (clauses,cycles) = two_opt(&sol_cycles,encoder,&g,block_method,balanced,opt,three_opt,cegar_fallback);
                     let remaining = cycles.len();
@@ -114,7 +114,7 @@ fn cegar(encoder: &mut Encoder,mut solver: rustsat_cadical::CaDiCaL<'_, '_>, mtz
                         println!("s SATISFIABLE");
                         return (count, clause_count);
                     }
-                    (clauses, remaining)
+                    (clauses, remaining, cycles)
                 }else{
                     panic!("2-opt option \n-t 0:2-opt off\n-t 1,2,3:2-opt on");
                 };
@@ -130,7 +130,7 @@ fn cegar(encoder: &mut Encoder,mut solver: rustsat_cadical::CaDiCaL<'_, '_>, mtz
             // MTZ injection when stalled
             let mut mtz_clauses: Vec<Clause> = Vec::new();
             if mtz_stall > 0 && stall_count >= mtz_stall && remaining_cycle_count > 1 {
-                let smallest_cycle = sol_cycles.iter().min_by_key(|c| c.len()).unwrap();
+                let smallest_cycle = active_cycles.iter().min_by_key(|c| c.len()).unwrap();
                 println!("MTZ stall detected (stall_count={}), injecting partial MTZ for {} vertices", stall_count, smallest_cycle.len());
                 mtz_clauses = inject_partial_mtz(smallest_cycle, &g, encoder, g.adjacency_list.len());
                 println!("MTZ clauses added = {}", mtz_clauses.len());
