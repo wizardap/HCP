@@ -191,6 +191,14 @@ pub fn get_options() -> clap::ArgMatches {
                 .help("Partial MTZ injection stall threshold:\n 0: Disabled (default)\n N: Inject MTZ after N stall iterations")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("adaptive-escalation")
+                .short('A')
+                .long("adaptive-escalation")
+                .value_name("n")
+                .help("Adaptive stall-based escalation strategy:\n 0: Disabled\n 1: Enabled (default)")
+                .takes_value(true),
+        )
         .get_matches();
 }
 

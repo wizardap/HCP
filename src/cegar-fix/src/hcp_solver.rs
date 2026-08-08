@@ -11,7 +11,7 @@ use crate::encoder::*;
 use crate::file_operations;
 
 
-pub fn solve_hamilton(g:Graph, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, cegar_fallback:i32, mtz_stall:i32, instant:Instant,output_folder:&str) {
+pub fn solve_hamilton(g:Graph, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, cegar_fallback:i32, mtz_stall:i32, adaptive_escalation:i32, instant:Instant,output_folder:&str) {
     let now = instant.elapsed();
     let mut encoder = Encoder::new();
     // グラフをcnf形式に変形し、cnfへ格納
@@ -56,12 +56,12 @@ pub fn solve_hamilton(g:Graph, _s:i32, encode_method:i32, block_method: i32,symm
         let _ = solver.add_cnf(cnf);
     }
     // cegar関数により、解を求め、increment数と追加したblock節の合計を返す
-    let (increment,block) = cegar(&mut encoder,solver,mtz_stall,0,999999,0,0, g, block_method, opt, three_opt, cegar_fallback, instant,cnf_normalize,balanced ,instant.elapsed(),current_cnf,output_folder);
+    let (increment,block) = cegar(&mut encoder,solver,mtz_stall,0,999999,0,0, g, block_method, opt, three_opt, cegar_fallback, adaptive_escalation, instant,cnf_normalize,balanced ,instant.elapsed(),current_cnf,output_folder);
     println!("overall incremented number = {}",increment);
     println!("overall number of added block clauses = {}",block);
 }
 
-fn cegar(encoder: &mut Encoder,mut solver: rustsat_cadical::CaDiCaL<'_, '_>, mtz_stall: i32, mut stall_count: i32, mut prev_subcycle_count: i32, mut count: i32, mut clause_count: i32, g:Graph, block_method: i32,opt:i32, three_opt: i32, cegar_fallback:i32, instant:Instant, cnf_normalize:i32,balanced:i32, previous_time:Duration,previous_cnf:Cnf,output_folder:&str) ->(i32,i32) {
+fn cegar(encoder: &mut Encoder,mut solver: rustsat_cadical::CaDiCaL<'_, '_>, mtz_stall: i32, mut stall_count: i32, mut prev_subcycle_count: i32, mut count: i32, mut clause_count: i32, g:Graph, block_method: i32,opt:i32, three_opt: i32, cegar_fallback:i32, adaptive_escalation:i32, instant:Instant, cnf_normalize:i32,balanced:i32, previous_time:Duration,previous_cnf:Cnf,output_folder:&str) ->(i32,i32) {
     //SATソルバーで解を求める
     let res = solver.solve().unwrap();
     let now = instant.elapsed();
@@ -92,11 +92,23 @@ fn cegar(encoder: &mut Encoder,mut solver: rustsat_cadical::CaDiCaL<'_, '_>, mtz
             println!("number of subcycles found = {}",sol_cycles.len());
             println!("sat solution cycle lengths map (length:number) = {:?}",map_cycle_lengths(&sol_cycles));
         //閉路が二つ以上であれば、ソルバーにブロック節を加えて、もう一度解を求める
+            let (eff_three_opt, eff_cegar_fallback) = if adaptive_escalation == 1 {
+                if stall_count < 3 {
+                    (0, 0)
+                } else if stall_count < 6 {
+                    (1, 0)
+                } else {
+                    (1, 1)
+                }
+            } else {
+                (three_opt, cegar_fallback)
+            };
+
             let (block_clauses, remaining_cycle_count, active_cycles) = 
                 if opt == 0{
                     (get_blocking_clauses(&sol_cycles,encoder,&g, block_method,balanced), sol_cycles.len(), sol_cycles.clone())
                 }else if opt >= 1{
-                    let (clauses,cycles) = two_opt(&sol_cycles,encoder,&g,block_method,balanced,opt,three_opt,cegar_fallback);
+                    let (clauses,cycles) = two_opt(&sol_cycles,encoder,&g,block_method,balanced,opt,eff_three_opt,eff_cegar_fallback,adaptive_escalation,stall_count);
                     let remaining = cycles.len();
                     if remaining == 1{
                         let flat: Vec<i32> = cycles.into_iter().flatten().collect();
@@ -129,7 +141,12 @@ fn cegar(encoder: &mut Encoder,mut solver: rustsat_cadical::CaDiCaL<'_, '_>, mtz
 
             // MTZ injection when stalled
             let mut mtz_clauses: Vec<Clause> = Vec::new();
-            if mtz_stall > 0 && stall_count >= mtz_stall && remaining_cycle_count > 1 {
+            let inject_mtz = if adaptive_escalation == 1 {
+                stall_count >= 6 && remaining_cycle_count > 1
+            } else {
+                mtz_stall > 0 && stall_count >= mtz_stall && remaining_cycle_count > 1
+            };
+            if inject_mtz {
                 let smallest_cycle = active_cycles.iter().min_by_key(|c| c.len()).unwrap();
                 // Only inject MTZ if the smallest cycle is small enough (<= 100 vertices) to prevent clause explosion
                 if smallest_cycle.len() <= 100 {
@@ -180,7 +197,7 @@ fn cegar(encoder: &mut Encoder,mut solver: rustsat_cadical::CaDiCaL<'_, '_>, mtz
             println!("add block clauses time = {:?}", add_block_clauses_time);
             println!("increment time = {:?}", time);
             
-            return cegar(encoder,solver, mtz_stall, stall_count, prev_subcycle_count, count, clause_count,g, block_method,opt,three_opt,cegar_fallback,instant,cnf_normalize ,balanced,now,current_cnf,output_folder);
+            return cegar(encoder,solver, mtz_stall, stall_count, prev_subcycle_count, count, clause_count,g, block_method,opt,three_opt,cegar_fallback,adaptive_escalation,instant,cnf_normalize ,balanced,now,current_cnf,output_folder);
         }
     }else{
         println!("s UNSATISFIABLE");
@@ -229,7 +246,7 @@ fn get_solution_cycles(sol_arcs: Vec<(i32, i32)>) -> Vec<Vec<i32>> {
 
 //2-optアルゴリズム
 //ブロック節と、つながって新たに見つかった閉路を返す
-fn two_opt(sol_cycles:&Vec<Vec<i32>>,encoder: &mut Encoder,g:&Graph,block_method:i32,balanced:i32,opt:i32,three_opt:i32,cegar_fallback:i32) -> (Vec<Clause>,Vec<Vec<i32>>){
+fn two_opt(sol_cycles:&Vec<Vec<i32>>,encoder: &mut Encoder,g:&Graph,block_method:i32,balanced:i32,opt:i32,three_opt:i32,cegar_fallback:i32,_adaptive_escalation:i32,_stall_count:i32) -> (Vec<Clause>,Vec<Vec<i32>>){
     let mut block_clauses = Vec::new();
     let mut cycles = sol_cycles.to_vec();
     let mut merged = true;
