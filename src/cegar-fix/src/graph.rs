@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Graph {
     pub adjacency_list: HashMap<i32, Vec<i32>>, //キーにノード、値に接続されているノードの集合
     pub adjacency_list_btree: BTreeMap<i32,Vec<i32>>,

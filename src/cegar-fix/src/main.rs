@@ -3,6 +3,7 @@ mod file_operations;
 mod graph;
 mod hcp_solver;
 mod options;
+mod parallel_sub_hcp;
 use std::time::Instant;
 use log::info;
 
