@@ -139,4 +139,30 @@ impl Graph {
         // Remove arcs containing v but not containing n1 or n2
         self.arcs.retain(|&(a, b)| !(a == *v && b != n1 && b != n2) && !(b == *v && a != n1 && a != n2));
     }
+
+    pub fn induced_subgraph(&self, vertices: &std::collections::HashSet<i32>) -> Graph {
+        let mut new_adjacency = std::collections::BTreeMap::new();
+        let mut new_arcs = Vec::new();
+
+        for &u in vertices {
+            if let Some(adjs) = self.adjacency_list.get(&u) {
+                let filtered_adjs: Vec<i32> = adjs.iter().filter(|v| vertices.contains(v)).cloned().collect();
+                new_adjacency.insert(u, filtered_adjs.clone());
+                for v in filtered_adjs {
+                    new_arcs.push((u, v));
+                }
+            }
+        }
+
+        let new_adjacency_hash: std::collections::HashMap<i32, Vec<i32>> = new_adjacency
+            .iter()
+            .map(|(&k, v)| (k, v.clone()))
+            .collect();
+
+        Graph {
+            adjacency_list: new_adjacency_hash,
+            adjacency_list_btree: new_adjacency,
+            arcs: new_arcs,
+        }
+    }
 }

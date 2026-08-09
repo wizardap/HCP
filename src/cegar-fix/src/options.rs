@@ -199,6 +199,20 @@ pub fn get_options() -> clap::ArgMatches {
                 .help("Adaptive stall-based escalation strategy:\n 0: Disabled\n 1: Enabled (default)")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("sub-hcp-timeout")
+                .long("sub-hcp-timeout")
+                .value_name("n")
+                .help("Sub-HCP solver timeout per cluster in seconds (default: 60)")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("max-cluster-size")
+                .long("max-cluster-size")
+                .value_name("n")
+                .help("Maximum vertices per cluster for sub-HCP solving (default: 500)")
+                .takes_value(true),
+        )
         .get_matches();
 }
 
