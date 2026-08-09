@@ -56,7 +56,7 @@ pub fn solve_hamilton(g:Graph, _s:i32, encode_method:i32, block_method: i32,symm
         let _ = solver.add_cnf(cnf);
     }
     // cegar関数により、解を求め、increment数と追加したblock節の合計を返す
-    let (increment,block) = cegar(&mut encoder,solver,mtz_stall,0,999999,0,0, g, block_method, opt, three_opt, cegar_fallback, adaptive_escalation, sub_hcp_timeout, max_cluster_size, instant,cnf_normalize,balanced ,instant.elapsed(),current_cnf,output_folder);
+    let (increment,block) = cegar(&mut encoder,solver,mtz_stall,0,0,0,0, g, block_method, opt, three_opt, cegar_fallback, adaptive_escalation, sub_hcp_timeout, max_cluster_size, instant,cnf_normalize,balanced ,instant.elapsed(),current_cnf,output_folder);
     println!("overall incremented number = {}",increment);
     println!("overall number of added block clauses = {}",block);
 }
@@ -131,7 +131,7 @@ fn cegar(encoder: &mut Encoder,mut solver: rustsat_cadical::CaDiCaL<'_, '_>, mtz
                     panic!("2-opt option \n-t 0:2-opt off\n-t 1,2,3:2-opt on");
                 };
 
-            // Stall detection
+            // Stall detection: if 2-opt/3-opt merging failed to reduce remaining cycles compared to previous iteration
             if remaining_cycle_count as i32 >= prev_subcycle_count {
                 stall_count += 1;
             } else {
@@ -175,10 +175,10 @@ fn cegar(encoder: &mut Encoder,mut solver: rustsat_cadical::CaDiCaL<'_, '_>, mtz
                     println!("MTZ stall detected (stall_count={}), injecting partial MTZ for {} vertices", stall_count, smallest_cycle.len());
                     mtz_clauses = inject_partial_mtz(smallest_cycle, &g, encoder, g.adjacency_list.len());
                     println!("MTZ clauses added = {}", mtz_clauses.len());
+                    stall_count = 0;
                 } else {
                     println!("MTZ stall detected but smallest cycle is too large ({} vertices > 100), skipping MTZ injection", smallest_cycle.len());
                 }
-                stall_count = 0;
             }
 
             // let block_clauses = get_blocking_clauses(&sol_cycles,encoder,&g, block_method,balanced);
