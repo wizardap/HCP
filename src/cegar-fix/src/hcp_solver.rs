@@ -11,7 +11,7 @@ use crate::encoder::*;
 use crate::file_operations;
 
 
-pub fn solve_hamilton(g:Graph, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, cegar_fallback:i32, mtz_stall:i32, adaptive_escalation:i32, _sub_hcp_timeout: u64, _max_cluster_size: usize, instant:Instant,output_folder:&str) {
+pub fn solve_hamilton(g:Graph, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, cegar_fallback:i32, mtz_stall:i32, adaptive_escalation:i32, sub_hcp_timeout: u64, max_cluster_size: usize, instant:Instant,output_folder:&str) {
     let now = instant.elapsed();
     let mut encoder = Encoder::new();
     // グラフをcnf形式に変形し、cnfへ格納
@@ -56,12 +56,12 @@ pub fn solve_hamilton(g:Graph, _s:i32, encode_method:i32, block_method: i32,symm
         let _ = solver.add_cnf(cnf);
     }
     // cegar関数により、解を求め、increment数と追加したblock節の合計を返す
-    let (increment,block) = cegar(&mut encoder,solver,mtz_stall,0,999999,0,0, g, block_method, opt, three_opt, cegar_fallback, adaptive_escalation, instant,cnf_normalize,balanced ,instant.elapsed(),current_cnf,output_folder);
+    let (increment,block) = cegar(&mut encoder,solver,mtz_stall,0,999999,0,0, g, block_method, opt, three_opt, cegar_fallback, adaptive_escalation, sub_hcp_timeout, max_cluster_size, instant,cnf_normalize,balanced ,instant.elapsed(),current_cnf,output_folder);
     println!("overall incremented number = {}",increment);
     println!("overall number of added block clauses = {}",block);
 }
 
-fn cegar(encoder: &mut Encoder,mut solver: rustsat_cadical::CaDiCaL<'_, '_>, mtz_stall: i32, mut stall_count: i32, mut prev_subcycle_count: i32, mut count: i32, mut clause_count: i32, g:Graph, block_method: i32,opt:i32, three_opt: i32, cegar_fallback:i32, adaptive_escalation:i32, instant:Instant, cnf_normalize:i32,balanced:i32, previous_time:Duration,previous_cnf:Cnf,output_folder:&str) ->(i32,i32) {
+fn cegar(encoder: &mut Encoder,mut solver: rustsat_cadical::CaDiCaL<'_, '_>, mtz_stall: i32, mut stall_count: i32, mut prev_subcycle_count: i32, mut count: i32, mut clause_count: i32, g:Graph, block_method: i32,opt:i32, three_opt: i32, cegar_fallback:i32, adaptive_escalation:i32, sub_hcp_timeout: u64, max_cluster_size: usize, instant:Instant, cnf_normalize:i32,balanced:i32, previous_time:Duration,previous_cnf:Cnf,output_folder:&str) ->(i32,i32) {
     //SATソルバーで解を求める
     let res = solver.solve().unwrap();
     let now = instant.elapsed();
@@ -131,6 +131,28 @@ fn cegar(encoder: &mut Encoder,mut solver: rustsat_cadical::CaDiCaL<'_, '_>, mtz
                     panic!("2-opt option \n-t 0:2-opt off\n-t 1,2,3:2-opt on");
                 };
 
+            // Level 3 Adaptive Escalation: Parallel Cluster Sub-HCP Solving when stall_count >= 9
+            if adaptive_escalation == 1 && stall_count >= 9 && remaining_cycle_count > 1 {
+                println!("Level 3 Escalation triggered (stall_count={}): running parallel cluster sub-HCP solving for {} subcycles...", stall_count, active_cycles.len());
+                let (any_merged, new_active_cycles) = crate::parallel_sub_hcp::solve_parallel_clusters(
+                    &active_cycles,
+                    &g,
+                    max_cluster_size,
+                    sub_hcp_timeout,
+                );
+                if any_merged {
+                    println!("Level 3 Escalation succeeded: active subcycles reduced from {} to {}", active_cycles.len(), new_active_cycles.len());
+                    // Generate blocking clauses for the new merged active cycles
+                    let new_block_clauses = get_blocking_clauses(&new_active_cycles, encoder, &g, block_method, balanced);
+                    let mut cnf = Cnf::new();
+                    cnf.extend(new_block_clauses);
+                    let _ = solver.add_cnf(cnf);
+                    stall_count = 0; // Reset stall count on successful merge
+                } else {
+                    println!("Level 3 Escalation completed: no additional clusters could be merged. Falling back to Level 2.");
+                }
+            }
+
             // Stall detection
             if remaining_cycle_count as i32 >= prev_subcycle_count {
                 stall_count += 1;
@@ -197,7 +219,7 @@ fn cegar(encoder: &mut Encoder,mut solver: rustsat_cadical::CaDiCaL<'_, '_>, mtz
             println!("add block clauses time = {:?}", add_block_clauses_time);
             println!("increment time = {:?}", time);
             
-            return cegar(encoder,solver, mtz_stall, stall_count, prev_subcycle_count, count, clause_count,g, block_method,opt,three_opt,cegar_fallback,adaptive_escalation,instant,cnf_normalize ,balanced,now,current_cnf,output_folder);
+            return cegar(encoder,solver, mtz_stall, stall_count, prev_subcycle_count, count, clause_count,g, block_method,opt,three_opt,cegar_fallback,adaptive_escalation,sub_hcp_timeout,max_cluster_size,instant,cnf_normalize ,balanced,now,current_cnf,output_folder);
         }
     }else{
         println!("s UNSATISFIABLE");
