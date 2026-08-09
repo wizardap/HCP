@@ -131,6 +131,14 @@ fn cegar(encoder: &mut Encoder,mut solver: rustsat_cadical::CaDiCaL<'_, '_>, mtz
                     panic!("2-opt option \n-t 0:2-opt off\n-t 1,2,3:2-opt on");
                 };
 
+            // Stall detection
+            if remaining_cycle_count as i32 >= prev_subcycle_count {
+                stall_count += 1;
+            } else {
+                stall_count = 0;
+            }
+            prev_subcycle_count = remaining_cycle_count as i32;
+
             // Level 3 Adaptive Escalation: Parallel Cluster Sub-HCP Solving when stall_count >= 9
             if adaptive_escalation == 1 && stall_count >= 9 && remaining_cycle_count > 1 {
                 println!("Level 3 Escalation triggered (stall_count={}): running parallel cluster sub-HCP solving for {} subcycles...", stall_count, active_cycles.len());
@@ -152,14 +160,6 @@ fn cegar(encoder: &mut Encoder,mut solver: rustsat_cadical::CaDiCaL<'_, '_>, mtz
                     println!("Level 3 Escalation completed: no additional clusters could be merged. Falling back to Level 2.");
                 }
             }
-
-            // Stall detection
-            if remaining_cycle_count as i32 >= prev_subcycle_count {
-                stall_count += 1;
-            } else {
-                stall_count = 0;
-            }
-            prev_subcycle_count = remaining_cycle_count as i32;
 
             // MTZ injection when stalled
             let mut mtz_clauses: Vec<Clause> = Vec::new();
