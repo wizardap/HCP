@@ -157,7 +157,8 @@ fn cegar(encoder: &mut Encoder,mut solver: rustsat_cadical::CaDiCaL<'_, '_>, mtz
                     let _ = solver.add_cnf(cnf);
                     stall_count = 0; // Reset stall count on successful merge
                 } else {
-                    println!("Level 3 Escalation completed: no additional clusters could be merged. Falling back to Level 2.");
+                    println!("Level 3 Escalation completed: no additional clusters could be merged. Cooldown activated.");
+                    stall_count = 0; // Reset stall count to allow 9 iterations of Level 2 before re-trying Level 3
                 }
             }
 
