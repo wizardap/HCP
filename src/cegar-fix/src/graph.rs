@@ -165,4 +165,200 @@ impl Graph {
             arcs: new_arcs,
         }
     }
+
+    /// If vertex v has degree 2 with neighbors u and w, and edge (u, w) exists (with |V| > 3),
+    /// edge (u, w) cannot be part of any Hamiltonian cycle because choosing (u, w) isolates u-v-w-u.
+    pub fn prune_degree2_triangles(&mut self) -> usize {
+        let n = self.adjacency_list_btree.len();
+        if n <= 3 {
+            return 0;
+        }
+        let mut total_pruned = 0;
+        loop {
+            let mut edges_to_remove = Vec::new();
+            for (_, neighbors) in self.adjacency_list_btree.iter() {
+                if neighbors.len() == 2 {
+                    let u = neighbors[0];
+                    let w = neighbors[1];
+                    if let Some(u_neighbors) = self.adjacency_list.get(&u) {
+                        if u_neighbors.contains(&w) {
+                            edges_to_remove.push((u, w));
+                        }
+                    }
+                }
+            }
+            if edges_to_remove.is_empty() {
+                break;
+            }
+            let mut count = 0;
+            for (u, w) in edges_to_remove {
+                if self.remove_edge_if_exists(u, w) {
+                    count += 1;
+                }
+            }
+            if count == 0 {
+                break;
+            }
+            total_pruned += count;
+        }
+        total_pruned
+    }
+
+    pub fn remove_edge_if_exists(&mut self, u: i32, w: i32) -> bool {
+        let mut removed = false;
+        if let Some(u_list) = self.adjacency_list.get_mut(&u) {
+            if let Some(pos) = u_list.iter().position(|&x| x == w) {
+                u_list.remove(pos);
+                removed = true;
+            }
+        }
+        if let Some(w_list) = self.adjacency_list.get_mut(&w) {
+            if let Some(pos) = w_list.iter().position(|&x| x == u) {
+                w_list.remove(pos);
+            }
+        }
+        if let Some(u_list) = self.adjacency_list_btree.get_mut(&u) {
+            if let Some(pos) = u_list.iter().position(|&x| x == w) {
+                u_list.remove(pos);
+            }
+        }
+        if let Some(w_list) = self.adjacency_list_btree.get_mut(&w) {
+            if let Some(pos) = w_list.iter().position(|&x| x == u) {
+                w_list.remove(pos);
+            }
+        }
+        self.arcs.retain(|&(a, b)| !((a == u && b == w) || (a == w && b == u)));
+        removed
+    }
+
+    /// Returns true if removing any single vertex disconnects the graph (instant UNSAT for HCP)
+    /// or if the graph is already disconnected.
+    pub fn has_articulation_points(&self) -> bool {
+        let vertices: Vec<i32> = self.adjacency_list_btree.keys().copied().collect();
+        let n = vertices.len();
+        if n <= 2 {
+            return false;
+        }
+
+        let mut tin: HashMap<i32, usize> = HashMap::new();
+        let mut low: HashMap<i32, usize> = HashMap::new();
+        let mut timer = 0;
+        let mut is_cut = false;
+
+        fn dfs(
+            v: i32,
+            p: i32,
+            adj: &HashMap<i32, Vec<i32>>,
+            tin: &mut HashMap<i32, usize>,
+            low: &mut HashMap<i32, usize>,
+            timer: &mut usize,
+            is_cut: &mut bool,
+        ) {
+            *timer += 1;
+            tin.insert(v, *timer);
+            low.insert(v, *timer);
+            let mut children = 0;
+            if let Some(neighbors) = adj.get(&v) {
+                for &to in neighbors {
+                    if to == p {
+                        continue;
+                    }
+                    if tin.contains_key(&to) {
+                        let to_tin = *tin.get(&to).unwrap();
+                        let v_low = low.get_mut(&v).unwrap();
+                        *v_low = std::cmp::min(*v_low, to_tin);
+                    } else {
+                        dfs(to, v, adj, tin, low, timer, is_cut);
+                        let to_low = *low.get(&to).unwrap();
+                        let v_low = low.get_mut(&v).unwrap();
+                        *v_low = std::cmp::min(*v_low, to_low);
+                        if to_low >= *tin.get(&v).unwrap() && p != -1 {
+                            *is_cut = true;
+                        }
+                        children += 1;
+                    }
+                }
+            }
+            if p == -1 && children > 1 {
+                *is_cut = true;
+            }
+        }
+
+        dfs(
+            vertices[0],
+            -1,
+            &self.adjacency_list,
+            &mut tin,
+            &mut low,
+            &mut timer,
+            &mut is_cut,
+        );
+
+        // Also check if graph is disconnected
+        if tin.len() < n {
+            return true;
+        }
+        is_cut
+    }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_prune_degree2_triangles() {
+        let mut g = Graph::new();
+        // Graph with 4 nodes: (1,2), (2,3), (1,3), (1,4), (3,4)
+        // Node 2 has degree 2 with neighbors 1 and 3. Edge (1, 3) is a shortcut in a degree-2 triangle.
+        g.add_edge(1, 2);
+        g.add_edge(2, 3);
+        g.add_edge(1, 3);
+        g.add_edge(1, 4);
+        g.add_edge(3, 4);
+
+        let pruned = g.prune_degree2_triangles();
+        assert_eq!(pruned, 1);
+        assert!(!g.adjacency_list.get(&1).unwrap().contains(&3));
+        assert!(!g.adjacency_list.get(&3).unwrap().contains(&1));
+        assert!(!g.arcs.contains(&(1, 3)));
+        assert!(!g.arcs.contains(&(3, 1)));
+    }
+
+    #[test]
+    fn test_has_articulation_points_cycle() {
+        let mut g = Graph::new();
+        // 4-cycle: 1-2-3-4-1 (no cut vertices)
+        g.add_edge(1, 2);
+        g.add_edge(2, 3);
+        g.add_edge(3, 4);
+        g.add_edge(4, 1);
+
+        assert!(!g.has_articulation_points());
+    }
+
+    #[test]
+    fn test_has_articulation_points_cut_vertex() {
+        let mut g = Graph::new();
+        // Two triangles joined at node 3: (1,2,3) and (3,4,5)
+        g.add_edge(1, 2);
+        g.add_edge(2, 3);
+        g.add_edge(3, 1);
+        g.add_edge(3, 4);
+        g.add_edge(4, 5);
+        g.add_edge(5, 3);
+
+        assert!(g.has_articulation_points());
+    }
+
+    #[test]
+    fn test_has_articulation_points_disconnected() {
+        let mut g = Graph::new();
+        // Disconnected graph: 1-2 and 3-4
+        g.add_edge(1, 2);
+        g.add_edge(3, 4);
+
+        assert!(g.has_articulation_points());
+    }
+}
+

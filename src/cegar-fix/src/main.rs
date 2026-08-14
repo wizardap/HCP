@@ -43,6 +43,15 @@ fn main() {
     if de_arcify != 0{
         g.remove_redundant_arcs();
     }
+    if g.has_articulation_points() {
+        println!("Graph has cut-vertex or is disconnected.");
+        println!("s UNSATISFIABLE");
+        return;
+    }
+    let pruned = g.prune_degree2_triangles();
+    if pruned > 0 {
+        println!("Pruned {} degree-2 triangle shortcut edges", pruned);
+    }
     let time1 = instant.elapsed();
     // println!("encodhing time = {:?} sec",instant.elapsed().as_secs());
     // let instant2 = Instant::now();
