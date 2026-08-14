@@ -281,7 +281,11 @@ fn two_opt(
     }
 
     let active_cycles = get_active_cycles(&cycles, &active_cycles_number);
-    let block_clauses = get_blocking_clauses(&active_cycles, encoder, g, block_method, balanced);
+    let block_clauses = if active_cycles.len() == 1 {
+        Vec::new()
+    } else {
+        get_blocking_clauses(sol_cycles, encoder, g, block_method, balanced)
+    };
 
     println!("number of connected cycles = {}", cycles.len() - sol_cycles.len());
     println!("number of merged cycles = {}", active_cycles.len());
