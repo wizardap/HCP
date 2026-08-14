@@ -11,7 +11,7 @@ use crate::encoder::*;
 use crate::file_operations;
 
 
-pub fn solve_hamilton(g:Graph, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, cegar_fallback:i32, mtz_stall:i32, adaptive_escalation:i32, sub_hcp_timeout: u64, max_cluster_size: usize, instant:Instant,output_folder:&str) {
+pub fn solve_hamilton(g:Graph, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, _cegar_fallback:i32, _mtz_stall:i32, _adaptive_escalation:i32, _sub_hcp_timeout: u64, _max_cluster_size: usize, instant:Instant,output_folder:&str) {
     let now = instant.elapsed();
     let mut encoder = Encoder::new();
     // グラフをcnf形式に変形し、cnfへ格納
@@ -56,175 +56,135 @@ pub fn solve_hamilton(g:Graph, _s:i32, encode_method:i32, block_method: i32,symm
         let _ = solver.add_cnf(cnf);
     }
     // cegar関数により、解を求め、increment数と追加したblock節の合計を返す
-    let (increment,block) = cegar(&mut encoder,solver,mtz_stall,0,0,0,0, g, block_method, opt, three_opt, cegar_fallback, adaptive_escalation, sub_hcp_timeout, max_cluster_size, instant,cnf_normalize,balanced ,instant.elapsed(),current_cnf,output_folder);
-    println!("overall incremented number = {}",increment);
-    println!("overall number of added block clauses = {}",block);
+    let (increment, block) = cegar(
+        &mut encoder,
+        solver,
+        0,
+        0,
+        g,
+        block_method,
+        opt,
+        three_opt,
+        instant,
+        cnf_normalize,
+        balanced,
+        instant.elapsed(),
+        current_cnf,
+        output_folder,
+    );
+    println!("overall incremented number = {}", increment);
+    println!("overall number of added block clauses = {}", block);
 }
 
-fn cegar(encoder: &mut Encoder,mut solver: rustsat_cadical::CaDiCaL<'_, '_>, mtz_stall: i32, mut stall_count: i32, mut prev_subcycle_count: i32, mut count: i32, mut clause_count: i32, g:Graph, block_method: i32,opt:i32, three_opt: i32, cegar_fallback:i32, adaptive_escalation:i32, sub_hcp_timeout: u64, max_cluster_size: usize, instant:Instant, cnf_normalize:i32,balanced:i32, previous_time:Duration,previous_cnf:Cnf,output_folder:&str) ->(i32,i32) {
-    //SATソルバーで解を求める
-    let res = solver.solve().unwrap();
-    let now = instant.elapsed();
-    let sat_solving_time = now - previous_time;
+fn cegar(
+    encoder: &mut Encoder,
+    mut solver: rustsat_cadical::CaDiCaL<'_, '_>,
+    mut count: i32,
+    mut clause_count: i32,
+    g: Graph,
+    block_method: i32,
+    opt: i32,
+    three_opt: i32,
+    instant: Instant,
+    cnf_normalize: i32,
+    balanced: i32,
+    mut previous_time: Duration,
+    mut previous_cnf: Cnf,
+    output_folder: &str,
+) -> (i32, i32) {
+    loop {
+        // SATソルバーで解を求める
+        let res = solver.solve().unwrap();
+        let now = instant.elapsed();
+        let sat_solving_time = now - previous_time;
 
-    println!();
-    println!("Increment...");
-    println!("incremented number = {}",count);
-    println!("sat solving time = {:?}",sat_solving_time);
-    //解がSATならば、ハミルトン閉路になっているかを調べる
-    if res == SolverResult::Sat{
-        //変数の値割り当て
-        let sol = solver.full_solution().unwrap();
-        //どの辺が選択されたかの解析
-        let sol_arcs = get_solution_arcs(sol,&encoder.graph_lit_map);
-        //閉路
-        let sol_cycles = get_solution_cycles(sol_arcs);
-        //閉路が一つであれば、ハミルトン閉路なので解を出力
-        if sol_cycles.len() == 1{
-            let flat: Vec<i32> = sol_cycles.into_iter().flatten().collect();
-            let line = flat.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
-            println!();
-            println!("solution: ");
-            println!("{}\n", line);
-            println!("s SATISFIABLE");
-            return (count, clause_count);
-        }else{
-            println!("number of subcycles found = {}",sol_cycles.len());
-            println!("sat solution cycle lengths map (length:number) = {:?}",map_cycle_lengths(&sol_cycles));
-        //閉路が二つ以上であれば、ソルバーにブロック節を加えて、もう一度解を求める
-            let (eff_three_opt, eff_cegar_fallback) = if adaptive_escalation == 1 {
-                if stall_count < 3 {
-                    (0, 0)
-                } else if stall_count < 6 {
-                    (1, 0)
-                } else {
-                    (1, 1)
-                }
+        println!();
+        println!("Increment...");
+        println!("incremented number = {}", count);
+        println!("sat solving time = {:?}", sat_solving_time);
+
+        // 解がSATならば、ハミルトン閉路になっているかを調べる
+        if res == SolverResult::Sat {
+            // 変数の値割り当て
+            let sol = solver.full_solution().unwrap();
+            // どの辺が選択されたかの解析
+            let sol_arcs = get_solution_arcs(sol, &encoder.graph_lit_map);
+            // 閉路
+            let sol_cycles = get_solution_cycles(sol_arcs);
+
+            // 閉路が一つであれば、ハミルトン閉路なので解を出力
+            if sol_cycles.len() == 1 {
+                let flat: Vec<i32> = sol_cycles.into_iter().flatten().collect();
+                let line = flat.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                println!();
+                println!("solution: ");
+                println!("{}\n", line);
+                println!("s SATISFIABLE");
+                return (count, clause_count);
             } else {
-                (three_opt, cegar_fallback)
-            };
+                println!("number of subcycles found = {}", sol_cycles.len());
+                println!("sat solution cycle lengths map (length:number) = {:?}", map_cycle_lengths(&sol_cycles));
 
-            let (block_clauses, remaining_cycle_count, active_cycles) = 
-                if opt == 0{
-                    (get_blocking_clauses(&sol_cycles,encoder,&g, block_method,balanced), sol_cycles.len(), sol_cycles.clone())
-                }else if opt >= 1{
-                    let (clauses,cycles) = two_opt(&sol_cycles,encoder,&g,block_method,balanced,opt,eff_three_opt,eff_cegar_fallback,adaptive_escalation,stall_count);
-                    let remaining = cycles.len();
-                    if remaining == 1{
+                // 2-opt / 3-opt solution constructor
+                let (block_clauses, _active_cycles) = if opt == 0 {
+                    (get_blocking_clauses(&sol_cycles, encoder, &g, block_method, balanced), sol_cycles.clone())
+                } else if opt >= 1 {
+                    let (clauses, cycles) = two_opt(&sol_cycles, encoder, &g, block_method, balanced, opt, three_opt);
+                    if cycles.len() == 1 {
                         let flat: Vec<i32> = cycles.into_iter().flatten().collect();
                         let line = flat.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
                         let now = instant.elapsed();
-                        let time = now-previous_time;
-                        let add_block_clauses_time = now-previous_time-sat_solving_time;
-                        println!("number of added block clauses = {}",clause_count);
-                        println!("add block clauses time = {:?}",add_block_clauses_time);
+                        let time = now - previous_time;
+                        let add_block_clauses_time = now - previous_time - sat_solving_time;
+                        println!("number of added block clauses = {}", clause_count);
+                        println!("add block clauses time = {:?}", add_block_clauses_time);
                         println!("increment time = {:?}", time);
                         println!();
-                        println!("hamiltonian cycle found by 2-opt");
+                        println!("hamiltonian cycle found by 2-opt/3-opt");
                         println!("solution: ");
                         println!("{}\n", line);
                         println!("s SATISFIABLE");
                         return (count, clause_count);
                     }
-                    (clauses, remaining, cycles)
-                }else{
+                    (clauses, cycles)
+                } else {
                     panic!("2-opt option \n-t 0:2-opt off\n-t 1,2,3:2-opt on");
                 };
 
-            // Stall detection: if 2-opt/3-opt merging failed to reduce remaining cycles compared to previous iteration
-            if remaining_cycle_count as i32 >= prev_subcycle_count {
-                stall_count += 1;
-            } else {
-                stall_count = 0;
-            }
-            prev_subcycle_count = remaining_cycle_count as i32;
+                let mut cnf = Cnf::new();
+                cnf.extend(block_clauses);
+                count += 1;
 
-            // Level 3 Adaptive Escalation: Parallel Cluster Sub-HCP Solving when stall_count >= 9
-            if adaptive_escalation == 1 && stall_count >= 9 && remaining_cycle_count > 1 {
-                println!("Level 3 Escalation triggered (stall_count={}): running parallel cluster sub-HCP solving for {} subcycles...", stall_count, active_cycles.len());
-                let (any_merged, new_active_cycles) = crate::parallel_sub_hcp::solve_parallel_clusters(
-                    &active_cycles,
-                    &g,
-                    max_cluster_size,
-                    sub_hcp_timeout,
-                );
-                if any_merged {
-                    println!("Level 3 Escalation succeeded: active subcycles reduced from {} to {}", active_cycles.len(), new_active_cycles.len());
-                    // Generate blocking clauses for the new merged active cycles
-                    let new_block_clauses = get_blocking_clauses(&new_active_cycles, encoder, &g, block_method, balanced);
-                    let mut cnf = Cnf::new();
-                    cnf.extend(new_block_clauses);
+                previous_cnf = if output_folder != "default" {
+                    let mut write_cnf = previous_cnf;
+                    write_cnf.extend(cnf.clone());
+                    let output_file = format!("{}/increment{}.cnf", output_folder, count);
+                    let _ = file_operations::write_dimacs(write_cnf.clone(), &output_file);
+                    write_cnf
+                } else {
+                    Cnf::new()
+                };
+
+                if cnf_normalize == 1 {
+                    let normalized_cnf = cnf.normalize();
+                    clause_count += normalized_cnf.len() as i32;
+                    let _ = solver.add_cnf(normalized_cnf);
+                } else {
+                    clause_count += cnf.len() as i32;
                     let _ = solver.add_cnf(cnf);
-                    stall_count = 0; // Reset stall count on successful merge
-                } else {
-                    println!("Level 3 Escalation completed: no additional clusters could be merged. Cooldown activated.");
-                    stall_count = 0; // Reset stall count to allow 9 iterations of Level 2 before re-trying Level 3
                 }
-            }
 
-            // MTZ injection when stalled
-            let mut mtz_clauses: Vec<Clause> = Vec::new();
-            let inject_mtz = if adaptive_escalation == 1 {
-                stall_count >= 6 && remaining_cycle_count > 1
-            } else {
-                mtz_stall > 0 && stall_count >= mtz_stall && remaining_cycle_count > 1
-            };
-            if inject_mtz {
-                let smallest_cycle = active_cycles.iter().min_by_key(|c| c.len()).unwrap();
-                // Only inject MTZ if the smallest cycle is small enough (<= 100 vertices) to prevent clause explosion
-                if smallest_cycle.len() <= 100 {
-                    println!("MTZ stall detected (stall_count={}), injecting partial MTZ for {} vertices", stall_count, smallest_cycle.len());
-                    mtz_clauses = inject_partial_mtz(smallest_cycle, &g, encoder, g.adjacency_list.len());
-                    println!("MTZ clauses added = {}", mtz_clauses.len());
-                    stall_count = 0;
-                } else {
-                    println!("MTZ stall detected but smallest cycle is too large ({} vertices > 100), skipping MTZ injection", smallest_cycle.len());
-                }
+                let time = now - previous_time;
+                let add_block_clauses_time = now - previous_time - sat_solving_time;
+                previous_time = now;
+                println!("number of added block clauses = {}", clause_count);
+                println!("add block clauses time = {:?}", add_block_clauses_time);
+                println!("increment time = {:?}", time);
             }
-
-            // let block_clauses = get_blocking_clauses(&sol_cycles,encoder,&g, block_method,balanced);
-            // println!("increment");
-            // println!("add_clauses:{:?}",block_clauses);
-            let mut cnf = Cnf::new();
-            // clause_count += block_clauses.len() as i32;
-            cnf.extend(block_clauses);
-            cnf.extend(mtz_clauses);
-            // println!("{:?}",cnf);
-            count += 1;
-            
-            let current_cnf = if output_folder != "default"{
-            // 次数制約と、今までのブロック節を加えたCNFをファイルに出力する.
-                let mut write_cnf = previous_cnf;
-                write_cnf.extend(cnf.clone());
-                let output_file = format!("{}/increment{}.cnf",output_folder,count);
-                let _ = file_operations::write_dimacs(write_cnf.clone(),&output_file);
-                write_cnf
-            }else{
-                Cnf::new()
-            };
-
-            if cnf_normalize == 1{
-                let normalized_cnf = cnf.normalize();
-                clause_count += normalized_cnf.len() as i32;
-                let _ = solver.add_cnf(normalized_cnf);
-            }else{
-                clause_count += cnf.len() as i32;
-                let _ = solver.add_cnf(cnf);
-            }
-            
-            // count += 1;
-            let now = instant.elapsed();
-            let time = now-previous_time;
-            let add_block_clauses_time = now-previous_time-sat_solving_time;
-            println!("number of added block clauses = {}",clause_count);
-            println!("add block clauses time = {:?}", add_block_clauses_time);
-            println!("increment time = {:?}", time);
-            
-            return cegar(encoder,solver, mtz_stall, stall_count, prev_subcycle_count, count, clause_count,g, block_method,opt,three_opt,cegar_fallback,adaptive_escalation,sub_hcp_timeout,max_cluster_size,instant,cnf_normalize ,balanced,now,current_cnf,output_folder);
+        } else {
+            println!("s UNSATISFIABLE");
+            return (count, clause_count);
         }
-    }else{
-        println!("s UNSATISFIABLE");
-        return (count, clause_count);
     }
 }
 
@@ -267,47 +227,41 @@ fn get_solution_cycles(sol_arcs: Vec<(i32, i32)>) -> Vec<Vec<i32>> {
 }
 
 
-//2-optアルゴリズム
-//ブロック節と、つながって新たに見つかった閉路を返す
-fn two_opt(sol_cycles:&Vec<Vec<i32>>,encoder: &mut Encoder,g:&Graph,block_method:i32,balanced:i32,opt:i32,three_opt:i32,cegar_fallback:i32,_adaptive_escalation:i32,_stall_count:i32) -> (Vec<Clause>,Vec<Vec<i32>>){
-    let mut block_clauses = Vec::new();
+// 2-opt and Candidate 3-opt Solution Constructor
+// Attempts to merge subcycles into a single Hamiltonian Cycle.
+// If complete merger fails, returns standard blocking clauses for active subcycles.
+fn two_opt(
+    sol_cycles: &Vec<Vec<i32>>,
+    encoder: &mut Encoder,
+    g: &Graph,
+    block_method: i32,
+    balanced: i32,
+    opt: i32,
+    three_opt: i32,
+) -> (Vec<Clause>, Vec<Vec<i32>>) {
     let mut cycles = sol_cycles.to_vec();
     let mut merged = true;
-    let mut maximam_block_clauses = Vec::new();
-    // let mut cache_set: HashSet<(usize,usize)> = HashSet::new();
     let mut cache_vertex: HashSet<usize> = HashSet::new();
-    let mut active_cycles_number = Vec::new();
+    let mut active_cycles_number: Vec<usize> = (0..cycles.len()).collect();
 
-    if opt !=3{
-        block_clauses.extend(get_blocking_clauses(&sol_cycles,encoder,&g,block_method,balanced));
-    }else if block_method >= 10{
-        let subclauses = get_blocking_clauses(&sol_cycles,encoder,&g,block_method+100,balanced);
-        if subclauses.len() != 0{
-            block_clauses.extend(subclauses);
-        }
-    }
-
-
-    for i in 0..cycles.len(){
-        active_cycles_number.push(i);
-    }
-
-    while merged{
- 
-        let (new_block_clauses,new_merged,merged_numbers,new_cycle) = merge_cycles(&cycles,encoder,g,block_method,balanced,&mut cache_vertex,&active_cycles_number,opt);
+    while merged {
+        let (_new_block_clauses, new_merged, merged_numbers, new_cycle) =
+            merge_cycles(&cycles, encoder, g, block_method, balanced, &mut cache_vertex, &active_cycles_number, opt);
         merged = new_merged;
-        
-        if merged{
+
+        if merged {
             cycles.push(new_cycle);
             active_cycles_number.swap_remove(merged_numbers.1);
             active_cycles_number.swap_remove(merged_numbers.0);
-            active_cycles_number.push(cycles.len()-1);
+            active_cycles_number.push(cycles.len() - 1);
         }
 
+        // Try candidate 3-opt merge when 2-opt cannot merge further
         if !merged && three_opt == 1 && active_cycles_number.len() >= 3 {
-            let (three_block_clauses, three_merged, three_indices, three_cycle) = merge_three_cycles(&cycles, encoder, g, block_method, balanced, &active_cycles_number);
+            let (_three_block_clauses, three_merged, three_indices, three_cycle) =
+                merge_three_cycles(&cycles, encoder, g, block_method, balanced, &active_cycles_number);
             if three_merged {
-                cycles.push(three_cycle.clone());
+                cycles.push(three_cycle);
                 let (ia, ib, ic) = three_indices;
                 let mut remove_indices = [ia, ib, ic];
                 remove_indices.sort_unstable_by(|a, b| b.cmp(a));
@@ -317,55 +271,23 @@ fn two_opt(sol_cycles:&Vec<Vec<i32>>,encoder: &mut Encoder,g:&Graph,block_method
                 active_cycles_number.push(cycles.len() - 1);
                 merged = true;
                 cache_vertex.clear();
-                if opt == 1 || opt == 4 {
-                    block_clauses.extend(three_block_clauses);
-                } else {
-                    if block_method >= 10 {
-                        let active_cycles = get_active_cycles(&cycles, &active_cycles_number);
-                        let subclauses = get_blocking_clauses(&active_cycles, encoder, &g, block_method + 100, balanced);
-                        if subclauses.len() != 0 {
-                            block_clauses.extend(subclauses);
-                        }
-                    }
-                    maximam_block_clauses = three_block_clauses;
-                }
                 continue;
             }
         }
 
-        if active_cycles_number.len() == 1 || !merged{
-            break
-        }
-        if opt==1 || opt == 4{
-            block_clauses.extend(new_block_clauses);
-        }else{
-            if block_method >= 10{
-                let active_cycles = get_active_cycles(&cycles, &active_cycles_number);
-                let subclauses = get_blocking_clauses(&active_cycles,encoder,&g,block_method+100,balanced);
-                if subclauses.len() != 0{
-                    block_clauses.extend(subclauses);
-                }
-            }
-            maximam_block_clauses = new_block_clauses;
-        }
-    }
-    if opt==2 && maximam_block_clauses.len() != 0{
-        block_clauses.extend(maximam_block_clauses);
-    }
-    if opt == 3 {
-        let active_cycles = get_active_cycles(&cycles, &active_cycles_number);
-        block_clauses.extend(get_blocking_clauses(&active_cycles, encoder, g, block_method, balanced));
-        if cegar_fallback == 1 {
-            block_clauses.extend(get_blocking_clauses(&active_cycles, encoder, g, 0, balanced));
+        if active_cycles_number.len() == 1 || !merged {
+            break;
         }
     }
 
-    println!("number of connected cycles = {}",cycles.len()-sol_cycles.len());
-    println!("number of merged cycles = {}",active_cycles_number.len());
-    println!("merged cycle lengths map (length:number) = {:?}",map_cycle_lengths(&get_active_cycles(&cycles, &active_cycles_number)));
+    let active_cycles = get_active_cycles(&cycles, &active_cycles_number);
+    let block_clauses = get_blocking_clauses(&active_cycles, encoder, g, block_method, balanced);
 
-    (block_clauses,get_active_cycles(&cycles, &active_cycles_number).to_vec())    
+    println!("number of connected cycles = {}", cycles.len() - sol_cycles.len());
+    println!("number of merged cycles = {}", active_cycles.len());
+    println!("merged cycle lengths map (length:number) = {:?}", map_cycle_lengths(&active_cycles));
 
+    (block_clauses, active_cycles)
 }
 
 fn merge_cycles(cycles:&Vec<Vec<i32>>,encoder: &mut Encoder,g:&Graph,block_method:i32,balanced:i32,cache_vertex:&mut HashSet<usize>,active_cycles_number:&Vec<usize>,opt:i32) -> (Vec<Clause>,bool,(usize,usize),Vec<i32>){
@@ -671,10 +593,13 @@ fn get_blocking_clauses(sol_cycles:&Vec<Vec<i32>>,encoder: &mut Encoder,g:&Graph
             1 => asp_blocking_clauses(&sol_cycle,encoder,&g,1,balanced),//閉路から出ていく辺と閉路へと入っていく辺両方を同じ節へ追加する
             2 => [cegar_blocking_clauses(&sol_cycle.clone(),&encoder.graph_lit_map.clone()),asp_blocking_clauses(sol_cycle,encoder,&g,1,balanced)].concat(),//既存ブロック節を追加し、閉路から出ていく辺と閉路へと入っていく辺両方を同じ節へ追加する
             3 => {
-                let clauses1 = asp_blocking_clauses(&sol_cycle,encoder,&g,2,balanced);
+                let mut clauses1 = asp_blocking_clauses(&sol_cycle, encoder, &g, 2, balanced);
+                if sol_cycle.len() <= 4 {
+                    clauses1.extend(cegar_blocking_clauses(&sol_cycle, &encoder.graph_lit_map));
+                }
                 *cut_arcs_map.entry(clauses1[0].len()).or_insert(0) += 1;
                 clauses1
-            },//閉路から出ていく辺と閉路へと入っていく辺を別々の節へ追加する
+            }, // 閉路から出ていく辺と閉路へと入っていく辺を別々の節へ追加する (|C| <= 4 thì thêm cả exclusion clause)
             4 => asp_blocking_clauses(&sol_cycle,encoder,&g,3,balanced),//閉路から出ていく辺のみを節へ追加する
             5 => asp_blocking_clauses(&sol_cycle,encoder,&g,4,balanced),//次数が一番高い頂点が含まれてる閉路のみブロック節を追加する
             6 => {
