@@ -1,3 +1,4 @@
+mod contraction;
 mod encoder;
 mod file_operations;
 mod graph;
