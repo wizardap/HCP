@@ -603,8 +603,8 @@ fn get_blocking_clauses(
                 let cut_clauses = get_boundary_cut_clauses(sol_cycle, encoder, g, total_v, balanced);
                 clauses.extend(cut_clauses);
 
-                // Technique A2: Induced Subgraph SECs for |C| <= 6
-                if sol_cycle.len() <= 6 {
+                // Technique A2: Induced Subgraph SECs for |C| <= 4
+                if sol_cycle.len() <= 4 {
                     let sec_clauses = get_induced_subgraph_sec_clauses(sol_cycle, encoder, g);
                     clauses.extend(sec_clauses);
                 }
