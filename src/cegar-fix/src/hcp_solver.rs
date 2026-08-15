@@ -9,9 +9,10 @@ use std::time::{Instant,Duration};
 use crate::graph::*;
 use crate::encoder::*;
 use crate::file_operations;
+use crate::contraction::Degree2Contractor;
 
 
-pub fn solve_hamilton(g:Graph, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, _cegar_fallback:i32, _mtz_stall:i32, _adaptive_escalation:i32, _sub_hcp_timeout: u64, _max_cluster_size: usize, instant:Instant,output_folder:&str) {
+pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, _cegar_fallback:i32, _mtz_stall:i32, _adaptive_escalation:i32, _sub_hcp_timeout: u64, _max_cluster_size: usize, instant:Instant,output_folder:&str) {
     let now = instant.elapsed();
     let mut encoder = Encoder::new();
     // グラフをcnf形式に変形し、cnfへ格納
@@ -62,6 +63,7 @@ pub fn solve_hamilton(g:Graph, _s:i32, encode_method:i32, block_method: i32,symm
         0,
         0,
         g,
+        contractor,
         block_method,
         opt,
         three_opt,
@@ -82,6 +84,7 @@ fn cegar(
     mut count: i32,
     mut clause_count: i32,
     g: Graph,
+    contractor: &Degree2Contractor,
     block_method: i32,
     opt: i32,
     three_opt: i32,
@@ -115,7 +118,8 @@ fn cegar(
             // 閉路が一つであれば、ハミルトン閉路なので解を出力
             if sol_cycles.len() == 1 {
                 let flat: Vec<i32> = sol_cycles.into_iter().flatten().collect();
-                let line = flat.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                let full_cycle = contractor.uncontract_cycle(&flat);
+                let line = full_cycle.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
                 println!();
                 println!("solution: ");
                 println!("{}\n", line);
@@ -132,7 +136,8 @@ fn cegar(
                     let (clauses, cycles) = two_opt(&sol_cycles, encoder, &g, block_method, balanced, opt, three_opt);
                     if cycles.len() == 1 {
                         let flat: Vec<i32> = cycles.into_iter().flatten().collect();
-                        let line = flat.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                        let full_cycle = contractor.uncontract_cycle(&flat);
+                        let line = full_cycle.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
                         let now = instant.elapsed();
                         let time = now - previous_time;
                         let add_block_clauses_time = now - previous_time - sat_solving_time;
@@ -510,7 +515,7 @@ fn inject_partial_mtz(
     k_vertices: &Vec<i32>,
     g: &Graph,
     encoder: &mut Encoder,
-    n: usize,
+    _n: usize,
 ) -> Vec<Clause> {
     
     let mut clauses: Vec<Clause> = Vec::new();

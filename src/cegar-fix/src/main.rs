@@ -5,6 +5,7 @@ mod graph;
 mod hcp_solver;
 mod options;
 mod parallel_sub_hcp;
+use contraction::Degree2Contractor;
 use std::time::Instant;
 use log::info;
 
@@ -53,6 +54,34 @@ fn main() {
     if pruned > 0 {
         println!("Pruned {} degree-2 triangle shortcut edges", pruned);
     }
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+
+    if let Some(cycle) = contractor.is_direct_cycle {
+        println!("Graph is a single 2-regular Hamiltonian cycle.");
+        print!("solution: \n");
+        for v in &cycle {
+            print!("{} ", v);
+        }
+        println!();
+        println!("s SATISFIABLE");
+        println!("overall time = {:?}", instant.elapsed());
+        return;
+    }
+
+    if contractor.is_infeasible {
+        println!("Infeasible degree-2 structure detected.");
+        println!("s UNSATISFIABLE");
+        return;
+    }
+
+    if contractor.contracted_vertices_count < contractor.original_vertices_count {
+        println!(
+            "Degree-2 contraction: compressed graph from {} to {} vertices (reduced by {}%)",
+            contractor.original_vertices_count,
+            contractor.contracted_vertices_count,
+            (contractor.original_vertices_count - contractor.contracted_vertices_count) * 100 / contractor.original_vertices_count
+        );
+    }
     let time1 = instant.elapsed();
     // println!("encodhing time = {:?} sec",instant.elapsed().as_secs());
     // let instant2 = Instant::now();
@@ -60,7 +89,7 @@ fn main() {
     // println!("solver={},encoding={}",solver,encoding);
     // println!("{:?}",g);
     println!("file input time = {:?}", time1);
-    hcp_solver::solve_hamilton(g, solver, encoding, blocking, symmetry, two_opt, loop_prohibition, cnf_normalize, balanced, de_arcify,config,degree_order,arcs_order,three_opt,cegar_fallback,mtz_stall,adaptive_escalation,sub_hcp_timeout,max_cluster_size,instant,output_foldername);
+    hcp_solver::solve_hamilton(contracted_g, &contractor, solver, encoding, blocking, symmetry, two_opt, loop_prohibition, cnf_normalize, balanced, de_arcify,config,degree_order,arcs_order,three_opt,cegar_fallback,mtz_stall,adaptive_escalation,sub_hcp_timeout,max_cluster_size,instant,output_foldername);
     let time2 = instant.elapsed() - time1;
 
     // println!("solving time = {:?} sec",instant2.elapsed().as_secs());
