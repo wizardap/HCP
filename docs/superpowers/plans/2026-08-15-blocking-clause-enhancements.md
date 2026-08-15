@@ -32,7 +32,7 @@
   ) -> Vec<Clause>
   ```
 
-- [ ] **Step 1: Write unit tests for Boundary Minimal Cut and Complementary Cut Symmetry**
+- [x] **Step 1: Write unit tests for Boundary Minimal Cut and Complementary Cut Symmetry**
 
 In `src/cegar-fix/src/hcp_solver.rs`:
 ```rust
@@ -69,12 +69,12 @@ mod tests_blocking_enhancements {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd /home/ubuntu/HCP/src/cegar-fix && cargo test test_boundary_cut_complementary_equivalence`
 Expected: FAIL (function `get_boundary_cut_clauses` does not exist).
 
-- [ ] **Step 3: Implement `get_boundary_cut_clauses`**
+- [x] **Step 3: Implement `get_boundary_cut_clauses`**
 
 In `src/cegar-fix/src/hcp_solver.rs`:
 ```rust
@@ -136,12 +136,12 @@ pub fn get_boundary_cut_clauses(
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd /home/ubuntu/HCP/src/cegar-fix && cargo test test_boundary_cut_complementary_equivalence`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/cegar-fix/src/hcp_solver.rs
@@ -166,7 +166,7 @@ git commit -m "feat: implement boundary minimal cut and complementary cut symmet
   ) -> Vec<Clause>
   ```
 
-- [ ] **Step 1: Write unit tests for Induced Subgraph SECs**
+- [x] **Step 1: Write unit tests for Induced Subgraph SECs**
 
 In `src/cegar-fix/src/hcp_solver.rs`:
 ```rust
@@ -193,12 +193,12 @@ fn test_induced_subgraph_chord_cycles() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd /home/ubuntu/HCP/src/cegar-fix && cargo test test_induced_subgraph_chord_cycles`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement `get_induced_subgraph_sec_clauses`**
+- [x] **Step 3: Implement `get_induced_subgraph_sec_clauses`**
 
 In `src/cegar-fix/src/hcp_solver.rs`:
 ```rust
@@ -271,12 +271,12 @@ pub fn get_induced_subgraph_sec_clauses(
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `cd /home/ubuntu/HCP/src/cegar-fix && cargo test test_induced_subgraph_chord_cycles`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/cegar-fix/src/hcp_solver.rs
@@ -293,7 +293,7 @@ git commit -m "feat: implement induced subgraph SECs for small subcycles (A2)"
 **Interfaces:**
 - Updates `get_blocking_clauses` to seamlessly integrate A1, A2, and A3 under `block_method == 3`.
 
-- [ ] **Step 1: Update `get_blocking_clauses` in `src/cegar-fix/src/hcp_solver.rs`**
+- [x] **Step 1: Update `get_blocking_clauses` in `src/cegar-fix/src/hcp_solver.rs`**
 
 Refactor `get_blocking_clauses`:
 ```rust
@@ -329,12 +329,12 @@ fn get_blocking_clauses(
 }
 ```
 
-- [ ] **Step 2: Build release binary and run cargo tests**
+- [x] **Step 2: Build release binary and run cargo tests**
 
 Run: `cd /home/ubuntu/HCP/src/cegar-fix && cargo test && cargo build --release`
 Expected: PASS with 0 errors.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/cegar-fix/src/hcp_solver.rs
@@ -348,7 +348,7 @@ git commit -m "feat: integrate A1, A2, A3 into get_blocking_clauses"
 **Files:**
 - Test: Benchmark execution on standard and timeout testsets.
 
-- [ ] **Step 1: Verify 10 Key Regression Graphs**
+- [x] **Step 1: Verify 10 Key Regression Graphs**
 
 Run verification across known benchmark graphs:
 ```bash
@@ -360,12 +360,12 @@ done
 ```
 Expected: All 9 graphs finish with `s SATISFIABLE`.
 
-- [ ] **Step 2: Profile on Dense Hub Timeout Graph `graph560.col`**
+- [x] **Step 2: Profile on Dense Hub Timeout Graph `graph560.col`**
 
 Run: `timeout 60 ./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/graph560.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1 2>&1 | grep -E "s SATIS|increment time|overall time"`
 Observe propagation speed and increment times.
 
-- [ ] **Step 3: Commit benchmark results and update progress ledger**
+- [x] **Step 3: Commit benchmark results and update progress ledger**
 
 ```bash
 git add .superpowers/sdd/
