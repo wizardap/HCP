@@ -281,11 +281,7 @@ fn two_opt(
     }
 
     let active_cycles = get_active_cycles(&cycles, &active_cycles_number);
-    let block_clauses = if active_cycles.len() == 1 {
-        Vec::new()
-    } else {
-        get_blocking_clauses(sol_cycles, encoder, g, block_method, balanced)
-    };
+    let block_clauses = get_blocking_clauses(&active_cycles, encoder, g, block_method, balanced);
 
     println!("number of connected cycles = {}", cycles.len() - sol_cycles.len());
     println!("number of merged cycles = {}", active_cycles.len());
@@ -597,13 +593,10 @@ fn get_blocking_clauses(sol_cycles:&Vec<Vec<i32>>,encoder: &mut Encoder,g:&Graph
             1 => asp_blocking_clauses(&sol_cycle,encoder,&g,1,balanced),//閉路から出ていく辺と閉路へと入っていく辺両方を同じ節へ追加する
             2 => [cegar_blocking_clauses(&sol_cycle.clone(),&encoder.graph_lit_map.clone()),asp_blocking_clauses(sol_cycle,encoder,&g,1,balanced)].concat(),//既存ブロック節を追加し、閉路から出ていく辺と閉路へと入っていく辺両方を同じ節へ追加する
             3 => {
-                let mut clauses1 = asp_blocking_clauses(&sol_cycle, encoder, &g, 2, balanced);
-                if sol_cycle.len() <= 4 {
-                    clauses1.extend(cegar_blocking_clauses(&sol_cycle, &encoder.graph_lit_map));
-                }
+                let clauses1 = asp_blocking_clauses(&sol_cycle, encoder, &g, 2, balanced);
                 *cut_arcs_map.entry(clauses1[0].len()).or_insert(0) += 1;
                 clauses1
-            }, // 閉路から出ていく辺と閉路へと入っていく辺を別々の節へ追加する (|C| <= 4 thì thêm cả exclusion clause)
+            }, // 閉路から出ていく辺と閉路へと入っていく辺を別々の節へ追加する
             4 => asp_blocking_clauses(&sol_cycle,encoder,&g,3,balanced),//閉路から出ていく辺のみを節へ追加する
             5 => asp_blocking_clauses(&sol_cycle,encoder,&g,4,balanced),//次数が一番高い頂点が含まれてる閉路のみブロック節を追加する
             6 => {
@@ -854,6 +847,63 @@ fn map_cycle_lengths(cycles: &Vec<Vec<i32>>) -> BTreeMap<usize, i32> {
     length_map
 }
 
+pub fn get_boundary_cut_clauses(
+    cycle: &[i32],
+    encoder: &mut Encoder,
+    g: &Graph,
+    total_vertices: usize,
+) -> Vec<Clause> {
+    let mut clauses = Vec::new();
+    let cycle_set: HashSet<i32> = cycle.iter().cloned().collect();
+
+    // Technique A3: If |C| > |V| / 2, use complementary set S = V \ C
+    let (target_set, is_complementary) = if cycle.len() > total_vertices / 2 && total_vertices > 0 {
+        let all_v: HashSet<i32> = g.adjacency_list.keys().cloned().collect();
+        let comp_set: HashSet<i32> = all_v.difference(&cycle_set).cloned().collect();
+        (comp_set, true)
+    } else {
+        (cycle_set, false)
+    };
+
+    let mut clause_out = rustsat::types::Clause::new();
+    let mut clause_in = rustsat::types::Clause::new();
+
+    // Technique A1: Iterate over vertices in target_set and only collect boundary cut edges
+    for &u in &target_set {
+        if let Some(adjs) = g.adjacency_list.get(&u) {
+            for &v in adjs {
+                if !target_set.contains(&v) {
+                    if let Some(lit_out) = encoder.graph_lit_map.get(&(u, v)) {
+                        clause_out.add(*lit_out);
+                    }
+                    if let Some(lit_in) = encoder.graph_lit_map.get(&(v, u)) {
+                        clause_in.add(*lit_in);
+                    }
+                }
+            }
+        }
+    }
+
+    if is_complementary {
+        // By duality: delta^+(V \ C) = delta^-(C) and delta^-(V \ C) = delta^+(C)
+        if !clause_in.is_empty() {
+            clauses.push(clause_in);
+        }
+        if !clause_out.is_empty() {
+            clauses.push(clause_out);
+        }
+    } else {
+        if !clause_out.is_empty() {
+            clauses.push(clause_out);
+        }
+        if !clause_in.is_empty() {
+            clauses.push(clause_in);
+        }
+    }
+
+    clauses
+}
+
 // enum MySolver<'a> {
 //     Minisat(rustsat_minisat::core::Minisat),
 //     Kissat(rustsat_kissat::Kissat<'a>), 
@@ -941,5 +991,45 @@ fn map_cycle_lengths(cycles: &Vec<Vec<i32>>) -> BTreeMap<usize, i32> {
 //         }
 //     }
 // }
+
+#[cfg(test)]
+mod tests_blocking_enhancements {
+    use super::*;
+
+    #[test]
+    fn test_boundary_cut_complementary_equivalence() {
+        // Build a 6-vertex cycle graph 1-2-3-4-5-6-1 with a chord 1-4
+        let mut g = Graph::new();
+        g.add_edge(1, 2);
+        g.add_edge(2, 3);
+        g.add_edge(3, 4);
+        g.add_edge(4, 5);
+        g.add_edge(5, 6);
+        g.add_edge(6, 1);
+        g.add_edge(1, 4); // chord
+
+        let mut encoder = Encoder::new();
+        encoder.encode(&g, 1, 0, 0, 0, 0, 0);
+
+        // Subcycle C = [1, 2, 3, 4] (|C| = 4 > 6/2 = 3) -> Complementary S = [5, 6]
+        let c = vec![1, 2, 3, 4];
+        let clauses = get_boundary_cut_clauses(&c, &mut encoder, &g, 6);
+        assert!(!clauses.is_empty());
+        // Verify both out-cut and in-cut clauses exist
+        assert_eq!(clauses.len(), 2);
+
+        // Compare with direct calculation (total_vertices = 0 disables complementation)
+        let clauses_direct = get_boundary_cut_clauses(&c, &mut encoder, &g, 0);
+        assert_eq!(clauses_direct.len(), 2);
+
+        let set_comp_0: HashSet<Lit> = clauses[0].iter().cloned().collect();
+        let set_dir_0: HashSet<Lit> = clauses_direct[0].iter().cloned().collect();
+        assert_eq!(set_comp_0, set_dir_0);
+
+        let set_comp_1: HashSet<Lit> = clauses[1].iter().cloned().collect();
+        let set_dir_1: HashSet<Lit> = clauses_direct[1].iter().cloned().collect();
+        assert_eq!(set_comp_1, set_dir_1);
+    }
+}
 
 
