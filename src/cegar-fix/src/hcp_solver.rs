@@ -134,7 +134,7 @@ fn cegar(
                     (get_blocking_clauses(&sol_cycles, encoder, &g, block_method, balanced), sol_cycles.clone())
                 } else if opt >= 1 {
                     let (clauses, cycles) = two_opt(&sol_cycles, encoder, &g, block_method, balanced, opt, three_opt);
-                    if cycles.len() == 1 {
+                    if cycles.len() == 1 && cycles[0].len() == g.adjacency_list.len() {
                         let flat: Vec<i32> = cycles.into_iter().flatten().collect();
                         let full_cycle = contractor.uncontract_cycle(&flat);
                         let line = full_cycle.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
@@ -256,8 +256,11 @@ fn two_opt(
 
         if merged {
             cycles.push(new_cycle);
-            active_cycles_number.swap_remove(merged_numbers.1);
-            active_cycles_number.swap_remove(merged_numbers.0);
+            let mut remove_indices = [merged_numbers.0, merged_numbers.1];
+            remove_indices.sort_unstable_by(|a, b| b.cmp(a));
+            for &idx in &remove_indices {
+                active_cycles_number.remove(idx);
+            }
             active_cycles_number.push(cycles.len() - 1);
         }
 
@@ -271,7 +274,7 @@ fn two_opt(
                 let mut remove_indices = [ia, ib, ic];
                 remove_indices.sort_unstable_by(|a, b| b.cmp(a));
                 for &idx in &remove_indices {
-                    active_cycles_number.swap_remove(idx);
+                    active_cycles_number.remove(idx);
                 }
                 active_cycles_number.push(cycles.len() - 1);
                 merged = true;
@@ -286,7 +289,7 @@ fn two_opt(
     }
 
     let active_cycles = get_active_cycles(&cycles, &active_cycles_number);
-    let block_clauses = if active_cycles.len() == 1 {
+    let block_clauses = if active_cycles.len() == 1 && active_cycles[0].len() == g.adjacency_list.len() {
         Vec::new()
     } else {
         get_blocking_clauses(sol_cycles, encoder, g, block_method, balanced)
