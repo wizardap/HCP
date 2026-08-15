@@ -16,7 +16,15 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, _s:i32, encode_me
     let now = instant.elapsed();
     let mut encoder = Encoder::new();
     // グラフをcnf形式に変形し、cnfへ格納
-    let cnf = encoder.encode(&g,encode_method,symmetry,loop_prohibition,dearcify,degree_order,arcs_order);
+    let mut cnf = encoder.encode(&g,encode_method,symmetry,loop_prohibition,dearcify,degree_order,arcs_order);
+    // Add mandatory edge constraints for contracted degree-2 paths
+    for (&(u, w), _) in &contractor.chain_map {
+        if u < w {
+            if let (Some(&lit_uw), Some(&lit_wu)) = (encoder.graph_lit_map.get(&(u, w)), encoder.graph_lit_map.get(&(w, u))) {
+                cnf.add_clause(clause!(lit_uw, lit_wu));
+            }
+        }
+    }
     let current_cnf = if output_folder != "default" {
         //フォルダーの作成
         let _ = file_operations::create_folder_if_not_exists(output_folder);
@@ -133,7 +141,7 @@ fn cegar(
                 let (block_clauses, _active_cycles) = if opt == 0 {
                     (get_blocking_clauses(&sol_cycles, encoder, &g, block_method, balanced), sol_cycles.clone())
                 } else if opt >= 1 {
-                    let (clauses, cycles) = two_opt(&sol_cycles, encoder, &g, block_method, balanced, opt, three_opt);
+                    let (clauses, cycles) = two_opt(&sol_cycles, encoder, &g, contractor, block_method, balanced, opt, three_opt);
                     if cycles.len() == 1 && cycles[0].len() == g.adjacency_list.len() {
                         let flat: Vec<i32> = cycles.into_iter().flatten().collect();
                         let full_cycle = contractor.uncontract_cycle(&flat);
@@ -239,6 +247,7 @@ fn two_opt(
     sol_cycles: &Vec<Vec<i32>>,
     encoder: &mut Encoder,
     g: &Graph,
+    contractor: &Degree2Contractor,
     block_method: i32,
     balanced: i32,
     opt: i32,
@@ -251,7 +260,7 @@ fn two_opt(
 
     while merged {
         let (_new_block_clauses, new_merged, merged_numbers, new_cycle) =
-            merge_cycles(&cycles, encoder, g, block_method, balanced, &mut cache_vertex, &active_cycles_number, opt);
+            merge_cycles(&cycles, encoder, g, contractor, block_method, balanced, &mut cache_vertex, &active_cycles_number, opt);
         merged = new_merged;
 
         if merged {
@@ -267,7 +276,7 @@ fn two_opt(
         // Try candidate 3-opt merge when 2-opt cannot merge further
         if !merged && three_opt == 1 && active_cycles_number.len() >= 3 {
             let (_three_block_clauses, three_merged, three_indices, three_cycle) =
-                merge_three_cycles(&cycles, encoder, g, block_method, balanced, &active_cycles_number);
+                merge_three_cycles(&cycles, encoder, g, contractor, block_method, balanced, &active_cycles_number);
             if three_merged {
                 cycles.push(three_cycle);
                 let (ia, ib, ic) = three_indices;
@@ -302,7 +311,17 @@ fn two_opt(
     (block_clauses, active_cycles)
 }
 
-fn merge_cycles(cycles:&Vec<Vec<i32>>,encoder: &mut Encoder,g:&Graph,block_method:i32,balanced:i32,cache_vertex:&mut HashSet<usize>,active_cycles_number:&Vec<usize>,opt:i32) -> (Vec<Clause>,bool,(usize,usize),Vec<i32>){
+fn merge_cycles(
+    cycles: &Vec<Vec<i32>>,
+    encoder: &mut Encoder,
+    g: &Graph,
+    contractor: &Degree2Contractor,
+    block_method: i32,
+    balanced: i32,
+    cache_vertex: &mut HashSet<usize>,
+    active_cycles_number: &Vec<usize>,
+    opt: i32,
+) -> (Vec<Clause>, bool, (usize, usize), Vec<i32>) {
     //(block_clauses,merged,(merged_number1,merged_number2),new_cycle)
     
     for i in 0..active_cycles_number.len(){
@@ -311,14 +330,12 @@ fn merge_cycles(cycles:&Vec<Vec<i32>>,encoder: &mut Encoder,g:&Graph,block_metho
             for j in i+1..active_cycles_number.len(){
                 let right = active_cycles_number[j];
 
-                // if !contains_in_set(cache_set, left, right) && !cache_vertex.contains(&right){
-                match swap_node(&cycles[left],&cycles[right],&g){
+                match swap_node(&cycles[left],&cycles[right],&g, contractor){
                     Some(new_cycle) =>{
                     let new_block_clauses = get_blocking_clauses(&vec!(new_cycle.clone()), encoder, g, block_method, balanced);
                     return (new_block_clauses,true,(i,j),new_cycle)
                     }
                     None =>{
-                        // add_to_set(cache_set,left,right);
                         continue
                     }
                 }
@@ -327,7 +344,6 @@ fn merge_cycles(cycles:&Vec<Vec<i32>>,encoder: &mut Encoder,g:&Graph,block_metho
             cache_vertex.insert(left);
         }
         if opt == 4 || opt == 5{
-            // println!("break");
             return (vec!(),false,(0,0),vec!())
         }
     }
@@ -336,28 +352,37 @@ fn merge_cycles(cycles:&Vec<Vec<i32>>,encoder: &mut Encoder,g:&Graph,block_metho
 }
 
 
-fn swap_node(cycle1:&Vec<i32>,cycle2:&Vec<i32>,g:&Graph) -> Option<Vec<i32>>{
+fn swap_node(cycle1: &Vec<i32>, cycle2: &Vec<i32>, g: &Graph, contractor: &Degree2Contractor) -> Option<Vec<i32>> {
+    for i in 0..cycle1.len() {
+        let u1 = cycle1[i];
+        let v1 = cycle1[(i + 1) % cycle1.len()];
+        if contractor.chain_map.contains_key(&(u1, v1)) || contractor.chain_map.contains_key(&(v1, u1)) {
+            continue;
+        }
+        let adjs_of_left_head = g.adjacency_list.get(&u1).unwrap();
+        let adjs_of_left_tail = g.adjacency_list.get(&v1).unwrap();
 
-    for i in 0..cycle1.len(){
-        let adjs_of_left_head = g.adjacency_list.get(&cycle1[i]).unwrap();
-        let adjs_of_left_tail = g.adjacency_list.get(&cycle1[(i+1)%cycle1.len()]).unwrap();
+        for j in 0..cycle2.len() {
+            let u2 = cycle2[j];
+            let v2_fwd = cycle2[(j + 1) % cycle2.len()];
+            let v2_rev = cycle2[(j + cycle2.len() - 1) % cycle2.len()];
 
-        for j in 0..cycle2.len(){
-            if adjs_of_left_head.contains(&cycle2[j]){
-
-                if adjs_of_left_tail.contains(&cycle2[(j+1)%cycle2.len()]){
-                    return cycle_join(&cycle1,&cycle2,i,j,true)
+            if adjs_of_left_head.contains(&u2) {
+                if adjs_of_left_tail.contains(&v2_fwd) {
+                    if !contractor.chain_map.contains_key(&(u2, v2_fwd)) && !contractor.chain_map.contains_key(&(v2_fwd, u2)) {
+                        return cycle_join(&cycle1, &cycle2, i, j, true);
+                    }
                 }
 
-                if adjs_of_left_tail.contains(&cycle2[(j+cycle2.len()-1)%cycle2.len()]){
-                    return cycle_join(&cycle1,&cycle2,i,j,false)
+                if adjs_of_left_tail.contains(&v2_rev) {
+                    if !contractor.chain_map.contains_key(&(u2, v2_rev)) && !contractor.chain_map.contains_key(&(v2_rev, u2)) {
+                        return cycle_join(&cycle1, &cycle2, i, j, false);
+                    }
                 }
-                
             }
         }
     }
     None
-
 }
 
 fn cycle_join(cycle1:&Vec<i32>,cycle2:&Vec<i32>,i:usize,j:usize,reverse:bool) -> Option<Vec<i32>>{
@@ -395,20 +420,35 @@ fn cycle_join(cycle1:&Vec<i32>,cycle2:&Vec<i32>,i:usize,j:usize,reverse:bool) ->
 /// Try to merge three directed cycles by a 3-edge swap.
 /// Config A (0): C1 -> C2 -> C3 -> C1  (u1->v2, u2->v3, u3->v1)
 /// Config B (1): C1 -> C3 -> C2 -> C1  (u1->v3, u3->v2, u2->v1)
-fn swap_three_nodes(c1: &Vec<i32>, c2: &Vec<i32>, c3: &Vec<i32>, g: &Graph) -> Option<Vec<i32>> {
+fn swap_three_nodes(
+    c1: &Vec<i32>,
+    c2: &Vec<i32>,
+    c3: &Vec<i32>,
+    g: &Graph,
+    contractor: &Degree2Contractor,
+) -> Option<Vec<i32>> {
     for i in 0..c1.len() {
         let u1 = c1[i];
         let v1 = c1[(i + 1) % c1.len()];
+        if contractor.chain_map.contains_key(&(u1, v1)) || contractor.chain_map.contains_key(&(v1, u1)) {
+            continue;
+        }
         let adjs_u1 = g.adjacency_list.get(&u1).unwrap();
 
         for j in 0..c2.len() {
             let u2 = c2[j];
             let v2 = c2[(j + 1) % c2.len()];
+            if contractor.chain_map.contains_key(&(u2, v2)) || contractor.chain_map.contains_key(&(v2, u2)) {
+                continue;
+            }
             let adjs_u2 = g.adjacency_list.get(&u2).unwrap();
 
             for k in 0..c3.len() {
                 let u3 = c3[k];
                 let v3 = c3[(k + 1) % c3.len()];
+                if contractor.chain_map.contains_key(&(u3, v3)) || contractor.chain_map.contains_key(&(v3, u3)) {
+                    continue;
+                }
                 let adjs_u3 = g.adjacency_list.get(&u3).unwrap();
 
                 // Config A: u1->v2, u2->v3, u3->v1
@@ -459,6 +499,7 @@ fn merge_three_cycles(
     cycles: &Vec<Vec<i32>>,
     encoder: &mut Encoder,
     g: &Graph,
+    contractor: &Degree2Contractor,
     block_method: i32,
     balanced: i32,
     active_cycles_number: &Vec<usize>,
@@ -471,7 +512,6 @@ fn merge_three_cycles(
             vertex_to_active.insert(v, active_idx);
         }
     }
-
     let mut cycle_neighbors: Vec<HashSet<usize>> = vec![HashSet::new(); n];
     for (active_idx, &cycle_idx) in active_cycles_number.iter().enumerate() {
         for &u in &cycles[cycle_idx] {
@@ -499,7 +539,7 @@ fn merge_three_cycles(
                 let ci = active_cycles_number[a];
                 let cj = active_cycles_number[b];
                 let ck = active_cycles_number[c];
-                if let Some(new_cycle) = swap_three_nodes(&cycles[ci], &cycles[cj], &cycles[ck], g) {
+                if let Some(new_cycle) = swap_three_nodes(&cycles[ci], &cycles[cj], &cycles[ck], g, contractor) {
                     let new_block_clauses = get_blocking_clauses(&vec!(new_cycle.clone()), encoder, g, block_method, balanced);
                     return (new_block_clauses, true, (a, b, c), new_cycle);
                 }
