@@ -582,127 +582,35 @@ fn inject_partial_mtz(
     clauses
 }
 
-fn get_blocking_clauses(sol_cycles:&Vec<Vec<i32>>,encoder: &mut Encoder,g:&Graph, block_method:i32,balanced:i32) -> Vec<Clause>{
-
+fn get_blocking_clauses(
+    sol_cycles: &Vec<Vec<i32>>,
+    encoder: &mut Encoder,
+    g: &Graph,
+    block_method: i32,
+    balanced: i32,
+) -> Vec<Clause> {
     let mut clauses = Vec::new();
-    let mut cut_arcs_map = BTreeMap::new();
+    let total_v = g.adjacency_list.len();
 
-    for sol_cycle in sol_cycles.iter(){
-        let subclause = match block_method{
-            0 => cegar_blocking_clauses(&sol_cycle,&encoder.graph_lit_map),
-            1 => asp_blocking_clauses(&sol_cycle,encoder,&g,1,balanced),//閉路から出ていく辺と閉路へと入っていく辺両方を同じ節へ追加する
-            2 => [cegar_blocking_clauses(&sol_cycle.clone(),&encoder.graph_lit_map.clone()),asp_blocking_clauses(sol_cycle,encoder,&g,1,balanced)].concat(),//既存ブロック節を追加し、閉路から出ていく辺と閉路へと入っていく辺両方を同じ節へ追加する
+    for sol_cycle in sol_cycles.iter() {
+        match block_method {
             3 => {
-                let clauses1 = asp_blocking_clauses(&sol_cycle, encoder, &g, 2, balanced);
-                *cut_arcs_map.entry(clauses1[0].len()).or_insert(0) += 1;
-                clauses1
-            }, // 閉路から出ていく辺と閉路へと入っていく辺を別々の節へ追加する
-            4 => asp_blocking_clauses(&sol_cycle,encoder,&g,3,balanced),//閉路から出ていく辺のみを節へ追加する
-            5 => asp_blocking_clauses(&sol_cycle,encoder,&g,4,balanced),//次数が一番高い頂点が含まれてる閉路のみブロック節を追加する
-            6 => {
-                //3頂点以下の場合にだけ従来手法を採用
-                if sol_cycle.len() > 3{
-                    asp_blocking_clauses(&sol_cycle,encoder,&g,2,balanced)
-                }else{
-                    cegar_blocking_clauses(&sol_cycle,&encoder.graph_lit_map)
-                }
-            },
-            7 => {
-                //4頂点以下の場合にだけ従来手法を採用
-                if sol_cycle.len() > 4{
-                    asp_blocking_clauses(&sol_cycle,encoder,&g,2,balanced)
-                }else{
-                    cegar_blocking_clauses(&sol_cycle,&encoder.graph_lit_map)
-                }
-            },
-            8 => {
-                //5頂点以下の場合にだけ従来手法を採用
-                if sol_cycle.len() > 5{
-                    asp_blocking_clauses(&sol_cycle,encoder,&g,2,balanced)
-                }else{
-                    cegar_blocking_clauses(&sol_cycle,&encoder.graph_lit_map)
-                }
-            },
-            9 => {
-                //従来手法と提案手法の長さを比較して短い方を採用
-                let clauses1 = asp_blocking_clauses(&sol_cycle.clone(),encoder,&g,2,balanced);
-                let clauses2 = cegar_blocking_clauses(&sol_cycle,&encoder.graph_lit_map);
-                *cut_arcs_map.entry(clauses1[0].len()).or_insert(0) += 1;
-                if clauses1[0].len() > clauses2[0].len(){
-                    clauses2
-                }else{
-                    clauses1
-                }
-            },
-            10 => {
-                let mut subsubclauses = Vec::new();
-                if sol_cycle.len() == 3{
-                    subsubclauses.extend(cegar_blocking_clauses(&sol_cycle.clone(),&encoder.graph_lit_map));
-                }
-                let clauses1 = asp_blocking_clauses(&sol_cycle.clone(),encoder,&g,2,balanced);
-                *cut_arcs_map.entry(clauses1[0].len()).or_insert(0) += 1;
-                subsubclauses.extend(clauses1);
+                // Technique A1 & A3: Boundary Minimal Cut & Complementary Cut
+                let cut_clauses = get_boundary_cut_clauses(sol_cycle, encoder, g, total_v);
+                clauses.extend(cut_clauses);
 
-                subsubclauses
-            },
-            11 => {
-                let mut subsubclauses = Vec::new();
-                if sol_cycle.len() >= 3 && sol_cycle.len() <= 6{
-                    subsubclauses.extend(cegar_blocking_clauses(&sol_cycle.clone(),&encoder.graph_lit_map));
+                // Technique A2: Induced Subgraph SECs for |C| <= 6
+                if sol_cycle.len() <= 6 {
+                    let sec_clauses = get_induced_subgraph_sec_clauses(sol_cycle, encoder, g);
+                    clauses.extend(sec_clauses);
                 }
-                let clauses1 = asp_blocking_clauses(&sol_cycle.clone(),encoder,&g,2,balanced);
-                *cut_arcs_map.entry(clauses1[0].len()).or_insert(0) += 1;
-                subsubclauses.extend(clauses1);
-
-                subsubclauses
-            },
-            110 => {
-                let mut subsubclauses = Vec::new();
-                if sol_cycle.len() == 3{
-                    subsubclauses.extend(cegar_blocking_clauses(&sol_cycle.clone(),&encoder.graph_lit_map));
-                }
-
-                subsubclauses
             }
-            111 => {
-                let mut subsubclauses = Vec::new();
-                if sol_cycle.len() >= 3 && sol_cycle.len() <= 6{
-                    subsubclauses.extend(cegar_blocking_clauses(&sol_cycle.clone(),&encoder.graph_lit_map));
-                }
-
-                subsubclauses
-            }
-            _ => panic!("out of number by blocking method")
-        };
-        clauses.extend(subclause);
+            0 => clauses.extend(cegar_blocking_clauses(sol_cycle, &encoder.graph_lit_map)),
+            1 => clauses.extend(asp_blocking_clauses(sol_cycle, encoder, g, 1, balanced)),
+            _ => clauses.extend(asp_blocking_clauses(sol_cycle, encoder, g, 2, balanced)),
+        }
     }
-    if block_method == 3 || (block_method >= 9 && block_method <= 11){
-        println!("cut arcs number = {cut_arcs_map:?}");
-    }
-    // let clauses:Vec<Clause> =
-    //     if block_method == 0{
-    //         cegar_blocking_clauses(&sol_cycles,&encoder.graph_lit_map)
-    //     }else if block_method == 1{
-    //         //閉路から出ていく辺と閉路へと入っていく辺両方を同じ節へ追加する
-    //         asp_blocking_clauses(&sol_cycles,encoder,&g,1,balanced)
-    //     }else if block_method == 2{
-    //         //既存ブロック節を追加し、閉路から出ていく辺と閉路へと入っていく辺両方を同じ節へ追加する
-    //         [cegar_blocking_clauses(&sol_cycles.clone(),&encoder.graph_lit_map.clone()),asp_blocking_clauses(sol_cycles,encoder,&g,1,balanced)].concat()
-    //     }else if block_method == 3{
-    //         //閉路から出ていく辺と閉路へと入っていく辺を別々の節へ追加する
-    //         asp_blocking_clauses(&sol_cycles,encoder,&g,2,balanced)
-    //     }else if block_method == 4{
-    //         //閉路から出ていく辺のみを節へ追加する
-    //         asp_blocking_clauses(&sol_cycles,encoder,&g,3,balanced)
-    //     }else if block_method == 5{
-    //         //閉路から出ていく辺のみを節へ追加する
-    //         asp_blocking_clauses(&sol_cycles,encoder,&g,4,balanced)
-    //     }else{
-    //         panic!("cegarのみ:-b 0\naspのみ:-b 1\n両方:-b 2");
-    //     };
     clauses
-
-    
 }
 
 fn cegar_blocking_clauses(cycle:&Vec<i32>,lit_map:&BTreeMap<(i32,i32),Lit>)-> Vec<Clause>{
