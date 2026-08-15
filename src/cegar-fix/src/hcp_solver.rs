@@ -904,6 +904,81 @@ pub fn get_boundary_cut_clauses(
     clauses
 }
 
+pub fn get_induced_subgraph_sec_clauses(
+    cycle: &[i32],
+    encoder: &Encoder,
+    g: &Graph,
+) -> Vec<Clause> {
+    let mut clauses = Vec::new();
+    let len = cycle.len();
+    if len < 3 || len > 6 {
+        return clauses;
+    }
+
+    let cycle_set: HashSet<i32> = cycle.iter().cloned().collect();
+
+    // 1. Standard forward & reverse exclusion for active cycle C
+    let mut fwd_clause = rustsat::types::Clause::new();
+    for i in 0..len {
+        if let Some(lit) = encoder.graph_lit_map.get(&(cycle[i], cycle[(i + 1) % len])) {
+            fwd_clause.add(!*lit);
+        }
+    }
+    if !fwd_clause.is_empty() {
+        clauses.push(fwd_clause);
+    }
+
+    if len != 2 {
+        let mut rev_clause = rustsat::types::Clause::new();
+        for i in (0..len).rev() {
+            if let Some(lit) = encoder.graph_lit_map.get(&(cycle[i], cycle[(i + len - 1) % len])) {
+                rev_clause.add(!*lit);
+            }
+        }
+        if !rev_clause.is_empty() {
+            clauses.push(rev_clause);
+        }
+    }
+
+    // 2. Search for internal chords in G[C] to forbid chord subtours
+    // For small |C| <= 6, enumerate chord paths
+    for i in 0..len {
+        let u = cycle[i];
+        if let Some(adjs) = g.adjacency_list.get(&u) {
+            for &v in adjs {
+                if cycle_set.contains(&v) {
+                    let next_u = cycle[(i + 1) % len];
+                    let prev_u = cycle[(i + len - 1) % len];
+                    // If (u, v) is a chord (not consecutive in C)
+                    if v != next_u && v != prev_u {
+                        // Forbid shortcut triangle (u, next_u, v) if (next_u, v) is an edge
+                        if let Some(next_adjs) = g.adjacency_list.get(&next_u) {
+                            if next_adjs.contains(&v) {
+                                if let (Some(l1), Some(l2), Some(l3)) = (
+                                    encoder.graph_lit_map.get(&(u, next_u)),
+                                    encoder.graph_lit_map.get(&(next_u, v)),
+                                    encoder.graph_lit_map.get(&(v, u)),
+                                ) {
+                                    clauses.push(clause!(!*l1, !*l2, !*l3));
+                                }
+                                if let (Some(l1), Some(l2), Some(l3)) = (
+                                    encoder.graph_lit_map.get(&(u, v)),
+                                    encoder.graph_lit_map.get(&(v, next_u)),
+                                    encoder.graph_lit_map.get(&(next_u, u)),
+                                ) {
+                                    clauses.push(clause!(!*l1, !*l2, !*l3));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    clauses
+}
+
 // enum MySolver<'a> {
 //     Minisat(rustsat_minisat::core::Minisat),
 //     Kissat(rustsat_kissat::Kissat<'a>), 
@@ -1030,6 +1105,35 @@ mod tests_blocking_enhancements {
         let set_dir_1: HashSet<Lit> = clauses_direct[1].iter().cloned().collect();
         assert_eq!(set_comp_1, set_dir_1);
     }
+
+    #[test]
+    fn test_induced_subgraph_chord_cycles() {
+        // 4-vertex graph 1-2-3-4 with chord (1,3)
+        let mut g = Graph::new();
+        g.add_edge(1, 2);
+        g.add_edge(2, 3);
+        g.add_edge(3, 4);
+        g.add_edge(4, 1);
+        g.add_edge(1, 3); // chord (1, 3)
+
+        let mut encoder = Encoder::new();
+        encoder.encode(&g, 1, 0, 0, 0, 0, 0);
+
+        let c = vec![1, 2, 3, 4];
+        let clauses = get_induced_subgraph_sec_clauses(&c, &encoder, &g);
+        // Must generate at least the main cycle exclusion + chord triangle exclusion
+        assert!(!clauses.is_empty());
+        // Forward (1) + Reverse (1) for 4-cycle, plus chord triangles (forward & reverse for each of 2 triangles = 4 clauses) -> 6 clauses
+        assert_eq!(clauses.len(), 6);
+
+        // Out of bounds cycles (|C| < 3 or |C| > 6) should return empty
+        let c_small = vec![1, 2];
+        assert!(get_induced_subgraph_sec_clauses(&c_small, &encoder, &g).is_empty());
+
+        let c_large = vec![1, 2, 3, 4, 5, 6, 7];
+        assert!(get_induced_subgraph_sec_clauses(&c_large, &encoder, &g).is_empty());
+    }
 }
+
 
 
