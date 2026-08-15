@@ -281,7 +281,11 @@ fn two_opt(
     }
 
     let active_cycles = get_active_cycles(&cycles, &active_cycles_number);
-    let block_clauses = get_blocking_clauses(&active_cycles, encoder, g, block_method, balanced);
+    let block_clauses = if active_cycles.len() == 1 {
+        Vec::new()
+    } else {
+        get_blocking_clauses(sol_cycles, encoder, g, block_method, balanced)
+    };
 
     println!("number of connected cycles = {}", cycles.len() - sol_cycles.len());
     println!("number of merged cycles = {}", active_cycles.len());
@@ -595,12 +599,12 @@ fn get_blocking_clauses(
     for sol_cycle in sol_cycles.iter() {
         match block_method {
             3 => {
-                // Technique A1 & A3: Boundary Minimal Cut & Complementary Cut
-                let cut_clauses = get_boundary_cut_clauses(sol_cycle, encoder, g, total_v);
+                // Technique A1 & A3: Boundary Minimal Cut & Complementary Cut with Totalizer support
+                let cut_clauses = get_boundary_cut_clauses(sol_cycle, encoder, g, total_v, balanced);
                 clauses.extend(cut_clauses);
 
-                // Technique A2: Induced Subgraph SECs for |C| <= 6
-                if sol_cycle.len() <= 6 {
+                // Technique A2: Induced Subgraph SECs for |C| <= 4
+                if sol_cycle.len() <= 4 {
                     let sec_clauses = get_induced_subgraph_sec_clauses(sol_cycle, encoder, g);
                     clauses.extend(sec_clauses);
                 }
@@ -760,6 +764,7 @@ pub fn get_boundary_cut_clauses(
     encoder: &mut Encoder,
     g: &Graph,
     total_vertices: usize,
+    balanced: i32,
 ) -> Vec<Clause> {
     let mut clauses = Vec::new();
     let cycle_set: HashSet<i32> = cycle.iter().cloned().collect();
@@ -792,20 +797,45 @@ pub fn get_boundary_cut_clauses(
         }
     }
 
-    if is_complementary {
+    let (c1, c2) = if is_complementary {
         // By duality: delta^+(V \ C) = delta^-(C) and delta^-(V \ C) = delta^+(C)
-        if !clause_in.is_empty() {
-            clauses.push(clause_in);
+        (clause_in, clause_out)
+    } else {
+        (clause_out, clause_in)
+    };
+
+    if balanced == 0 {
+        if !c1.is_empty() {
+            clauses.push(c1);
         }
-        if !clause_out.is_empty() {
-            clauses.push(clause_out);
+        if !c2.is_empty() {
+            clauses.push(c2);
+        }
+    } else if balanced == 1 {
+        let lits1: Vec<Lit> = c1.iter().cloned().collect();
+        let lits2: Vec<Lit> = c2.iter().cloned().collect();
+        let (adder_clause1, s) = encoder.bailleux_tortalize(lits1.to_vec(), &vec![]);
+        let (adder_clause2, _) = encoder.bailleux_tortalize(lits2.to_vec(), &s);
+        clauses.extend(adder_clause1);
+        clauses.extend(adder_clause2);
+        if !s.is_empty() {
+            clauses.push(clause!(s[0]));
         }
     } else {
-        if !clause_out.is_empty() {
-            clauses.push(clause_out);
+        let lits1: Vec<Lit> = c1.iter().cloned().collect();
+        let lits2: Vec<Lit> = c2.iter().cloned().collect();
+        let (adder_clause1, s) = encoder.bailleux_tortalize(lits1.to_vec(), &vec![]);
+        let (adder_clause2, _) = encoder.bailleux_tortalize(lits2.to_vec(), &s);
+        clauses.extend(adder_clause1);
+        clauses.extend(adder_clause2);
+        if !s.is_empty() {
+            clauses.push(clause!(s[0]));
         }
-        if !clause_in.is_empty() {
-            clauses.push(clause_in);
+        if !c1.is_empty() {
+            clauses.push(c1);
+        }
+        if !c2.is_empty() {
+            clauses.push(c2);
         }
     }
 
@@ -996,13 +1026,13 @@ mod tests_blocking_enhancements {
 
         // Subcycle C = [1, 2, 3, 4] (|C| = 4 > 6/2 = 3) -> Complementary S = [5, 6]
         let c = vec![1, 2, 3, 4];
-        let clauses = get_boundary_cut_clauses(&c, &mut encoder, &g, 6);
+        let clauses = get_boundary_cut_clauses(&c, &mut encoder, &g, 6, 0);
         assert!(!clauses.is_empty());
         // Verify both out-cut and in-cut clauses exist
         assert_eq!(clauses.len(), 2);
 
         // Compare with direct calculation (total_vertices = 0 disables complementation)
-        let clauses_direct = get_boundary_cut_clauses(&c, &mut encoder, &g, 0);
+        let clauses_direct = get_boundary_cut_clauses(&c, &mut encoder, &g, 0, 0);
         assert_eq!(clauses_direct.len(), 2);
 
         let set_comp_0: HashSet<Lit> = clauses[0].iter().cloned().collect();
