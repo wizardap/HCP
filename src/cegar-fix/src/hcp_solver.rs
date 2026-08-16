@@ -142,7 +142,7 @@ fn cegar(
 
                 // 2-opt / 3-opt solution constructor
                 let (block_clauses, _active_cycles) = if opt == 0 {
-                    (get_blocking_clauses(&sol_cycles, encoder, &g, hub_registry, block_method, balanced), sol_cycles.clone())
+                    (get_blocking_clauses(&sol_cycles, encoder, &g, block_method, balanced), sol_cycles.clone())
                 } else if opt >= 1 {
                     let (clauses, cycles) = two_opt(&sol_cycles, encoder, &g, contractor, hub_registry, block_method, balanced, opt, three_opt);
                     if cycles.len() == 1 && cycles[0].len() == g.adjacency_list.len() {
@@ -351,7 +351,7 @@ fn two_opt(
     let block_clauses = if active_cycles.len() == 1 && active_cycles[0].len() == g.adjacency_list.len() {
         Vec::new()
     } else {
-        get_blocking_clauses(sol_cycles, encoder, g, hub_registry, block_method, balanced)
+        get_blocking_clauses(sol_cycles, encoder, g, block_method, balanced)
     };
 
     println!("number of connected cycles = {}", cycles.len() - sol_cycles.len());
@@ -383,7 +383,7 @@ fn merge_cycles(
 
                 match swap_node(&cycles[left],&cycles[right],&g, contractor, hub_registry){
                     Some(new_cycle) =>{
-                    let new_block_clauses = get_blocking_clauses(&vec!(new_cycle.clone()), encoder, g, hub_registry, block_method, balanced);
+                    let new_block_clauses = get_blocking_clauses(&vec!(new_cycle.clone()), encoder, g, block_method, balanced);
                     return (new_block_clauses,true,(i,j),new_cycle)
                     }
                     None =>{
@@ -631,7 +631,7 @@ fn merge_three_cycles(
                 let cj = active_cycles_number[b];
                 let ck = active_cycles_number[c];
                 if let Some(new_cycle) = swap_three_nodes(&cycles[ci], &cycles[cj], &cycles[ck], g, contractor, hub_registry) {
-                    let new_block_clauses = get_blocking_clauses(&vec!(new_cycle.clone()), encoder, g, hub_registry, block_method, balanced);
+                    let new_block_clauses = get_blocking_clauses(&vec!(new_cycle.clone()), encoder, g, block_method, balanced);
                     return (new_block_clauses, true, (a, b, c), new_cycle);
                 }
             }
@@ -729,7 +729,6 @@ fn get_blocking_clauses(
     sol_cycles: &Vec<Vec<i32>>,
     encoder: &mut Encoder,
     g: &Graph,
-    hub_registry: &HubRegistry,
     block_method: i32,
     balanced: i32,
 ) -> Vec<Clause> {
@@ -748,10 +747,6 @@ fn get_blocking_clauses(
                     let sec_clauses = get_induced_subgraph_sec_clauses(sol_cycle, encoder, g);
                     clauses.extend(sec_clauses);
                 }
-
-                // Pillar 2: Hub-Component Star Cuts for satellite subcycles
-                let hub_cut_clauses = get_hub_star_cut_clauses(sol_cycle, encoder, g, hub_registry, total_v);
-                clauses.extend(hub_cut_clauses);
             }
             0 => clauses.extend(cegar_blocking_clauses(sol_cycle, &encoder.graph_lit_map)),
             1 => clauses.extend(asp_blocking_clauses(sol_cycle, encoder, g, 1, balanced)),
@@ -1061,55 +1056,7 @@ pub fn get_induced_subgraph_sec_clauses(
     clauses
 }
 
-pub fn get_hub_star_cut_clauses(
-    cycle: &[i32],
-    encoder: &Encoder,
-    g: &Graph,
-    hub_registry: &HubRegistry,
-    total_vertices: usize,
-) -> Vec<Clause> {
-    let mut clauses = Vec::new();
-    if hub_registry.hub_vertices.is_empty() || (total_vertices > 0 && cycle.len() > total_vertices / 2) {
-        return clauses;
-    }
 
-    let cycle_set: HashSet<i32> = cycle.iter().cloned().collect();
-    let mut incident_hubs = Vec::new();
-    for &h in &hub_registry.hub_vertices {
-        if !cycle_set.contains(&h) {
-            if let Some(neighbors) = hub_registry.hub_neighbors.get(&h) {
-                if neighbors.iter().any(|v| cycle_set.contains(v)) {
-                    incident_hubs.push(h);
-                }
-            }
-        }
-    }
-
-    if !incident_hubs.is_empty() && incident_hubs.len() <= 3 {
-        let mut lits = Vec::new();
-        for &u in cycle {
-            if let Some(adjs) = g.adjacency_list.get(&u) {
-                for &w in adjs {
-                    if !cycle_set.contains(&w) && incident_hubs.contains(&w) {
-                        if let Some(&lit) = encoder.graph_lit_map.get(&(u, w)) {
-                            lits.push(lit);
-                        }
-                        if let Some(&lit) = encoder.graph_lit_map.get(&(w, u)) {
-                            lits.push(lit);
-                        }
-                    }
-                }
-            }
-        }
-        lits.sort_unstable();
-        lits.dedup();
-        if lits.len() >= 2 {
-            clauses.push(Clause::from(&lits[..]));
-        }
-    }
-
-    clauses
-}
 
 // enum MySolver<'a> {
 //     Minisat(rustsat_minisat::core::Minisat),
@@ -1322,47 +1269,6 @@ mod tests_blocking_enhancements {
         // All 9 vertices should be merged into a single cycle
         assert_eq!(merged_cycles.len(), 1);
         assert_eq!(merged_cycles[0].len(), 9);
-    }
-
-    #[test]
-    fn test_hub_star_cut_generation() {
-        // Build a star-like graph with hub 1 connected to 30 nodes (deg=30)
-        let mut g = Graph::new();
-        for v in 2..=31 {
-            g.add_edge(1, v);
-            let next_v = if v == 31 { 2 } else { v + 1 };
-            g.add_edge(v, next_v);
-        }
-        let (contracted_g, _contractor) = Degree2Contractor::contract(&g);
-        let hub_registry = HubRegistry::new(&contracted_g);
-        assert!(hub_registry.is_hub_vertex(1));
-
-        let mut encoder = Encoder::new();
-        encoder.encode(&contracted_g, 1, 0, 0, 0, 0, 0);
-
-        // Satellite subcycle C = [2, 3, 4]
-        let c = vec![2, 3, 4];
-        let total_v = contracted_g.adjacency_list.len();
-        let clauses = get_hub_star_cut_clauses(&c, &encoder, &contracted_g, &hub_registry, total_v);
-
-        // Subcycle is connected to hub 1 via edges (2,1), (3,1), (4,1)
-        assert_eq!(clauses.len(), 1);
-        let clause = &clauses[0];
-        // 3 incident edges in both directions = 6 literals
-        assert_eq!(clause.len(), 6);
-
-        // Verify literals correspond to edges between C and hub 1
-        for &u in &[2, 3, 4] {
-            let lit_out = encoder.graph_lit_map.get(&(u, 1)).unwrap();
-            let lit_in = encoder.graph_lit_map.get(&(1, u)).unwrap();
-            assert!(clause.iter().any(|&l| l == *lit_out));
-            assert!(clause.iter().any(|&l| l == *lit_in));
-        }
-
-        // Test large subcycle pruning (|C| > total_v / 2)
-        let large_cycle: Vec<i32> = (2..=20).collect();
-        let large_clauses = get_hub_star_cut_clauses(&large_cycle, &encoder, &contracted_g, &hub_registry, total_v);
-        assert!(large_clauses.is_empty());
     }
 }
 
