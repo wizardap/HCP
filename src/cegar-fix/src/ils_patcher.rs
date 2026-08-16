@@ -72,9 +72,13 @@ impl IteratedLocalSearchPatcher {
         if init_candidate.len() == 1 && init_candidate[0].len() == total_nodes {
             return init_candidate;
         }
-        if init_candidate.len() < best_cycles.len() {
-            best_cycles = init_candidate;
-        }
+        let clean_cycles = if init_candidate.len() < best_cycles.len() {
+            init_candidate
+        } else {
+            best_cycles
+        };
+
+        let mut best_cycles = clean_cycles.clone();
 
         for kick in 0..max_kicks {
             if best_cycles.len() <= 1 {
@@ -120,7 +124,7 @@ impl IteratedLocalSearchPatcher {
             }
         }
 
-        best_cycles
+        clean_cycles
     }
 
     /// Perturbs a single cycle using either a randomized Double-Bridge 4-opt swap

@@ -38,21 +38,21 @@
   }
   ```
 
-- [ ] **Step 1: Declare `mod macro_solver;` in `src/cegar-fix/src/main.rs`**
+- [x] **Step 1: Declare `mod macro_solver;` in `src/cegar-fix/src/main.rs`**
 
-- [ ] **Step 2: Implement `src/cegar-fix/src/macro_solver.rs` with Macro-Graph Extraction & Mini-SAT Solving**
+- [x] **Step 2: Implement `src/cegar-fix/src/macro_solver.rs` with Macro-Graph Extraction & Mini-SAT Solving**
 
 Write:
 - `build_macro_graph`: Extracts all cross-edges between distinct subcycles $C_i$ and $C_j$, checking degree-2 break safety via `is_safe_to_break`.
 - `solve_macro_sat`: Encodes degree-2 and MTZ subtour elimination constraints on the macro-graph using CaDiCaL, extracts the macro-tour sequence, and splices each subcycle along the selected entry/exit ports into a single valid tour.
 - Unit tests: `test_macro_graph_construction`, `test_macro_solver_synthetic_grid`, `test_macro_solver_degree2_safety`.
 
-- [ ] **Step 3: Run unit tests to verify module passes**
+- [x] **Step 3: Run unit tests to verify module passes**
 
 Run: `cd /home/ubuntu/HCP/src/cegar-fix && cargo test macro_solver`
 Expected: PASS with 3 unit tests passing.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/cegar-fix/src/macro_solver.rs src/cegar-fix/src/main.rs
@@ -70,7 +70,7 @@ git commit -m "feat: implement MacroGraphSolver module for mini-SAT macro-tour e
 - Consumes: `MacroGraphSolver::solve_via_macro_graph` from `crate::macro_solver`.
 - Produces: Macro-graph solving pass in `cegar()` before traditional 2-opt/3-opt blocking clause generation.
 
-- [ ] **Step 1: Import `MacroGraphSolver` and integrate in `cegar()`**
+- [x] **Step 1: Import `MacroGraphSolver` and integrate in `cegar()`**
 
 In `src/cegar-fix/src/hcp_solver.rs`:
 ```rust
@@ -100,12 +100,12 @@ if sol_cycles.len() > 1 {
 }
 ```
 
-- [ ] **Step 2: Build release binary and run all unit tests**
+- [x] **Step 2: Build release binary and run all unit tests**
 
 Run: `cd /home/ubuntu/HCP/src/cegar-fix && cargo test && cargo build --release`
 Expected: PASS with 29/29 unit tests passing and clean release build.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/cegar-fix/src/hcp_solver.rs
@@ -119,14 +119,14 @@ git commit -m "feat: integrate MacroGraphSolver into CEGAR solver pipeline"
 **Files:**
 - Test: FHCPCS benchmarks (`FHCPCS-col/*.col`)
 
-- [ ] **Step 1: Verify 10 Key Regression Graphs**
+- [x] **Step 1: Verify 10 Key Regression Graphs**
 
 Run each of the 10 Key Regression graphs:
 - `graph45`, `graph132`, `graph161`, `graph178`, `graph183`, `graph230`, `graph248`, `graph313`, `graph339`, `graph346`.
 Command: `./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/<graph>.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`
 Expected: 10/10 return `s SATISFIABLE`.
 
-- [ ] **Step 2: Profile Dense Hub instances with Macro-Graph Solver**
+- [x] **Step 2: Profile Dense Hub instances with Macro-Graph Solver**
 
 Run with 120s timeout:
 - `./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/graph560.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`
@@ -134,7 +134,7 @@ Run with 120s timeout:
 - `./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/graph584.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`
 Measure Macro-Graph node count, Mini-SAT solving time, and convergence outcome.
 
-- [ ] **Step 3: Commit verification report**
+- [x] **Step 3: Commit verification report**
 
 ```bash
 git add docs/superpowers/plans/2026-08-16-macro-solver.md

@@ -145,6 +145,8 @@ fn cegar(
                 println!("number of subcycles found = {}", sol_cycles.len());
                 println!("sat solution cycle lengths map (length:number) = {:?}", map_cycle_lengths(&sol_cycles));
 
+                let raw_sol_cycles = sol_cycles.clone();
+
                 // Attempt Multi-Subcycle Hub Patching
                 let sol_cycles = if sol_cycles.len() > 1 && !hub_registry.hub_vertices.is_empty() {
                     let patched = HubPatcher::patch_cycles_via_hubs(&sol_cycles, &g, contractor, hub_registry);
@@ -265,9 +267,9 @@ fn cegar(
 
                 // 2-opt / 3-opt solution constructor
                 let (block_clauses, _active_cycles) = if opt == 0 {
-                    (get_blocking_clauses(&sol_cycles, encoder, &g, block_method, balanced), sol_cycles.clone())
+                    (get_blocking_clauses(&raw_sol_cycles, encoder, &g, block_method, balanced), raw_sol_cycles.clone())
                 } else if opt >= 1 {
-                    let (clauses, cycles) = two_opt(&sol_cycles, encoder, &g, contractor, hub_registry, block_method, balanced, opt, three_opt);
+                    let (clauses, cycles) = two_opt(&raw_sol_cycles, encoder, &g, contractor, hub_registry, block_method, balanced, opt, three_opt);
                     if cycles.len() == 1 && cycles[0].len() == g.adjacency_list.len() {
                         let flat: Vec<i32> = cycles.into_iter().flatten().collect();
                         let full_cycle = contractor.uncontract_cycle(&flat);
