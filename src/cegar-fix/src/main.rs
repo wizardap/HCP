@@ -3,6 +3,7 @@ mod encoder;
 mod file_operations;
 mod graph;
 mod hcp_solver;
+mod hub_registry;
 mod options;
 mod parallel_sub_hcp;
 use contraction::Degree2Contractor;
