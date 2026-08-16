@@ -4,6 +4,7 @@ mod file_operations;
 mod graph;
 mod hcp_solver;
 mod hub_registry;
+mod matching_patcher;
 mod options;
 mod parallel_sub_hcp;
 mod patching;
