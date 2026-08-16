@@ -5,6 +5,7 @@ mod file_operations;
 mod graph;
 mod hcp_solver;
 mod hub_registry;
+mod hub_sub_hcp;
 mod ils_patcher;
 mod macro_solver;
 mod matching_patcher;
