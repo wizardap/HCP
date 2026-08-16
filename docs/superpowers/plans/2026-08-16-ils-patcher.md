@@ -39,21 +39,21 @@
   }
   ```
 
-- [ ] **Step 1: Declare `mod ils_patcher;` in `src/cegar-fix/src/main.rs`**
+- [x] **Step 1: Declare `mod ils_patcher;` in `src/cegar-fix/src/main.rs`**
 
-- [ ] **Step 2: Implement `src/cegar-fix/src/ils_patcher.rs` with Double-Bridge Kick & ILS loop**
+- [x] **Step 2: Implement `src/cegar-fix/src/ils_patcher.rs` with Double-Bridge Kick & ILS loop**
 
 Write:
 - `perturb_cycle`: Safe 4-opt double-bridge swap or random 2-opt perturbation on target cycle respecting `contractor.chain_map` and graph adjacency in $G$.
 - `solve_via_ils`: Runs up to `max_kicks` iterations (e.g. 500), kicking the largest cycle, running the cascade of `HubPatcher`, `MatchingPatcher`, and `ChainedLKSolver`, updating best known cycle state, and returning when $k=1$ or no further progress.
 - Unit tests: `test_ils_double_bridge_validity`, `test_ils_escapes_local_minimum`, `test_ils_degree2_safety`.
 
-- [ ] **Step 3: Run unit tests to verify module passes**
+- [x] **Step 3: Run unit tests to verify module passes**
 
 Run: `cd /home/ubuntu/HCP/src/cegar-fix && cargo test ils_patcher`
 Expected: PASS with 3 unit tests passing.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/cegar-fix/src/ils_patcher.rs src/cegar-fix/src/main.rs
@@ -71,7 +71,7 @@ git commit -m "feat: implement IteratedLocalSearchPatcher module for RAM-level d
 - Consumes: `IteratedLocalSearchPatcher::solve_via_ils` from `crate::ils_patcher`.
 - Produces: ILS search pass in `cegar()` before traditional 2-opt/3-opt blocking clause generation.
 
-- [ ] **Step 1: Import `IteratedLocalSearchPatcher` and integrate in `cegar()`**
+- [x] **Step 1: Import `IteratedLocalSearchPatcher` and integrate in `cegar()`**
 
 In `src/cegar-fix/src/hcp_solver.rs`:
 ```rust
@@ -104,12 +104,12 @@ let sol_cycles = if sol_cycles.len() > 1 {
 };
 ```
 
-- [ ] **Step 2: Build release binary and run all unit tests**
+- [x] **Step 2: Build release binary and run all unit tests**
 
 Run: `cd /home/ubuntu/HCP/src/cegar-fix && cargo test && cargo build --release`
 Expected: PASS with 26/26 unit tests passing and clean release build.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/cegar-fix/src/hcp_solver.rs
@@ -123,21 +123,21 @@ git commit -m "feat: integrate IteratedLocalSearchPatcher into CEGAR solver pipe
 **Files:**
 - Test: FHCPCS benchmarks (`FHCPCS-col/*.col`)
 
-- [ ] **Step 1: Verify 10 Key Regression Graphs**
+- [x] **Step 1: Verify 10 Key Regression Graphs**
 
 Run each of the 10 Key Regression graphs:
 - `graph45`, `graph132`, `graph161`, `graph178`, `graph183`, `graph230`, `graph248`, `graph313`, `graph339`, `graph346`.
 Command: `./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/<graph>.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`
 Expected: 10/10 return `s SATISFIABLE`.
 
-- [ ] **Step 2: Profile Dense Hub instances with ILS Patcher**
+- [x] **Step 2: Profile Dense Hub instances with ILS Patcher**
 
 Run with 60s timeout:
 - `./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/graph560.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`
 - `./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/graph562.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`
 Record ILS kick stats, cycle convergence, and execution time.
 
-- [ ] **Step 3: Commit verification report**
+- [x] **Step 3: Commit verification report**
 
 ```bash
 git add docs/superpowers/plans/2026-08-16-ils-patcher.md
