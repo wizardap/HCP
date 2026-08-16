@@ -16,6 +16,7 @@ use crate::matching_patcher::MatchingPatcher;
 use crate::chained_lk::ChainedLKSolver;
 use crate::ils_patcher::IteratedLocalSearchPatcher;
 use crate::macro_solver::MacroGraphSolver;
+use crate::hub_sub_hcp::HubPartitionedSolver;
 
 
 pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &HubRegistry, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, _cegar_fallback:i32, _mtz_stall:i32, _adaptive_escalation:i32, _sub_hcp_timeout: u64, _max_cluster_size: usize, instant:Instant,output_folder:&str) {
@@ -111,6 +112,24 @@ fn cegar(
     mut previous_cnf: Cnf,
     output_folder: &str,
 ) -> (i32, i32) {
+    // Attempt Hub-Partitioned Divide-and-Conquer for Dense Hub Graphs
+    if !hub_registry.hub_vertices.is_empty() && hub_registry.hub_vertices.len() >= 3 {
+        if let Some(partition_tour) = HubPartitionedSolver::solve_via_hub_partition(&g, contractor, hub_registry) {
+            if partition_tour.len() == g.adjacency_list.len() {
+                println!("number of subcycles found = 1 (via hub-partitioned sub-hcp)");
+                let final_tour = contractor.uncontract_cycle(&partition_tour);
+                let line = final_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                let time = instant.elapsed();
+                println!("overall time = {:?}", time);
+                println!();
+                println!("solution: ");
+                println!("{}\n", line);
+                println!("s SATISFIABLE");
+                return (0, 0);
+            }
+        }
+    }
+
     loop {
         // SATソルバーで解を求める
         let res = solver.solve().unwrap();
