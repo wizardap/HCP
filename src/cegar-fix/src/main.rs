@@ -6,6 +6,7 @@ mod hcp_solver;
 mod hub_registry;
 mod options;
 mod parallel_sub_hcp;
+mod patching;
 use contraction::Degree2Contractor;
 use hub_registry::HubRegistry;
 use std::time::Instant;
