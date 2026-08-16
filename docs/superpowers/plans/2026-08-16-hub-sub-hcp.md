@@ -37,9 +37,9 @@
   }
   ```
 
-- [ ] **Step 1: Declare `mod hub_sub_hcp;` in `src/cegar-fix/src/main.rs`**
+- [x] **Step 1: Declare `mod hub_sub_hcp;` in `src/cegar-fix/src/main.rs`**
 
-- [ ] **Step 2: Implement `src/cegar-fix/src/hub_sub_hcp.rs` with Cluster Partitioning & Mini-SAT Path Solving**
+- [x] **Step 2: Implement `src/cegar-fix/src/hub_sub_hcp.rs` with Cluster Partitioning & Mini-SAT Path Solving**
 
 Write:
 - `partition_clusters`: Partitions non-hub vertices into $K$ disjoint clusters assigned to super-hubs based on graph adjacency and hop distance.
@@ -47,12 +47,12 @@ Write:
 - `solve_via_hub_partition`: Solves paths across all $K$ clusters, stitches them through super-hubs $P_1 \to H_1 \to P_2 \to H_2 \dots \to P_K \to H_K \to P_1$, and verifies with `is_valid_cycle`.
 - Unit tests: `test_hub_partition_clustering`, `test_hub_partition_synthetic_star_graph`, `test_hub_partition_degree2_safety`.
 
-- [ ] **Step 3: Run unit tests to verify module passes**
+- [x] **Step 3: Run unit tests to verify module passes**
 
 Run: `cd /home/ubuntu/HCP/src/cegar-fix && cargo test hub_sub_hcp`
 Expected: PASS with 3 unit tests passing.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/cegar-fix/src/hub_sub_hcp.rs src/cegar-fix/src/main.rs
@@ -70,7 +70,7 @@ git commit -m "feat: implement HubPartitionedSolver module for divide-and-conque
 - Consumes: `HubPartitionedSolver::solve_via_hub_partition` from `crate::hub_sub_hcp`.
 - Produces: Fast divide-and-conquer pre-pass for Dense Hub graphs before entering full-graph CEGAR.
 
-- [ ] **Step 1: Import `HubPartitionedSolver` and integrate in `cegar()`**
+- [x] **Step 1: Import `HubPartitionedSolver` and integrate in `cegar()`**
 
 In `src/cegar-fix/src/hcp_solver.rs`:
 ```rust
@@ -97,12 +97,12 @@ if !hub_registry.hub_vertices.is_empty() && hub_registry.hub_vertices.len() >= 3
 }
 ```
 
-- [ ] **Step 2: Build release binary and run all unit tests**
+- [x] **Step 2: Build release binary and run all unit tests**
 
 Run: `cd /home/ubuntu/HCP/src/cegar-fix && cargo test && cargo build --release`
 Expected: PASS with 32/32 unit tests passing and clean release build.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/cegar-fix/src/hcp_solver.rs
@@ -116,14 +116,14 @@ git commit -m "feat: integrate HubPartitionedSolver into CEGAR solver pipeline"
 **Files:**
 - Test: FHCPCS benchmarks (`FHCPCS-col/*.col`)
 
-- [ ] **Step 1: Verify 10 Key Regression Graphs**
+- [x] **Step 1: Verify 10 Key Regression Graphs**
 
 Run each of the 10 Key Regression graphs:
 - `graph45`, `graph132`, `graph161`, `graph178`, `graph183`, `graph230`, `graph248`, `graph313`, `graph339`, `graph346`.
 Command: `./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/<graph>.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`
 Expected: 10/10 return `s SATISFIABLE`.
 
-- [ ] **Step 2: Profile Dense Hub instances with Hub-Partitioned Solver**
+- [x] **Step 2: Profile Dense Hub instances with Hub-Partitioned Solver**
 
 Run with 120s timeout:
 - `./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/graph560.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`
@@ -131,9 +131,10 @@ Run with 120s timeout:
 - `./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/graph584.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`
 Measure solving time and verify if dense hub instances solve within seconds.
 
-- [ ] **Step 3: Commit verification report**
+- [x] **Step 3: Commit verification report**
 
 ```bash
 git add docs/superpowers/plans/2026-08-16-hub-sub-hcp.md
+
 git commit -m "docs: record verification results for Hub-Partitioned Sub-HCP Solver"
 ```
