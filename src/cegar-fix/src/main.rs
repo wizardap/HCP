@@ -6,6 +6,7 @@ mod graph;
 mod hcp_solver;
 mod hub_registry;
 mod ils_patcher;
+mod macro_solver;
 mod matching_patcher;
 mod options;
 mod parallel_sub_hcp;
