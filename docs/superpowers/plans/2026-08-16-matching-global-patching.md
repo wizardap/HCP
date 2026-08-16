@@ -129,14 +129,14 @@ git commit -m "feat: integrate MatchingPatcher into CEGAR solver pipeline"
 **Files:**
 - Test: FHCPCS benchmarks (`FHCPCS-col/*.col`)
 
-- [ ] **Step 1: Verify 10 Key Regression Graphs**
+- [x] **Step 1: Verify 10 Key Regression Graphs**
 
 Run each of the 10 Key Regression graphs:
 - `graph45`, `graph132`, `graph161`, `graph178`, `graph183`, `graph230`, `graph248`, `graph313`, `graph339`, `graph346`.
 Command: `./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/<graph>.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`
 Expected: 10/10 return `s SATISFIABLE`.
 
-- [ ] **Step 2: Profile Dense Hub instances with Matching Patcher**
+- [x] **Step 2: Profile Dense Hub instances with Matching Patcher**
 
 Run:
 - `./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/graph560.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`
@@ -144,7 +144,7 @@ Run:
 - `./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/graph584.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`
 Record total subcycle reduction across both Hub & Matching patchers.
 
-- [ ] **Step 3: Commit verification report**
+- [x] **Step 3: Commit verification report**
 
 ```bash
 git add docs/superpowers/plans/2026-08-16-matching-global-patching.md
