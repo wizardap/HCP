@@ -45,7 +45,7 @@
   }
   ```
 
-- [ ] **Step 1: Declare `mod patching;` in `src/cegar-fix/src/main.rs`**
+- [x] **Step 1: Declare `mod patching;` in `src/cegar-fix/src/main.rs`**
 
 ```rust
 mod contraction;
@@ -57,7 +57,7 @@ mod parallel_sub_hcp;
 mod patching;
 ```
 
-- [ ] **Step 2: Implement `src/cegar-fix/src/patching.rs` with Hub Splicing logic and Unit Tests**
+- [x] **Step 2: Implement `src/cegar-fix/src/patching.rs` with Hub Splicing logic and Unit Tests**
 
 Write the complete implementation:
 - `is_safe_to_break(u, v, contractor)` helper.
@@ -65,12 +65,12 @@ Write the complete implementation:
 - `patch_cycles_via_hubs`: selects the longest cycle as `main_cycle`, identifies all incident hubs, and sequentially splices all candidate satellite cycles.
 - Unit tests: `test_hub_patcher_single_splice`, `test_hub_patcher_multi_satellite`, `test_hub_patcher_degree2_guard`.
 
-- [ ] **Step 3: Run unit tests to verify module passes**
+- [x] **Step 3: Run unit tests to verify module passes**
 
 Run: `cd /home/ubuntu/HCP/src/cegar-fix && cargo test patching`
 Expected: PASS with 3 unit tests passing.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/cegar-fix/src/patching.rs src/cegar-fix/src/main.rs
@@ -88,7 +88,7 @@ git commit -m "feat: implement HubPatcher module for star-topology cycle splicin
 - Consumes: `HubPatcher::patch_cycles_via_hubs` from `crate::patching`.
 - Produces: Seamless preprocessing of `sol_cycles` in `cegar()` before 2-opt/3-opt.
 
-- [ ] **Step 1: Import `HubPatcher` and integrate in `cegar()`**
+- [x] **Step 1: Import `HubPatcher` and integrate in `cegar()`**
 
 In `src/cegar-fix/src/hcp_solver.rs`:
 ```rust
@@ -118,12 +118,12 @@ let sol_cycles = if sol_cycles.len() > 1 && !hub_registry.hub_vertices.is_empty(
 };
 ```
 
-- [ ] **Step 2: Build release binary and run all unit tests**
+- [x] **Step 2: Build release binary and run all unit tests**
 
 Run: `cd /home/ubuntu/HCP/src/cegar-fix && cargo test && cargo build --release`
 Expected: PASS with all unit tests passing and clean release build.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/cegar-fix/src/hcp_solver.rs
@@ -137,14 +137,14 @@ git commit -m "feat: integrate HubPatcher into CEGAR solver pipeline"
 **Files:**
 - Test: FHCPCS benchmarks (`FHCPCS-col/*.col`)
 
-- [ ] **Step 1: Verify 10 Key Regression Graphs**
+- [x] **Step 1: Verify 10 Key Regression Graphs**
 
 Run each of the 10 Key Regression graphs:
 - `graph45`, `graph132`, `graph161`, `graph178`, `graph183`, `graph230`, `graph248`, `graph313`, `graph339`, `graph346`.
 Command: `./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/<graph>.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`
 Expected: 10/10 return `s SATISFIABLE`.
 
-- [ ] **Step 2: Profile Dense Hub instances**
+- [x] **Step 2: Profile Dense Hub instances**
 
 Run:
 - `./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/graph560.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`
@@ -152,7 +152,7 @@ Run:
 - `./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/graph584.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`
 Record execution time and patched cycle stats.
 
-- [ ] **Step 3: Commit verification report**
+- [x] **Step 3: Commit verification report**
 
 ```bash
 git add docs/superpowers/plans/2026-08-16-global-cycle-patching.md
