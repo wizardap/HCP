@@ -1,0 +1,154 @@
+# Chained k-Opt / Lin-Kernighan Variable-Depth Patching (Phase 3) Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Implement Phase 3 (Chained $k$-Opt / Lin-Kernighan Variable-Depth Search) to discover alternating multi-cycle merge paths ($k \ge 4$), breaking out of topological local minima on dense hub graphs without returning to the expensive SAT solver.
+
+**Architecture:** A dedicated `chained_lk.rs` module providing `ChainedLKSolver` with variable-depth alternating path exploration, cycle-bridge tracking, degree-2 contracted chain protection, and full graph adjacency verification, integrated into `hcp_solver::cegar` following `MatchingPatcher`.
+
+**Tech Stack:** Rust, CaDiCaL SAT Solver, Flinders Hamiltonian Cycle Project Challenge Set (FHCPCS).
+
+## Global Constraints
+
+- Must maintain 100% mathematical soundness across the entire FHCP benchmark (all 1001 graphs are Hamiltonian; never emit false `s UNSATISFIABLE`).
+- Must strictly respect degree-2 contraction invariants: never sever contracted edges in `contractor.chain_map`.
+- Zero regressions on all 10 Key Regression Graphs (`graph45`, `graph132`, `graph161`, `graph178`, `graph183`, `graph230`, `graph248`, `graph313`, `graph339`, `graph346`).
+- Standard CLI invocation must remain unchanged: `-e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`.
+
+---
+
+### Task 1: ChainedLKSolver Core Module
+
+**Files:**
+- Create: `src/cegar-fix/src/chained_lk.rs`
+- Modify: `src/cegar-fix/src/main.rs:1-15`
+
+**Interfaces:**
+- Consumes: `Graph` from `crate::graph`, `Degree2Contractor` from `crate::contraction`, `HubRegistry` from `crate::hub_registry`.
+- Produces:
+  ```rust
+  pub struct ChainedLKSolver;
+  impl ChainedLKSolver {
+      pub fn patch_cycles_via_chained_lk(
+          cycles: &[Vec<i32>],
+          g: &Graph,
+          contractor: &Degree2Contractor,
+          hub_registry: &HubRegistry,
+          max_depth: usize,
+      ) -> Vec<Vec<i32>>;
+      pub fn search_alternating_chain(
+          cycles: &[Vec<i32>],
+          g: &Graph,
+          contractor: &Degree2Contractor,
+          hub_registry: &HubRegistry,
+          max_depth: usize,
+      ) -> Option<Vec<i32>>;
+  }
+  ```
+
+- [ ] **Step 1: Declare `mod chained_lk;` in `src/cegar-fix/src/main.rs`**
+
+- [ ] **Step 2: Implement `src/cegar-fix/src/chained_lk.rs` with Alternating Path Search & Multi-Cycle Splicing**
+
+Write:
+- `search_alternating_chain`: Backtracking / DFS over cross-cycle edges to find alternating closed walks across 3 to `max_depth` subcycles.
+- `splice_chain_cycles`: Slices and reconstructs the single merged cycle along the verified alternating path.
+- `patch_cycles_via_chained_lk`: Iteratively applies chained $k$-opt merges until convergence or single Hamiltonian cycle.
+- Unit tests: `test_chained_lk_4cycle_alternating_loop`, `test_chained_lk_full_convergence`, `test_chained_lk_degree2_safety`.
+
+- [ ] **Step 3: Run unit tests to verify module passes**
+
+Run: `cd /home/ubuntu/HCP/src/cegar-fix && cargo test chained_lk`
+Expected: PASS with 3 unit tests passing.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/cegar-fix/src/chained_lk.rs src/cegar-fix/src/main.rs
+git commit -m "feat: implement ChainedLKSolver module for variable-depth k-opt multi-cycle merging"
+```
+
+---
+
+### Task 2: Pipeline Integration in `src/cegar-fix/src/hcp_solver.rs`
+
+**Files:**
+- Modify: `src/cegar-fix/src/hcp_solver.rs:185-225`
+
+**Interfaces:**
+- Consumes: `ChainedLKSolver::patch_cycles_via_chained_lk` from `crate::chained_lk`.
+- Produces: Tertiary variable-depth cycle reduction in `cegar()` before traditional 2-opt/3-opt.
+
+- [ ] **Step 1: Import `ChainedLKSolver` and integrate in `cegar()`**
+
+In `src/cegar-fix/src/hcp_solver.rs`:
+```rust
+use crate::chained_lk::ChainedLKSolver;
+```
+Right after `MatchingPatcher` in `cegar()`:
+```rust
+// Attempt Chained k-Opt / Lin-Kernighan Variable-Depth Patching
+let sol_cycles = if sol_cycles.len() > 1 {
+    let patched = ChainedLKSolver::patch_cycles_via_chained_lk(&sol_cycles, &g, contractor, hub_registry, 6);
+    if patched.len() == 1 && patched[0].len() == g.adjacency_list.len() {
+        println!("number of subcycles found = 1 (via chained lk patching)");
+        let flat: Vec<i32> = patched.into_iter().flatten().collect();
+        let final_tour = contractor.uncontract_cycle(&flat);
+        let line = final_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+        let time = now - previous_time;
+        let add_block_clauses_time = now - previous_time - sat_solving_time;
+        println!("number of added block clauses = {}", clause_count);
+        println!("add block clauses time = {:?}", add_block_clauses_time);
+        println!("increment time = {:?}", time);
+        println!();
+        println!("solution: ");
+        println!("{}\n", line);
+        println!("s SATISFIABLE");
+        return (count, clause_count);
+    }
+    patched
+} else {
+    sol_cycles
+};
+```
+
+- [ ] **Step 2: Build release binary and run all unit tests**
+
+Run: `cd /home/ubuntu/HCP/src/cegar-fix && cargo test && cargo build --release`
+Expected: PASS with 23/23 unit tests passing and clean release build.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add src/cegar-fix/src/hcp_solver.rs
+git commit -m "feat: integrate ChainedLKSolver into CEGAR solver pipeline"
+```
+
+---
+
+### Task 3: Regression Benchmark & Dense Hub Verification
+
+**Files:**
+- Test: FHCPCS benchmarks (`FHCPCS-col/*.col`)
+
+- [ ] **Step 1: Verify 10 Key Regression Graphs**
+
+Run each of the 10 Key Regression graphs:
+- `graph45`, `graph132`, `graph161`, `graph178`, `graph183`, `graph230`, `graph248`, `graph313`, `graph339`, `graph346`.
+Command: `./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/<graph>.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`
+Expected: 10/10 return `s SATISFIABLE`.
+
+- [ ] **Step 2: Profile Dense Hub instances with 3-tier Patching Pipeline**
+
+Run:
+- `./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/graph560.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`
+- `./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/graph562.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`
+- `./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/graph584.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`
+Record total subcycle reduction across all 3 patchers (Hub + Matching + Chained LK).
+
+- [ ] **Step 3: Commit verification report**
+
+```bash
+git add docs/superpowers/plans/2026-08-16-chained-lk-patching.md
+git commit -m "docs: record verification results for Chained k-Opt Lin-Kernighan Patching Phase 3"
+```
