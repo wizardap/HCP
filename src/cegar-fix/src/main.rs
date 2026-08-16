@@ -1,3 +1,4 @@
+mod chained_lk;
 mod contraction;
 mod encoder;
 mod file_operations;
