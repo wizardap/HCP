@@ -11,6 +11,7 @@ use crate::encoder::*;
 use crate::file_operations;
 use crate::contraction::Degree2Contractor;
 use crate::hub_registry::HubRegistry;
+use crate::patching::HubPatcher;
 
 
 pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &HubRegistry, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, _cegar_fallback:i32, _mtz_stall:i32, _adaptive_escalation:i32, _sub_hcp_timeout: u64, _max_cluster_size: usize, instant:Instant,output_folder:&str) {
@@ -139,6 +140,30 @@ fn cegar(
             } else {
                 println!("number of subcycles found = {}", sol_cycles.len());
                 println!("sat solution cycle lengths map (length:number) = {:?}", map_cycle_lengths(&sol_cycles));
+
+                // Attempt Multi-Subcycle Hub Patching
+                let sol_cycles = if sol_cycles.len() > 1 && !hub_registry.hub_vertices.is_empty() {
+                    let patched = HubPatcher::patch_cycles_via_hubs(&sol_cycles, &g, contractor, hub_registry);
+                    if patched.len() == 1 && patched[0].len() == g.adjacency_list.len() {
+                        println!("number of subcycles found = 1 (via hub patching)");
+                        let flat: Vec<i32> = patched.into_iter().flatten().collect();
+                        let final_tour = contractor.uncontract_cycle(&flat);
+                        let line = final_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                        let time = now - previous_time;
+                        let add_block_clauses_time = now - previous_time - sat_solving_time;
+                        println!("number of added block clauses = {}", clause_count);
+                        println!("add block clauses time = {:?}", add_block_clauses_time);
+                        println!("increment time = {:?}", time);
+                        println!();
+                        println!("solution: ");
+                        println!("{}\n", line);
+                        println!("s SATISFIABLE");
+                        return (count, clause_count);
+                    }
+                    patched
+                } else {
+                    sol_cycles
+                };
 
                 // 2-opt / 3-opt solution constructor
                 let (block_clauses, _active_cycles) = if opt == 0 {
