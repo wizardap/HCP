@@ -10,9 +10,10 @@ use crate::graph::*;
 use crate::encoder::*;
 use crate::file_operations;
 use crate::contraction::Degree2Contractor;
+use crate::hub_registry::HubRegistry;
 
 
-pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, _cegar_fallback:i32, _mtz_stall:i32, _adaptive_escalation:i32, _sub_hcp_timeout: u64, _max_cluster_size: usize, instant:Instant,output_folder:&str) {
+pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &HubRegistry, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, _cegar_fallback:i32, _mtz_stall:i32, _adaptive_escalation:i32, _sub_hcp_timeout: u64, _max_cluster_size: usize, instant:Instant,output_folder:&str) {
     let now = instant.elapsed();
     let mut encoder = Encoder::new();
     // グラフをcnf形式に変形し、cnfへ格納
@@ -72,6 +73,7 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, _s:i32, encode_me
         0,
         g,
         contractor,
+        hub_registry,
         block_method,
         opt,
         three_opt,
@@ -93,6 +95,7 @@ fn cegar(
     mut clause_count: i32,
     g: Graph,
     contractor: &Degree2Contractor,
+    hub_registry: &HubRegistry,
     block_method: i32,
     opt: i32,
     three_opt: i32,
@@ -141,7 +144,7 @@ fn cegar(
                 let (block_clauses, _active_cycles) = if opt == 0 {
                     (get_blocking_clauses(&sol_cycles, encoder, &g, block_method, balanced), sol_cycles.clone())
                 } else if opt >= 1 {
-                    let (clauses, cycles) = two_opt(&sol_cycles, encoder, &g, contractor, block_method, balanced, opt, three_opt);
+                    let (clauses, cycles) = two_opt(&sol_cycles, encoder, &g, contractor, hub_registry, block_method, balanced, opt, three_opt);
                     if cycles.len() == 1 && cycles[0].len() == g.adjacency_list.len() {
                         let flat: Vec<i32> = cycles.into_iter().flatten().collect();
                         let full_cycle = contractor.uncontract_cycle(&flat);
@@ -240,6 +243,36 @@ fn get_solution_cycles(sol_arcs: Vec<(i32, i32)>) -> Vec<Vec<i32>> {
 }
 
 
+fn cycle_hub_score(cycle: &[i32], hub_registry: &HubRegistry, g: &Graph) -> (usize, usize) {
+    if hub_registry.hub_vertices.is_empty() {
+        return (0, 0);
+    }
+    let mut contains_hub_count = 0;
+    let mut incident_hub_edges = 0;
+
+    for &v in cycle {
+        if hub_registry.is_hub_vertex(v) {
+            contains_hub_count += 1;
+        }
+        if let Some(adjs) = g.adjacency_list.get(&v) {
+            for &u in adjs {
+                if hub_registry.is_hub_vertex(u) {
+                    incident_hub_edges += 1;
+                }
+            }
+        }
+    }
+
+    let tier = if contains_hub_count > 0 {
+        2
+    } else if incident_hub_edges > 0 {
+        1
+    } else {
+        0
+    };
+    (tier, contains_hub_count * 1000 + incident_hub_edges)
+}
+
 // 2-opt and Candidate 3-opt Solution Constructor
 // Attempts to merge subcycles into a single Hamiltonian Cycle.
 // If complete merger fails, returns standard blocking clauses for active subcycles.
@@ -248,6 +281,7 @@ fn two_opt(
     encoder: &mut Encoder,
     g: &Graph,
     contractor: &Degree2Contractor,
+    hub_registry: &HubRegistry,
     block_method: i32,
     balanced: i32,
     opt: i32,
@@ -258,9 +292,15 @@ fn two_opt(
     let mut cache_vertex: HashSet<usize> = HashSet::new();
     let mut active_cycles_number: Vec<usize> = (0..cycles.len()).collect();
 
+    if !hub_registry.hub_vertices.is_empty() {
+        active_cycles_number.sort_by(|&a, &b| {
+            cycle_hub_score(&cycles[b], hub_registry, g).cmp(&cycle_hub_score(&cycles[a], hub_registry, g))
+        });
+    }
+
     while merged {
         let (_new_block_clauses, new_merged, merged_numbers, new_cycle) =
-            merge_cycles(&cycles, encoder, g, contractor, block_method, balanced, &mut cache_vertex, &active_cycles_number, opt);
+            merge_cycles(&cycles, encoder, g, contractor, hub_registry, block_method, balanced, &mut cache_vertex, &active_cycles_number, opt);
         merged = new_merged;
 
         if merged {
@@ -271,12 +311,17 @@ fn two_opt(
                 active_cycles_number.remove(idx);
             }
             active_cycles_number.push(cycles.len() - 1);
+            if !hub_registry.hub_vertices.is_empty() {
+                active_cycles_number.sort_by(|&a, &b| {
+                    cycle_hub_score(&cycles[b], hub_registry, g).cmp(&cycle_hub_score(&cycles[a], hub_registry, g))
+                });
+            }
         }
 
         // Try candidate 3-opt merge when 2-opt cannot merge further
         if !merged && three_opt == 1 && active_cycles_number.len() >= 3 {
             let (_three_block_clauses, three_merged, three_indices, three_cycle) =
-                merge_three_cycles(&cycles, encoder, g, contractor, block_method, balanced, &active_cycles_number);
+                merge_three_cycles(&cycles, encoder, g, contractor, hub_registry, block_method, balanced, &active_cycles_number);
             if three_merged {
                 cycles.push(three_cycle);
                 let (ia, ib, ic) = three_indices;
@@ -288,6 +333,11 @@ fn two_opt(
                 active_cycles_number.push(cycles.len() - 1);
                 merged = true;
                 cache_vertex.clear();
+                if !hub_registry.hub_vertices.is_empty() {
+                    active_cycles_number.sort_by(|&a, &b| {
+                        cycle_hub_score(&cycles[b], hub_registry, g).cmp(&cycle_hub_score(&cycles[a], hub_registry, g))
+                    });
+                }
                 continue;
             }
         }
@@ -316,6 +366,7 @@ fn merge_cycles(
     encoder: &mut Encoder,
     g: &Graph,
     contractor: &Degree2Contractor,
+    hub_registry: &HubRegistry,
     block_method: i32,
     balanced: i32,
     cache_vertex: &mut HashSet<usize>,
@@ -330,7 +381,7 @@ fn merge_cycles(
             for j in i+1..active_cycles_number.len(){
                 let right = active_cycles_number[j];
 
-                match swap_node(&cycles[left],&cycles[right],&g, contractor){
+                match swap_node(&cycles[left],&cycles[right],&g, contractor, hub_registry){
                     Some(new_cycle) =>{
                     let new_block_clauses = get_blocking_clauses(&vec!(new_cycle.clone()), encoder, g, block_method, balanced);
                     return (new_block_clauses,true,(i,j),new_cycle)
@@ -352,13 +403,23 @@ fn merge_cycles(
 }
 
 
-fn swap_node(cycle1: &Vec<i32>, cycle2: &Vec<i32>, g: &Graph, contractor: &Degree2Contractor) -> Option<Vec<i32>> {
+fn swap_node(
+    cycle1: &Vec<i32>,
+    cycle2: &Vec<i32>,
+    g: &Graph,
+    contractor: &Degree2Contractor,
+    hub_registry: &HubRegistry,
+) -> Option<Vec<i32>> {
     for i in 0..cycle1.len() {
         let u1 = cycle1[i];
         let v1 = cycle1[(i + 1) % cycle1.len()];
         if contractor.chain_map.contains_key(&(u1, v1)) || contractor.chain_map.contains_key(&(v1, u1)) {
             continue;
         }
+
+        let u1_hub_set = hub_registry.hub_neighbors.get(&u1);
+        let v1_hub_set = hub_registry.hub_neighbors.get(&v1);
+
         let adjs_of_left_head = g.adjacency_list.get(&u1).unwrap();
         let adjs_of_left_tail = g.adjacency_list.get(&v1).unwrap();
 
@@ -367,14 +428,32 @@ fn swap_node(cycle1: &Vec<i32>, cycle2: &Vec<i32>, g: &Graph, contractor: &Degre
             let v2_fwd = cycle2[(j + 1) % cycle2.len()];
             let v2_rev = cycle2[(j + cycle2.len() - 1) % cycle2.len()];
 
-            if adjs_of_left_head.contains(&u2) {
-                if adjs_of_left_tail.contains(&v2_fwd) {
+            let u1_connected_u2 = if let Some(hset) = u1_hub_set {
+                hset.contains(&u2)
+            } else {
+                adjs_of_left_head.contains(&u2)
+            };
+
+            if u1_connected_u2 {
+                let v1_connected_fwd = if let Some(hset) = v1_hub_set {
+                    hset.contains(&v2_fwd)
+                } else {
+                    adjs_of_left_tail.contains(&v2_fwd)
+                };
+
+                if v1_connected_fwd {
                     if !contractor.chain_map.contains_key(&(u2, v2_fwd)) && !contractor.chain_map.contains_key(&(v2_fwd, u2)) {
                         return cycle_join(&cycle1, &cycle2, i, j, true);
                     }
                 }
 
-                if adjs_of_left_tail.contains(&v2_rev) {
+                let v1_connected_rev = if let Some(hset) = v1_hub_set {
+                    hset.contains(&v2_rev)
+                } else {
+                    adjs_of_left_tail.contains(&v2_rev)
+                };
+
+                if v1_connected_rev {
                     if !contractor.chain_map.contains_key(&(u2, v2_rev)) && !contractor.chain_map.contains_key(&(v2_rev, u2)) {
                         return cycle_join(&cycle1, &cycle2, i, j, false);
                     }
@@ -426,6 +505,7 @@ fn swap_three_nodes(
     c3: &Vec<i32>,
     g: &Graph,
     contractor: &Degree2Contractor,
+    hub_registry: &HubRegistry,
 ) -> Option<Vec<i32>> {
     for i in 0..c1.len() {
         let u1 = c1[i];
@@ -433,6 +513,7 @@ fn swap_three_nodes(
         if contractor.chain_map.contains_key(&(u1, v1)) || contractor.chain_map.contains_key(&(v1, u1)) {
             continue;
         }
+        let u1_hub = hub_registry.hub_neighbors.get(&u1);
         let adjs_u1 = g.adjacency_list.get(&u1).unwrap();
 
         for j in 0..c2.len() {
@@ -441,6 +522,7 @@ fn swap_three_nodes(
             if contractor.chain_map.contains_key(&(u2, v2)) || contractor.chain_map.contains_key(&(v2, u2)) {
                 continue;
             }
+            let u2_hub = hub_registry.hub_neighbors.get(&u2);
             let adjs_u2 = g.adjacency_list.get(&u2).unwrap();
 
             for k in 0..c3.len() {
@@ -449,14 +531,22 @@ fn swap_three_nodes(
                 if contractor.chain_map.contains_key(&(u3, v3)) || contractor.chain_map.contains_key(&(v3, u3)) {
                     continue;
                 }
+                let u3_hub = hub_registry.hub_neighbors.get(&u3);
                 let adjs_u3 = g.adjacency_list.get(&u3).unwrap();
 
+                let u1_has_v2 = if let Some(h) = u1_hub { h.contains(&v2) } else { adjs_u1.contains(&v2) };
+                let u1_has_v3 = if let Some(h) = u1_hub { h.contains(&v3) } else { adjs_u1.contains(&v3) };
+                let u2_has_v3 = if let Some(h) = u2_hub { h.contains(&v3) } else { adjs_u2.contains(&v3) };
+                let u2_has_v1 = if let Some(h) = u2_hub { h.contains(&v1) } else { adjs_u2.contains(&v1) };
+                let u3_has_v1 = if let Some(h) = u3_hub { h.contains(&v1) } else { adjs_u3.contains(&v1) };
+                let u3_has_v2 = if let Some(h) = u3_hub { h.contains(&v2) } else { adjs_u3.contains(&v2) };
+
                 // Config A: u1->v2, u2->v3, u3->v1
-                if adjs_u1.contains(&v2) && adjs_u2.contains(&v3) && adjs_u3.contains(&v1) {
+                if u1_has_v2 && u2_has_v3 && u3_has_v1 {
                     return cycle_join_three(c1, c2, c3, i, j, k, 0);
                 }
                 // Config B: u1->v3, u3->v2, u2->v1
-                if adjs_u1.contains(&v3) && adjs_u3.contains(&v2) && adjs_u2.contains(&v1) {
+                if u1_has_v3 && u3_has_v2 && u2_has_v1 {
                     return cycle_join_three(c1, c2, c3, i, j, k, 1);
                 }
             }
@@ -500,6 +590,7 @@ fn merge_three_cycles(
     encoder: &mut Encoder,
     g: &Graph,
     contractor: &Degree2Contractor,
+    hub_registry: &HubRegistry,
     block_method: i32,
     balanced: i32,
     active_cycles_number: &Vec<usize>,
@@ -539,7 +630,7 @@ fn merge_three_cycles(
                 let ci = active_cycles_number[a];
                 let cj = active_cycles_number[b];
                 let ck = active_cycles_number[c];
-                if let Some(new_cycle) = swap_three_nodes(&cycles[ci], &cycles[cj], &cycles[ck], g, contractor) {
+                if let Some(new_cycle) = swap_three_nodes(&cycles[ci], &cycles[cj], &cycles[ck], g, contractor, hub_registry) {
                     let new_block_clauses = get_blocking_clauses(&vec!(new_cycle.clone()), encoder, g, block_method, balanced);
                     return (new_block_clauses, true, (a, b, c), new_cycle);
                 }
@@ -1118,6 +1209,64 @@ mod tests_blocking_enhancements {
 
         let c_large = vec![1, 2, 3, 4, 5, 6, 7];
         assert!(get_induced_subgraph_sec_clauses(&c_large, &encoder, &g).is_empty());
+    }
+
+    #[test]
+    fn test_hub_aware_swap_node() {
+        // Build graph with hub 1 connected to vertices 2..=31
+        let mut g = Graph::new();
+        for v in 2..=31 {
+            g.add_edge(1, v);
+            let next_v = if v == 31 { 2 } else { v + 1 };
+            g.add_edge(v, next_v);
+        }
+        let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+        let hub_registry = HubRegistry::new(&contracted_g);
+        assert!(hub_registry.is_hub_vertex(1));
+
+        let c1 = vec![1, 2, 3];
+        let c2 = vec![4, 5, 6];
+        let merged = swap_node(&c1, &c2, &contracted_g, &contractor, &hub_registry);
+        assert!(merged.is_some());
+    }
+
+    #[test]
+    fn test_two_opt_hub_prioritization() {
+        let mut g = Graph::new();
+        for v in 2..=31 {
+            g.add_edge(1, v);
+            let next_v = if v == 31 { 2 } else { v + 1 };
+            g.add_edge(v, next_v);
+        }
+        g.add_edge(6, 4);
+        g.add_edge(9, 7);
+        g.add_edge(5, 8);
+        g.add_edge(5, 9);
+        let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+        let hub_registry = HubRegistry::new(&contracted_g);
+
+        let sol_cycles = vec![
+            vec![7, 8, 9],
+            vec![1, 2, 3],
+            vec![4, 5, 6],
+        ];
+        let mut encoder = Encoder::new();
+        encoder.encode(&contracted_g, 1, 0, 0, 0, 0, 0);
+
+        let (_clauses, merged_cycles) = two_opt(
+            &sol_cycles,
+            &mut encoder,
+            &contracted_g,
+            &contractor,
+            &hub_registry,
+            3,
+            0,
+            1,
+            0,
+        );
+        // All 9 vertices should be merged into a single cycle
+        assert_eq!(merged_cycles.len(), 1);
+        assert_eq!(merged_cycles[0].len(), 9);
     }
 }
 

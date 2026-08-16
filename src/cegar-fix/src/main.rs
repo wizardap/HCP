@@ -7,6 +7,7 @@ mod hub_registry;
 mod options;
 mod parallel_sub_hcp;
 use contraction::Degree2Contractor;
+use hub_registry::HubRegistry;
 use std::time::Instant;
 use log::info;
 
@@ -83,6 +84,14 @@ fn main() {
             (contractor.original_vertices_count - contractor.contracted_vertices_count) * 100 / contractor.original_vertices_count
         );
     }
+    let hub_registry = HubRegistry::new(&contracted_g);
+    if !hub_registry.hub_vertices.is_empty() {
+        println!(
+            "Dense Hub optimization: detected {} hub vertices (sample: {:?})",
+            hub_registry.hub_vertices.len(),
+            &hub_registry.hub_vertices[..hub_registry.hub_vertices.len().min(5)]
+        );
+    }
     let time1 = instant.elapsed();
     // println!("encodhing time = {:?} sec",instant.elapsed().as_secs());
     // let instant2 = Instant::now();
@@ -90,7 +99,7 @@ fn main() {
     // println!("solver={},encoding={}",solver,encoding);
     // println!("{:?}",g);
     println!("file input time = {:?}", time1);
-    hcp_solver::solve_hamilton(contracted_g, &contractor, solver, encoding, blocking, symmetry, two_opt, loop_prohibition, cnf_normalize, balanced, de_arcify,config,degree_order,arcs_order,three_opt,cegar_fallback,mtz_stall,adaptive_escalation,sub_hcp_timeout,max_cluster_size,instant,output_foldername);
+    hcp_solver::solve_hamilton(contracted_g, &contractor, &hub_registry, solver, encoding, blocking, symmetry, two_opt, loop_prohibition, cnf_normalize, balanced, de_arcify,config,degree_order,arcs_order,three_opt,cegar_fallback,mtz_stall,adaptive_escalation,sub_hcp_timeout,max_cluster_size,instant,output_foldername);
     let time2 = instant.elapsed() - time1;
 
     // println!("solving time = {:?} sec",instant2.elapsed().as_secs());
