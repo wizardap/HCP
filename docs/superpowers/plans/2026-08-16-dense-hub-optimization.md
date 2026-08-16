@@ -38,11 +38,11 @@
   }
   ```
 
-- [ ] **Step 1: Create `src/cegar-fix/src/hub_registry.rs`**
+- [x] **Step 1: Create `src/cegar-fix/src/hub_registry.rs`**
 
 Implement `HubRegistry` with `new` and `is_hub_vertex`. Compute `avg_deg` and `max_deg`. Mark vertices with $deg(v) \ge \min(50, \max(20, \max\_deg / 2))$ and $deg(v) \ge 3 \times \bar{d}$ as hubs. Store `hub_neighbors` as `HashSet<i32>` for $O(1)$ adjacency checks.
 
-- [ ] **Step 2: Add unit tests in `src/cegar-fix/src/hub_registry.rs`**
+- [x] **Step 2: Add unit tests in `src/cegar-fix/src/hub_registry.rs`**
 
 ```rust
 #[cfg(test)]
@@ -92,15 +92,15 @@ mod tests {
 }
 ```
 
-- [ ] **Step 3: Register `mod hub_registry;` in `src/cegar-fix/src/main.rs`**
+- [x] **Step 3: Register `mod hub_registry;` in `src/cegar-fix/src/main.rs`**
 
-- [ ] **Step 4: Run unit tests**
+- [x] **Step 4: Run unit tests**
 
 ```bash
 cd /home/ubuntu/HCP/src/cegar-fix && cargo test hub_registry
 ```
 
-- [ ] **Step 5: Commit changes**
+- [x] **Step 5: Commit changes**
 
 ```bash
 git add src/cegar-fix/src/hub_registry.rs src/cegar-fix/src/main.rs
@@ -119,7 +119,7 @@ git commit -m "feat: implement HubRegistry for dense hub detection"
 - Consumes: `HubRegistry` from Task 1.
 - Produces: Hub-accelerated `two_opt` and `merge_three_cycles` in `hcp_solver.rs`.
 
-- [ ] **Step 1: Update `main.rs` to construct `HubRegistry` and pass to `solve_hamilton`**
+- [x] **Step 1: Update `main.rs` to construct `HubRegistry` and pass to `solve_hamilton`**
 
 ```rust
 let hub_registry = hub_registry::HubRegistry::new(&contracted_g);
@@ -131,25 +131,25 @@ if !hub_registry.hub_vertices.is_empty() {
 hcp_solver::solve_hamilton(contracted_g, &contractor, &hub_registry, ...);
 ```
 
-- [ ] **Step 2: Update `two_opt` to sort active cycles by hub affinity**
+- [x] **Step 2: Update `two_opt` to sort active cycles by hub affinity**
 
 In `two_opt` in `src/cegar-fix/src/hcp_solver.rs`:
 Sort or partition `active_cycles_number` so that subcycles containing a hub vertex or adjacent to a hub vertex appear first in the merge loop.
 
-- [ ] **Step 3: Accelerate `swap_node` with Hub shortcuts**
+- [x] **Step 3: Accelerate `swap_node` with Hub shortcuts**
 
 In `swap_node`:
 When checking candidate edges between `cycle1` and `cycle2`:
 If `cycle1` contains a hub $H \in \text{hub\_vertices}$, fast-path check the intersection of `cycle2` vertices with `hub_registry.hub_neighbors[&H]` to find cut candidates in $O(|C_2|)$.
 Ensure `!contractor.chain_map.contains_key(&(u, v))` check is strictly enforced.
 
-- [ ] **Step 4: Build and test**
+- [x] **Step 4: Build and test**
 
 ```bash
 cd /home/ubuntu/HCP/src/cegar-fix && cargo test && cargo build --release
 ```
 
-- [ ] **Step 5: Commit changes**
+- [x] **Step 5: Commit changes**
 
 ```bash
 git add src/cegar-fix/src/hcp_solver.rs src/cegar-fix/src/main.rs
@@ -167,7 +167,7 @@ git commit -m "feat: implement hub-aware 2-opt and 3-opt heuristic search"
 - Consumes: `HubRegistry` from Task 1, `get_blocking_clauses` in `hcp_solver.rs`.
 - Produces: `get_hub_star_cut_clauses(cycle: &[i32], encoder: &Encoder, g: &Graph, hub_registry: &HubRegistry) -> Vec<Clause>`.
 
-- [ ] **Step 1: Implement `get_hub_star_cut_clauses` in `src/cegar-fix/src/hcp_solver.rs`**
+- [x] **Step 1: Implement `get_hub_star_cut_clauses` in `src/cegar-fix/src/hcp_solver.rs`**
 
 ```rust
 pub fn get_hub_star_cut_clauses(
@@ -220,17 +220,17 @@ pub fn get_hub_star_cut_clauses(
 }
 ```
 
-- [ ] **Step 2: Hook `get_hub_star_cut_clauses` into `get_blocking_clauses` under `block_method == 3`**
+- [x] **Step 2: Hook `get_hub_star_cut_clauses` into `get_blocking_clauses` under `block_method == 3`**
 
-- [ ] **Step 3: Add unit test in `src/cegar-fix/src/hcp_solver.rs`**
+- [x] **Step 3: Add unit test in `src/cegar-fix/src/hcp_solver.rs`**
 
-- [ ] **Step 4: Build and test**
+- [x] **Step 4: Build and test**
 
 ```bash
 cd /home/ubuntu/HCP/src/cegar-fix && cargo test && cargo build --release
 ```
 
-- [ ] **Step 5: Commit changes**
+- [x] **Step 5: Commit changes**
 
 ```bash
 git add src/cegar-fix/src/hcp_solver.rs
@@ -244,7 +244,7 @@ git commit -m "feat: implement hub-component star cuts in CEGAR solver"
 **Files:**
 - Create: `.superpowers/sdd/2026-08-16-dense-hub-optimization/task-4-report.md`
 
-- [ ] **Step 1: Verify 10 Key Regression Graphs (100% Pass Required)**
+- [x] **Step 1: Verify 10 Key Regression Graphs (100% Pass Required)**
 
 Run:
 ```bash
@@ -260,11 +260,11 @@ Run:
 ./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/graph346.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1
 ```
 
-- [ ] **Step 2: Profile Dense Hub instances**
+- [x] **Step 2: Profile Dense Hub instances**
 
 Run on `graph560.col`, `graph562.col`, `graph584.col`, `graph647.col` and measure CEGAR iterations and solving time.
 
-- [ ] **Step 3: Record verification results and commit**
+- [x] **Step 3: Record verification results and commit**
 
 ```bash
 git add .superpowers/sdd/
