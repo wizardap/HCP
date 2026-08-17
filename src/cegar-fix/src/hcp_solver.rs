@@ -3,7 +3,7 @@ use rustsat::types::*;
 use rustsat::solvers::*;
 use rustsat::clause;
 use rustsat_cadical::Config;
-use std::collections::{BTreeMap,HashMap,HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::time::{Instant,Duration};
 // use crate::encoder;
 use crate::graph::*;
@@ -184,6 +184,106 @@ pub fn add_global_short_cycle_cuts(
     added_clauses
 }
 
+/// Adds cardinality cut constraints on satellite clusters (components of degree < 20 vertices with size >= 50)
+/// to prune the search space for CaDiCaL SAT solver before execution.
+/// Returns the total number of added cluster cut clauses.
+pub fn add_cluster_cut_constraints(
+    g: &Graph,
+    encoder: &Encoder,
+    cnf: &mut Cnf,
+) -> usize {
+    let n = g.adjacency_list.len();
+    if n < 50 {
+        return 0;
+    }
+
+    // 1. Identify satellite vertices (degree < 20)
+    let mut satellite_vertices: Vec<i32> = Vec::new();
+    for (&u, neighbors) in &g.adjacency_list {
+        if neighbors.len() < 20 {
+            satellite_vertices.push(u);
+        }
+    }
+    satellite_vertices.sort_unstable();
+
+    let satellite_set: HashSet<i32> = satellite_vertices.iter().copied().collect();
+    let mut visited: HashSet<i32> = HashSet::new();
+    let mut clusters: Vec<HashSet<i32>> = Vec::new();
+
+    // 2. Find connected components among satellite vertices in G[S]
+    for &u in &satellite_vertices {
+        if visited.contains(&u) {
+            continue;
+        }
+        let mut cluster = HashSet::new();
+        let mut queue = VecDeque::new();
+        visited.insert(u);
+        queue.push_back(u);
+
+        while let Some(curr) = queue.pop_front() {
+            cluster.insert(curr);
+            if let Some(neighbors) = g.adjacency_list.get(&curr) {
+                for &nbr in neighbors {
+                    if satellite_set.contains(&nbr) && !visited.contains(&nbr) {
+                        visited.insert(nbr);
+                        queue.push_back(nbr);
+                    }
+                }
+            }
+        }
+
+        // Filter clusters of size >= 50 and proper subset of V
+        if cluster.len() >= 50 && cluster.len() < n {
+            clusters.push(cluster);
+        }
+    }
+
+    if clusters.is_empty() {
+        return 0;
+    }
+
+    let mut added_clauses = 0;
+
+    // 3. For each cluster C_i, generate cut clauses
+    for cluster in &clusters {
+        let mut out_lits: Vec<Lit> = Vec::new();
+        let mut in_lits: Vec<Lit> = Vec::new();
+
+        for &u in cluster {
+            if let Some(neighbors) = g.adjacency_list.get(&u) {
+                for &v in neighbors {
+                    if !cluster.contains(&v) {
+                        if let Some(&lit_out) = encoder.graph_lit_map.get(&(u, v)) {
+                            out_lits.push(lit_out);
+                        }
+                        if let Some(&lit_in) = encoder.graph_lit_map.get(&(v, u)) {
+                            in_lits.push(lit_in);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Add positive out-cut clause: at least 1 edge leaves cluster
+        if !out_lits.is_empty() {
+            let mut cl_out = Clause::new();
+            cl_out.extend(out_lits);
+            cnf.add_clause(cl_out);
+            added_clauses += 1;
+        }
+
+        // Add positive in-cut clause: at least 1 edge enters cluster
+        if !in_lits.is_empty() {
+            let mut cl_in = Clause::new();
+            cl_in.extend(in_lits);
+            cnf.add_clause(cl_in);
+            added_clauses += 1;
+        }
+    }
+
+    added_clauses
+}
+
 pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &HubRegistry, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, _cegar_fallback:i32, _mtz_stall:i32, _adaptive_escalation:i32, _sub_hcp_timeout: u64, _max_cluster_size: usize, instant:Instant,output_folder:&str) {
     let now = instant.elapsed();
     let mut encoder = Encoder::new();
@@ -202,6 +302,13 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
         let added_cuts = add_global_short_cycle_cuts(&g, &encoder, &mut cnf, 4);
         if added_cuts > 0 {
             println!("added global short-cycle cuts = {}", added_cuts);
+        }
+    }
+    // Add cluster cut constraints for CaDiCaL satellite space pruning
+    if hub_registry.hub_vertices.len() >= 5 {
+        let added_cluster_cuts = add_cluster_cut_constraints(&g, &encoder, &mut cnf);
+        if added_cluster_cuts > 0 {
+            println!("added cluster cut constraints = {}", added_cluster_cuts);
         }
     }
     let current_cnf = if output_folder != "default" {
@@ -1657,6 +1764,58 @@ mod tests_blocking_enhancements {
         let mut cnf_g4 = encoder4.encode(&g4, 1, 0, 0, 0, 0, 0);
         let added_g4 = add_global_short_cycle_cuts(&g4, &encoder4, &mut cnf_g4, 4);
         assert_eq!(added_g4, 0);
+    }
+
+    #[test]
+    fn test_cluster_cut_constraints() {
+        // Build a graph with 25 hubs (1..=25, complete clique so degree = 24 >= 20)
+        // and 50 satellite vertices (101..=150)
+        let mut g = Graph::new();
+        // 25-clique for hubs
+        for i in 1..=25 {
+            for j in (i + 1)..=25 {
+                g.add_edge(i, j);
+            }
+        }
+        // Satellite cluster of size 50: 101..=150
+        for v in 101..150 {
+            g.add_edge(v, v + 1);
+        }
+        g.add_edge(150, 101);
+
+        // Boundary cut edges from satellite cluster to hubs
+        g.add_edge(101, 1);
+        g.add_edge(110, 2);
+        g.add_edge(120, 3);
+        g.add_edge(130, 4);
+        g.add_edge(140, 5);
+
+        let mut encoder = Encoder::new();
+        let mut cnf = encoder.encode(&g, 1, 0, 0, 0, 0, 0);
+        let base_clause_count = cnf.len();
+
+        let added = add_cluster_cut_constraints(&g, &encoder, &mut cnf);
+        assert!(added >= 2, "Must add at least out-cut and in-cut clauses for cluster >= 50, got {}", added);
+        assert_eq!(cnf.len(), base_clause_count + added);
+
+        // Verify safety on small graph (< 50 satellite vertices)
+        let mut g_small = Graph::new();
+        for i in 1..=25 {
+            for j in (i + 1)..=25 {
+                g_small.add_edge(i, j);
+            }
+        }
+        for v in 101..120 {
+            g_small.add_edge(v, v + 1);
+        }
+        g_small.add_edge(120, 101);
+        g_small.add_edge(101, 1);
+        g_small.add_edge(110, 2);
+
+        let mut encoder_small = Encoder::new();
+        let mut cnf_small = encoder_small.encode(&g_small, 1, 0, 0, 0, 0, 0);
+        let added_small = add_cluster_cut_constraints(&g_small, &encoder_small, &mut cnf_small);
+        assert_eq!(added_small, 0, "Must not add cluster cuts when satellite clusters are < 50");
     }
 }
 
