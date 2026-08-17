@@ -9,6 +9,7 @@ mod hub_sub_hcp;
 mod ils_patcher;
 mod macro_solver;
 mod matching_patcher;
+pub mod modular_solver;
 mod options;
 mod parallel_sub_hcp;
 mod patching;

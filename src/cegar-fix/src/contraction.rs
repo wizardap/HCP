@@ -294,6 +294,29 @@ impl Degree2Contractor {
 
         full_cycle
     }
+
+    pub fn uncontract_path(&self, contracted_path: &[i32]) -> Vec<i32> {
+        let mut full_path = Vec::new();
+        let len = contracted_path.len();
+        if len == 0 {
+            return full_path;
+        }
+
+        for i in 0..len {
+            let u = contracted_path[i];
+            full_path.push(u);
+            if i + 1 < len {
+                let v = contracted_path[i + 1];
+                if let Some(intermediates) = self.chain_map.get(&(u, v)) {
+                    for &inter in intermediates {
+                        full_path.push(inter);
+                    }
+                }
+            }
+        }
+
+        full_path
+    }
 }
 
 #[cfg(test)]
