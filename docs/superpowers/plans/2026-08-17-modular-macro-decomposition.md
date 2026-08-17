@@ -47,11 +47,11 @@
   }
   ```
 
-- [ ] **Step 1: Declare `mod modular_solver;` in `src/cegar-fix/src/main.rs`**
+- [x] **Step 1: Declare `mod modular_solver;` in `src/cegar-fix/src/main.rs`**
 
 Add `pub mod modular_solver;` to `src/cegar-fix/src/main.rs`.
 
-- [ ] **Step 2: Implement `src/cegar-fix/src/modular_solver.rs`**
+- [x] **Step 2: Implement `src/cegar-fix/src/modular_solver.rs`**
 
 Write:
 - `SatelliteModule` struct containing `module_id`, `vertices: HashSet<i32>`, `internal_adj`, `hub_connections: HashMap<i32, Vec<i32>>`.
@@ -60,12 +60,12 @@ Write:
 - `solve_via_modular_decomposition`: Contracts each module into macro-edges, builds macro-graph of size $\le 60$, solves macro-tour via Mini-SAT, uncontracts paths and degree-2 chains, verifies validity with `is_valid_cycle`.
 - Unit tests: `test_satellite_module_extraction`, `test_module_hamiltonian_path_solving`, `test_modular_solver_end_to_end`.
 
-- [ ] **Step 3: Run unit tests to verify module passes**
+- [x] **Step 3: Run unit tests to verify module passes**
 
 Run: `cd /home/ubuntu/HCP/src/cegar-fix && cargo test modular_solver`
 Expected: PASS with unit tests passing.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/cegar-fix/src/modular_solver.rs src/cegar-fix/src/main.rs
@@ -83,7 +83,7 @@ git commit -m "feat: implement ModularSolver module for dense hub module decompo
 - Consumes: `ModularSolver` from `crate::modular_solver`.
 - Produces: Top-level structural decomposition check in `cegar()`.
 
-- [ ] **Step 1: Integrate `ModularSolver` into `cegar()`**
+- [x] **Step 1: Integrate `ModularSolver` into `cegar()`**
 
 In `src/cegar-fix/src/hcp_solver.rs`:
 ```rust
@@ -102,12 +102,12 @@ if hub_registry.hub_vertices.len() >= 5 {
 }
 ```
 
-- [ ] **Step 2: Build release binary and run all unit tests**
+- [x] **Step 2: Build release binary and run all unit tests**
 
 Run: `cd /home/ubuntu/HCP/src/cegar-fix && cargo test && cargo build --release`
 Expected: PASS with 36/36 unit tests passing and clean release build.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/cegar-fix/src/hcp_solver.rs
@@ -121,14 +121,14 @@ git commit -m "feat: integrate ModularSolver into CEGAR solver pipeline"
 **Files:**
 - Test: FHCPCS benchmarks (`FHCPCS-col/*.col`)
 
-- [ ] **Step 1: Verify 10 Key Regression Graphs**
+- [x] **Step 1: Verify 10 Key Regression Graphs**
 
 Run each of the 10 Key Regression graphs:
 - `graph45`, `graph132`, `graph161`, `graph178`, `graph183`, `graph230`, `graph248`, `graph313`, `graph339`, `graph346`.
 Command: `./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/<graph>.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`
 Expected: 10/10 return `s SATISFIABLE`.
 
-- [ ] **Step 2: Profile Dense Hub instances**
+- [x] **Step 2: Profile Dense Hub instances**
 
 Run with 120s timeout:
 - `./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/graph560.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`
@@ -136,7 +136,7 @@ Run with 120s timeout:
 - `./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/graph584.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`
 Measure solve time and verify rapid convergence.
 
-- [ ] **Step 3: Commit verification report**
+- [x] **Step 3: Commit verification report**
 
 ```bash
 git add docs/superpowers/plans/2026-08-17-modular-macro-decomposition.md
