@@ -50,6 +50,9 @@ pub fn add_global_short_cycle_cuts(
                 Some(s) => s,
                 None => continue,
             };
+            if u_neighbors.len() > 20 {
+                continue;
+            }
 
             for j in (i + 1)..vertices.len() {
                 let v = vertices[j];
@@ -60,10 +63,21 @@ pub fn add_global_short_cycle_cuts(
                     Some(s) => s,
                     None => continue,
                 };
+                if v_neighbors.len() > 20 {
+                    continue;
+                }
 
                 for k in (j + 1)..vertices.len() {
                     let w = vertices[k];
                     if v_neighbors.contains(&w) && u_neighbors.contains(&w) {
+                        let w_neighbors = match adj_set.get(&w) {
+                            Some(s) => s,
+                            None => continue,
+                        };
+                        if w_neighbors.len() > 20 {
+                            continue;
+                        }
+
                         // Forward cycle: u -> v -> w -> u
                         if let (Some(&x_uv), Some(&x_vw), Some(&x_wu)) = (
                             encoder.graph_lit_map.get(&(u, v)),
@@ -97,6 +111,9 @@ pub fn add_global_short_cycle_cuts(
                 None => continue,
             };
             let deg_u = u_neighbors.len();
+            if deg_u > 20 {
+                continue;
+            }
 
             for j in (i + 1)..vertices.len() {
                 let w = vertices[j];
@@ -105,20 +122,21 @@ pub fn add_global_short_cycle_cuts(
                     None => continue,
                 };
                 let deg_w = w_neighbors.len();
+                if deg_w > 20 {
+                    continue;
+                }
 
-                let has_uw_edge = u_neighbors.contains(&w);
-
-                // Find common neighbors c of u and w with c > u
+                // Find common neighbors c of u and w with c > u and deg(c) <= 20
                 let mut common: Vec<i32> = Vec::new();
                 if deg_u < deg_w {
                     for &c in u_neighbors {
-                        if c > u && w_neighbors.contains(&c) {
+                        if c > u && w_neighbors.contains(&c) && adj_set.get(&c).map_or(0, |s| s.len()) <= 20 {
                             common.push(c);
                         }
                     }
                 } else {
                     for &c in w_neighbors {
-                        if c > u && u_neighbors.contains(&c) {
+                        if c > u && u_neighbors.contains(&c) && adj_set.get(&c).map_or(0, |s| s.len()) <= 20 {
                             common.push(c);
                         }
                     }
@@ -135,12 +153,7 @@ pub fn add_global_short_cycle_cuts(
                     for b in (a + 1)..common.len() {
                         let z = common[b];
 
-                        let has_vz_edge = adj_set.get(&v).map_or(false, |s| s.contains(&z));
-                        let is_chordless = !has_uw_edge && !has_vz_edge;
-                        let within_degree_limit = deg_u <= 100 && deg_w <= 100;
-
-                        if within_degree_limit || is_chordless {
-                            // Forward cycle: u -> v -> w -> z -> u
+                        // Forward cycle: u -> v -> w -> z -> u
                             if let (Some(&x_uv), Some(&x_vw), Some(&x_wz), Some(&x_zu)) = (
                                 encoder.graph_lit_map.get(&(u, v)),
                                 encoder.graph_lit_map.get(&(v, w)),
@@ -160,7 +173,6 @@ pub fn add_global_short_cycle_cuts(
                             ) {
                                 cnf.add_clause(clause!(!x_uz, !x_zw, !x_wv, !x_vu));
                                 added_clauses += 1;
-                            }
                         }
                     }
                 }
