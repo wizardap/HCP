@@ -17,6 +17,7 @@ use crate::chained_lk::ChainedLKSolver;
 use crate::ils_patcher::IteratedLocalSearchPatcher;
 use crate::macro_solver::MacroGraphSolver;
 use crate::hub_sub_hcp::HubPartitionedSolver;
+use crate::modular_solver::ModularSolver;
 
 
 /// Pre-emptively forbids 3-cycles (triangles) and 4-cycles in the initial CNF encoding.
@@ -265,6 +266,15 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
     println!("overall number of added block clauses = {}", block);
 }
 
+fn print_tour(tour: &[i32], contractor: &Degree2Contractor) {
+    let final_tour = contractor.uncontract_cycle(tour);
+    let line = final_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+    println!();
+    println!("solution: ");
+    println!("{}\n", line);
+    println!("s SATISFIABLE");
+}
+
 fn cegar(
     encoder: &mut Encoder,
     mut solver: rustsat_cadical::CaDiCaL<'_, '_>,
@@ -283,6 +293,16 @@ fn cegar(
     mut previous_cnf: Cnf,
     output_folder: &str,
 ) -> (i32, i32) {
+    // Attempt Modular Macro-Decomposition when dense hubs are detected
+    if hub_registry.hub_vertices.len() >= 5 {
+        if let Some(tour) = ModularSolver::solve_via_modular_decomposition(&g, contractor, hub_registry) {
+            println!("s SATISFIABLE (via Modular Macro-Decomposition)");
+            println!("overall incremented number = 0");
+            print_tour(&tour, contractor);
+            return (0, 0);
+        }
+    }
+
     // Attempt Hub-Partitioned Divide-and-Conquer for Dense Hub Graphs
     if !hub_registry.hub_vertices.is_empty() && hub_registry.hub_vertices.len() >= 3 {
         if let Some(partition_tour) = HubPartitionedSolver::solve_via_hub_partition(&g, contractor, hub_registry) {
