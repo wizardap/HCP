@@ -1,6 +1,7 @@
 use rustsat::instances::*;
 use rustsat::types::*;
 use rustsat::solvers::*;
+use rustsat::solvers::PhaseLit;
 use rustsat::clause;
 use rustsat_cadical::Config;
 use std::collections::{BTreeMap,HashMap,HashSet};
@@ -469,6 +470,19 @@ fn cegar(
                 } else {
                     panic!("2-opt option \n-t 0:2-opt off\n-t 1,2,3:2-opt on");
                 };
+
+                // Inject positive polarity phase hints for edges in aggregate cycles
+                for cycle in &sol_cycles {
+                    if cycle.len() >= 10 {
+                        for i in 0..cycle.len() {
+                            let u = cycle[i];
+                            let v = cycle[(i + 1) % cycle.len()];
+                            if let Some(&lit) = encoder.graph_lit_map.get(&(u, v)) {
+                                let _ = solver.phase_lit(lit);
+                            }
+                        }
+                    }
+                }
 
                 let mut cnf = Cnf::new();
                 cnf.extend(block_clauses);
@@ -1625,6 +1639,43 @@ mod tests_blocking_enhancements {
         let mut cnf_g4 = encoder4.encode(&g4, 1, 0, 0, 0, 0, 0);
         let added_g4 = add_global_short_cycle_cuts(&g4, &encoder4, &mut cnf_g4, 4);
         assert_eq!(added_g4, 0);
+    }
+
+    #[test]
+    fn test_polarity_phase_hints_integration() {
+        let mut g = Graph::new();
+        // Create a 12-vertex cycle graph
+        for v in 1..=12 {
+            let next_v = if v == 12 { 1 } else { v + 1 };
+            g.add_edge(v, next_v);
+        }
+        let mut encoder = Encoder::new();
+        let cnf = encoder.encode(&g, 1, 0, 0, 0, 0, 0);
+
+        let mut solver = rustsat_cadical::CaDiCaL::default();
+        solver.add_cnf(cnf).unwrap();
+
+        let cycle: Vec<i32> = (1..=12).collect();
+        let sol_cycles = vec![cycle];
+
+        let mut hinted_count = 0;
+        for cycle in &sol_cycles {
+            if cycle.len() >= 10 {
+                for i in 0..cycle.len() {
+                    let u = cycle[i];
+                    let v = cycle[(i + 1) % cycle.len()];
+                    if let Some(&lit) = encoder.graph_lit_map.get(&(u, v)) {
+                        let res = solver.phase_lit(lit);
+                        assert!(res.is_ok());
+                        hinted_count += 1;
+                    }
+                }
+            }
+        }
+        assert_eq!(hinted_count, 12);
+
+        let res = solver.solve().unwrap();
+        assert_eq!(res, SolverResult::Sat);
     }
 }
 
