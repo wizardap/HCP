@@ -34,7 +34,7 @@
   ) -> usize;
   ```
 
-- [ ] **Step 1: Implement `add_global_short_cycle_cuts` in `src/cegar-fix/src/hcp_solver.rs`**
+- [x] **Step 1: Implement `add_global_short_cycle_cuts` in `src/cegar-fix/src/hcp_solver.rs`**
 
 Write:
 - Triangle extraction: finds all triangles $(u, v, w)$ with $u < v < w$ and adds `(!x_uv | !x_vw | !x_wu)` and reverse `(!x_uw | !x_wv | !x_vu)`.
@@ -42,12 +42,12 @@ Write:
 - Integration: Call `add_global_short_cycle_cuts` when `loop_prohibition >= 1` or when `hub_registry.hub_vertices.len() >= 3`.
 - Unit test: `test_short_cycle_pruning_triangles_and_quads`.
 
-- [ ] **Step 2: Run unit tests to verify module passes**
+- [x] **Step 2: Run unit tests to verify module passes**
 
 Run: `cd /home/ubuntu/HCP/src/cegar-fix && cargo test test_short_cycle`
 Expected: PASS with unit tests passing.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/cegar-fix/src/hcp_solver.rs
@@ -65,7 +65,7 @@ git commit -m "feat: implement global short-cycle pruning for triangles and 4-cy
 - Consumes: `PhaseLit` trait from `rustsat::solvers::PhaseLit`.
 - Produces: Polarity phase hints injection inside the CEGAR loop before next `solver.solve()`.
 
-- [ ] **Step 1: Import `PhaseLit` and inject phase hints in `cegar()`**
+- [x] **Step 1: Import `PhaseLit` and inject phase hints in `cegar()`**
 
 In `src/cegar-fix/src/hcp_solver.rs`:
 ```rust
@@ -88,12 +88,12 @@ for cycle in &sol_cycles {
 }
 ```
 
-- [ ] **Step 2: Build release binary and run all unit tests**
+- [x] **Step 2: Build release binary and run all unit tests**
 
 Run: `cd /home/ubuntu/HCP/src/cegar-fix && cargo test && cargo build --release`
 Expected: PASS with 34/34 unit tests passing and clean release build.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/cegar-fix/src/hcp_solver.rs
@@ -107,14 +107,14 @@ git commit -m "feat: implement polarity phase hints for CaDiCaL CEGAR accelerati
 **Files:**
 - Test: FHCPCS benchmarks (`FHCPCS-col/*.col`)
 
-- [ ] **Step 1: Verify 10 Key Regression Graphs**
+- [x] **Step 1: Verify 10 Key Regression Graphs**
 
 Run each of the 10 Key Regression graphs:
 - `graph45`, `graph132`, `graph161`, `graph178`, `graph183`, `graph230`, `graph248`, `graph313`, `graph339`, `graph346`.
 Command: `./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/<graph>.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`
 Expected: 10/10 return `s SATISFIABLE`.
 
-- [ ] **Step 2: Profile Dense Hub instances with Short-Cycle Pruning and Polarity Hints**
+- [x] **Step 2: Profile Dense Hub instances with Short-Cycle Pruning and Polarity Hints**
 
 Run with 120s timeout:
 - `./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/graph560.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`
@@ -122,7 +122,7 @@ Run with 120s timeout:
 - `./src/cegar-fix/target/release/cegar-fix -i FHCPCS-col/graph584.col -e 1 -b 3 -y 0 -t 3 -l 1 --three-opt 1`
 Measure CEGAR iteration count and SAT solving time acceleration.
 
-- [ ] **Step 3: Commit verification report**
+- [x] **Step 3: Commit verification report**
 
 ```bash
 git add docs/superpowers/plans/2026-08-17-polarity-and-short-cycle-pruning.md
