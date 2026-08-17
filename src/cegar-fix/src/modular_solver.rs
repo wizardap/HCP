@@ -30,13 +30,20 @@ impl ModularSolver {
             return Vec::new();
         }
 
-        let hub_set: HashSet<i32> = hub_registry.hub_vertices.iter().copied().collect();
+        let mut hub_set: HashSet<i32> = hub_registry.hub_vertices.iter().copied().collect();
+        // For dense hub graphs, include all high-degree connectors (degree >= 20) in hub_set
+        for (&u, nbrs) in &g.adjacency_list {
+            if nbrs.len() >= 20 {
+                hub_set.insert(u);
+            }
+        }
         let mut non_hub_vertices: Vec<i32> = g
             .adjacency_list
             .keys()
             .filter(|v| !hub_set.contains(v))
             .copied()
             .collect();
+
         non_hub_vertices.sort_unstable();
 
         let mut visited = HashSet::new();
@@ -462,6 +469,8 @@ impl ModularSolver {
                 None => return None, // Could not solve Hamiltonian path for this module
             }
         }
+
+
 
         // Build Reduced Macro-Graph
         // Macro-nodes: Hubs + Remainder vertices + (in_v, out_v) for each module
@@ -1071,4 +1080,25 @@ mod tests {
         let result = ModularSolver::solve_via_modular_decomposition(&g, &contractor, &hub_registry);
         assert!(result.is_none());
     }
+
+    #[test]
+    #[ignore]
+    fn test_modular_dense_graph560() {
+        let g = crate::file_operations::input_to_graph("../../FHCPCS-col/graph560.col");
+        let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+        let hub_registry = HubRegistry::new(&contracted_g);
+        println!("Hubs detected: {}", hub_registry.hub_vertices.len());
+        for h in &hub_registry.hub_vertices {
+            println!("  Hub {}: degree {}", h, contracted_g.adjacency_list[h].len());
+        }
+        let modules = ModularSolver::extract_satellite_modules(&contracted_g, &hub_registry);
+        println!("Modules extracted: {}", modules.len());
+        for (i, m) in modules.iter().enumerate() {
+            println!("  Module {}: size={}, connected to {} hubs", i, m.vertices.len(), m.hub_connections.len());
+        }
+        let t0 = std::time::Instant::now();
+        let res = ModularSolver::solve_via_modular_decomposition(&contracted_g, &contractor, &hub_registry);
+        println!("ModularSolver result: {:?}, elapsed: {:?}", res.is_some(), t0.elapsed());
+    }
 }
+

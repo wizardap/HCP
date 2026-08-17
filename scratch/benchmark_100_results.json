@@ -1,0 +1,810 @@
+{
+  "total": 100,
+  "solved": 37,
+  "timeout": 63,
+  "errors": 0,
+  "pass_rate_pct": 37.0,
+  "total_time_sec": 1037.8702430725098,
+  "results": [
+    {
+      "index": 1,
+      "graph": "graph10",
+      "status": "SATISFIABLE",
+      "time": 0.4531824588775635,
+      "increments": "23",
+      "notes": ""
+    },
+    {
+      "index": 2,
+      "graph": "graph20",
+      "status": "SATISFIABLE",
+      "time": 0.48049068450927734,
+      "increments": "29",
+      "notes": ""
+    },
+    {
+      "index": 3,
+      "graph": "graph30",
+      "status": "SATISFIABLE",
+      "time": 0.3092315196990967,
+      "increments": "12",
+      "notes": ""
+    },
+    {
+      "index": 4,
+      "graph": "graph40",
+      "status": "SATISFIABLE",
+      "time": 0.5776872634887695,
+      "increments": "24",
+      "notes": ""
+    },
+    {
+      "index": 5,
+      "graph": "graph50",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 6,
+      "graph": "graph60",
+      "status": "SATISFIABLE",
+      "time": 0.5438334941864014,
+      "increments": "22",
+      "notes": ""
+    },
+    {
+      "index": 7,
+      "graph": "graph70",
+      "status": "SATISFIABLE",
+      "time": 0.17076349258422852,
+      "increments": "2",
+      "notes": ""
+    },
+    {
+      "index": 8,
+      "graph": "graph80",
+      "status": "SATISFIABLE",
+      "time": 0.3184785842895508,
+      "increments": "8",
+      "notes": ""
+    },
+    {
+      "index": 9,
+      "graph": "graph90",
+      "status": "SATISFIABLE",
+      "time": 6.654296636581421,
+      "increments": "0",
+      "notes": ""
+    },
+    {
+      "index": 10,
+      "graph": "graph100",
+      "status": "SATISFIABLE",
+      "time": 0.30895018577575684,
+      "increments": "10",
+      "notes": ""
+    },
+    {
+      "index": 11,
+      "graph": "graph110",
+      "status": "SATISFIABLE",
+      "time": 0.5529313087463379,
+      "increments": "3",
+      "notes": ""
+    },
+    {
+      "index": 12,
+      "graph": "graph120",
+      "status": "SATISFIABLE",
+      "time": 0.17235136032104492,
+      "increments": "1",
+      "notes": ""
+    },
+    {
+      "index": 13,
+      "graph": "graph130",
+      "status": "SATISFIABLE",
+      "time": 0.07735872268676758,
+      "increments": "0",
+      "notes": ""
+    },
+    {
+      "index": 14,
+      "graph": "graph140",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 15,
+      "graph": "graph150",
+      "status": "SATISFIABLE",
+      "time": 5.372124671936035,
+      "increments": "0",
+      "notes": ""
+    },
+    {
+      "index": 16,
+      "graph": "graph160",
+      "status": "SATISFIABLE",
+      "time": 1.7571637630462646,
+      "increments": "23",
+      "notes": ""
+    },
+    {
+      "index": 17,
+      "graph": "graph170",
+      "status": "SATISFIABLE",
+      "time": 0.17266559600830078,
+      "increments": "1",
+      "notes": ""
+    },
+    {
+      "index": 18,
+      "graph": "graph180",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 19,
+      "graph": "graph190",
+      "status": "SATISFIABLE",
+      "time": 2.498339891433716,
+      "increments": "24",
+      "notes": ""
+    },
+    {
+      "index": 20,
+      "graph": "graph200",
+      "status": "SATISFIABLE",
+      "time": 1.2651376724243164,
+      "increments": "6",
+      "notes": ""
+    },
+    {
+      "index": 21,
+      "graph": "graph210",
+      "status": "SATISFIABLE",
+      "time": 0.6077303886413574,
+      "increments": "3",
+      "notes": ""
+    },
+    {
+      "index": 22,
+      "graph": "graph220",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 23,
+      "graph": "graph230",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 24,
+      "graph": "graph240",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 25,
+      "graph": "graph250",
+      "status": "SATISFIABLE",
+      "time": 6.784824848175049,
+      "increments": "12",
+      "notes": ""
+    },
+    {
+      "index": 26,
+      "graph": "graph260",
+      "status": "SATISFIABLE",
+      "time": 0.22267675399780273,
+      "increments": "0",
+      "notes": ""
+    },
+    {
+      "index": 27,
+      "graph": "graph270",
+      "status": "SATISFIABLE",
+      "time": 0.7819738388061523,
+      "increments": "1",
+      "notes": ""
+    },
+    {
+      "index": 28,
+      "graph": "graph280",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 29,
+      "graph": "graph290",
+      "status": "SATISFIABLE",
+      "time": 4.52187180519104,
+      "increments": "8",
+      "notes": ""
+    },
+    {
+      "index": 30,
+      "graph": "graph300",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 31,
+      "graph": "graph310",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 32,
+      "graph": "graph320",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 33,
+      "graph": "graph330",
+      "status": "SATISFIABLE",
+      "time": 0.806145429611206,
+      "increments": "0",
+      "notes": ""
+    },
+    {
+      "index": 34,
+      "graph": "graph340",
+      "status": "SATISFIABLE",
+      "time": 13.641926527023315,
+      "increments": "13",
+      "notes": ""
+    },
+    {
+      "index": 35,
+      "graph": "graph350",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 36,
+      "graph": "graph360",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 37,
+      "graph": "graph370",
+      "status": "SATISFIABLE",
+      "time": 7.380964279174805,
+      "increments": "5",
+      "notes": ""
+    },
+    {
+      "index": 38,
+      "graph": "graph380",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 39,
+      "graph": "graph390",
+      "status": "SATISFIABLE",
+      "time": 0.9155449867248535,
+      "increments": "0",
+      "notes": ""
+    },
+    {
+      "index": 40,
+      "graph": "graph400",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 41,
+      "graph": "graph410",
+      "status": "SATISFIABLE",
+      "time": 1.6498146057128906,
+      "increments": "0",
+      "notes": ""
+    },
+    {
+      "index": 42,
+      "graph": "graph420",
+      "status": "SATISFIABLE",
+      "time": 1.6936519145965576,
+      "increments": "0",
+      "notes": ""
+    },
+    {
+      "index": 43,
+      "graph": "graph430",
+      "status": "SATISFIABLE",
+      "time": 7.644643783569336,
+      "increments": "16",
+      "notes": ""
+    },
+    {
+      "index": 44,
+      "graph": "graph440",
+      "status": "SATISFIABLE",
+      "time": 1.2449920177459717,
+      "increments": "0",
+      "notes": ""
+    },
+    {
+      "index": 45,
+      "graph": "graph450",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 46,
+      "graph": "graph460",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 47,
+      "graph": "graph470",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 48,
+      "graph": "graph480",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 49,
+      "graph": "graph490",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 50,
+      "graph": "graph500",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 51,
+      "graph": "graph510",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 52,
+      "graph": "graph520",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 53,
+      "graph": "graph530",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 54,
+      "graph": "graph540",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 55,
+      "graph": "graph550",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 56,
+      "graph": "graph560",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 57,
+      "graph": "graph570",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 58,
+      "graph": "graph580",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 59,
+      "graph": "graph590",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 60,
+      "graph": "graph600",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 61,
+      "graph": "graph610",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 62,
+      "graph": "graph620",
+      "status": "SATISFIABLE",
+      "time": 1.8089327812194824,
+      "increments": "0",
+      "notes": ""
+    },
+    {
+      "index": 63,
+      "graph": "graph630",
+      "status": "SATISFIABLE",
+      "time": 5.894333362579346,
+      "increments": "2",
+      "notes": ""
+    },
+    {
+      "index": 64,
+      "graph": "graph640",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 65,
+      "graph": "graph650",
+      "status": "SATISFIABLE",
+      "time": 1.9398581981658936,
+      "increments": "0",
+      "notes": ""
+    },
+    {
+      "index": 66,
+      "graph": "graph660",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 67,
+      "graph": "graph670",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 68,
+      "graph": "graph680",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 69,
+      "graph": "graph690",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 70,
+      "graph": "graph700",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 71,
+      "graph": "graph710",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 72,
+      "graph": "graph720",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 73,
+      "graph": "graph730",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 74,
+      "graph": "graph740",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 75,
+      "graph": "graph750",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 76,
+      "graph": "graph760",
+      "status": "SATISFIABLE",
+      "time": 1.55265212059021,
+      "increments": "0",
+      "notes": ""
+    },
+    {
+      "index": 77,
+      "graph": "graph770",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 78,
+      "graph": "graph780",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 79,
+      "graph": "graph790",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 80,
+      "graph": "graph800",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 81,
+      "graph": "graph810",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 82,
+      "graph": "graph820",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 83,
+      "graph": "graph830",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 84,
+      "graph": "graph840",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 85,
+      "graph": "graph850",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 86,
+      "graph": "graph860",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 87,
+      "graph": "graph870",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 88,
+      "graph": "graph880",
+      "status": "SATISFIABLE",
+      "time": 3.1273727416992188,
+      "increments": "1",
+      "notes": ""
+    },
+    {
+      "index": 89,
+      "graph": "graph890",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 90,
+      "graph": "graph900",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 91,
+      "graph": "graph910",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 92,
+      "graph": "graph920",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 93,
+      "graph": "graph930",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 94,
+      "graph": "graph940",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 95,
+      "graph": "graph950",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 96,
+      "graph": "graph960",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 97,
+      "graph": "graph970",
+      "status": "SATISFIABLE",
+      "time": 4.240043640136719,
+      "increments": "0",
+      "notes": ""
+    },
+    {
+      "index": 98,
+      "graph": "graph980",
+      "status": "SATISFIABLE",
+      "time": 4.725301742553711,
+      "increments": "0",
+      "notes": ""
+    },
+    {
+      "index": 99,
+      "graph": "graph990",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    },
+    {
+      "index": 100,
+      "graph": "graph1000",
+      "status": "TIMEOUT",
+      "time": 15,
+      "increments": "N/A",
+      "notes": ">15s"
+    }
+  ]
+}
