@@ -19,6 +19,158 @@ use crate::macro_solver::MacroGraphSolver;
 use crate::hub_sub_hcp::HubPartitionedSolver;
 
 
+/// Pre-emptively forbids 3-cycles (triangles) and 4-cycles in the initial CNF encoding.
+/// Returns the total number of added short-cycle clauses.
+pub fn add_global_short_cycle_cuts(
+    g: &Graph,
+    encoder: &Encoder,
+    cnf: &mut Cnf,
+    max_cycle_len: usize,
+) -> usize {
+    let n = g.adjacency_list.len();
+    if n <= 3 || max_cycle_len < 3 {
+        return 0;
+    }
+
+    let mut adj_set: HashMap<i32, HashSet<i32>> = HashMap::new();
+    for (&u, neighbors) in &g.adjacency_list {
+        adj_set.insert(u, neighbors.iter().cloned().collect());
+    }
+
+    let mut vertices: Vec<i32> = g.adjacency_list.keys().cloned().collect();
+    vertices.sort_unstable();
+
+    let mut added_clauses = 0;
+
+    // 1. Triangle Cuts (3-cycles)
+    if max_cycle_len >= 3 && n > 3 {
+        for i in 0..vertices.len() {
+            let u = vertices[i];
+            let u_neighbors = match adj_set.get(&u) {
+                Some(s) => s,
+                None => continue,
+            };
+
+            for j in (i + 1)..vertices.len() {
+                let v = vertices[j];
+                if !u_neighbors.contains(&v) {
+                    continue;
+                }
+                let v_neighbors = match adj_set.get(&v) {
+                    Some(s) => s,
+                    None => continue,
+                };
+
+                for k in (j + 1)..vertices.len() {
+                    let w = vertices[k];
+                    if v_neighbors.contains(&w) && u_neighbors.contains(&w) {
+                        // Forward cycle: u -> v -> w -> u
+                        if let (Some(&x_uv), Some(&x_vw), Some(&x_wu)) = (
+                            encoder.graph_lit_map.get(&(u, v)),
+                            encoder.graph_lit_map.get(&(v, w)),
+                            encoder.graph_lit_map.get(&(w, u)),
+                        ) {
+                            cnf.add_clause(clause!(!x_uv, !x_vw, !x_wu));
+                            added_clauses += 1;
+                        }
+                        // Reverse cycle: u -> w -> v -> u
+                        if let (Some(&x_uw), Some(&x_wv), Some(&x_vu)) = (
+                            encoder.graph_lit_map.get(&(u, w)),
+                            encoder.graph_lit_map.get(&(w, v)),
+                            encoder.graph_lit_map.get(&(v, u)),
+                        ) {
+                            cnf.add_clause(clause!(!x_uw, !x_wv, !x_vu));
+                            added_clauses += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. 4-Cycle Cuts
+    if max_cycle_len >= 4 && n > 4 {
+        for i in 0..vertices.len() {
+            let u = vertices[i];
+            let u_neighbors = match adj_set.get(&u) {
+                Some(s) => s,
+                None => continue,
+            };
+            let deg_u = u_neighbors.len();
+
+            for j in (i + 1)..vertices.len() {
+                let w = vertices[j];
+                let w_neighbors = match adj_set.get(&w) {
+                    Some(s) => s,
+                    None => continue,
+                };
+                let deg_w = w_neighbors.len();
+
+                let has_uw_edge = u_neighbors.contains(&w);
+
+                // Find common neighbors c of u and w with c > u
+                let mut common: Vec<i32> = Vec::new();
+                if deg_u < deg_w {
+                    for &c in u_neighbors {
+                        if c > u && w_neighbors.contains(&c) {
+                            common.push(c);
+                        }
+                    }
+                } else {
+                    for &c in w_neighbors {
+                        if c > u && u_neighbors.contains(&c) {
+                            common.push(c);
+                        }
+                    }
+                }
+
+                if common.len() < 2 {
+                    continue;
+                }
+
+                common.sort_unstable();
+
+                for a in 0..common.len() {
+                    let v = common[a];
+                    for b in (a + 1)..common.len() {
+                        let z = common[b];
+
+                        let has_vz_edge = adj_set.get(&v).map_or(false, |s| s.contains(&z));
+                        let is_chordless = !has_uw_edge && !has_vz_edge;
+                        let within_degree_limit = deg_u <= 100 && deg_w <= 100;
+
+                        if within_degree_limit || is_chordless {
+                            // Forward cycle: u -> v -> w -> z -> u
+                            if let (Some(&x_uv), Some(&x_vw), Some(&x_wz), Some(&x_zu)) = (
+                                encoder.graph_lit_map.get(&(u, v)),
+                                encoder.graph_lit_map.get(&(v, w)),
+                                encoder.graph_lit_map.get(&(w, z)),
+                                encoder.graph_lit_map.get(&(z, u)),
+                            ) {
+                                cnf.add_clause(clause!(!x_uv, !x_vw, !x_wz, !x_zu));
+                                added_clauses += 1;
+                            }
+
+                            // Reverse cycle: u -> z -> w -> v -> u
+                            if let (Some(&x_uz), Some(&x_zw), Some(&x_wv), Some(&x_vu)) = (
+                                encoder.graph_lit_map.get(&(u, z)),
+                                encoder.graph_lit_map.get(&(z, w)),
+                                encoder.graph_lit_map.get(&(w, v)),
+                                encoder.graph_lit_map.get(&(v, u)),
+                            ) {
+                                cnf.add_clause(clause!(!x_uz, !x_zw, !x_wv, !x_vu));
+                                added_clauses += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    added_clauses
+}
+
 pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &HubRegistry, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, _cegar_fallback:i32, _mtz_stall:i32, _adaptive_escalation:i32, _sub_hcp_timeout: u64, _max_cluster_size: usize, instant:Instant,output_folder:&str) {
     let now = instant.elapsed();
     let mut encoder = Encoder::new();
@@ -30,6 +182,13 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
             if let (Some(&lit_uw), Some(&lit_wu)) = (encoder.graph_lit_map.get(&(u, w)), encoder.graph_lit_map.get(&(w, u))) {
                 cnf.add_clause(clause!(lit_uw, lit_wu));
             }
+        }
+    }
+    // Add global short-cycle cuts (triangles and 4-cycles)
+    if loop_prohibition >= 1 || hub_registry.hub_vertices.len() >= 3 {
+        let added_cuts = add_global_short_cycle_cuts(&g, &encoder, &mut cnf, 4);
+        if added_cuts > 0 {
+            println!("added global short-cycle cuts = {}", added_cuts);
         }
     }
     let current_cnf = if output_folder != "default" {
@@ -1413,6 +1572,59 @@ mod tests_blocking_enhancements {
         // All 9 vertices should be merged into a single cycle
         assert_eq!(merged_cycles.len(), 1);
         assert_eq!(merged_cycles[0].len(), 9);
+    }
+
+    #[test]
+    fn test_short_cycle_pruning_triangles_and_quads() {
+        // 5-vertex graph: 1-2-3-4-5-1 with chord 1-3
+        // Triangles: {1, 2, 3} (2 clauses)
+        // 4-cycles: {1, 3, 4, 5} with edges 1-3, 3-4, 4-5, 5-1 (2 clauses)
+        let mut g = Graph::new();
+        g.add_edge(1, 2);
+        g.add_edge(2, 3);
+        g.add_edge(3, 1);
+        g.add_edge(3, 4);
+        g.add_edge(4, 5);
+        g.add_edge(5, 1);
+
+        let mut encoder = Encoder::new();
+        let mut cnf = encoder.encode(&g, 1, 0, 0, 0, 0, 0);
+        let base_clause_count = cnf.len();
+
+        let added = add_global_short_cycle_cuts(&g, &encoder, &mut cnf, 4);
+        assert_eq!(added, 4);
+        assert_eq!(cnf.len(), base_clause_count + 4);
+
+        // Verify with max_cycle_len = 3 (only triangles)
+        let mut cnf3 = encoder.encode(&g, 1, 0, 0, 0, 0, 0);
+        let added3 = add_global_short_cycle_cuts(&g, &encoder, &mut cnf3, 3);
+        assert_eq!(added3, 2);
+
+        // Verify with max_cycle_len = 2 (none)
+        let mut cnf2 = encoder.encode(&g, 1, 0, 0, 0, 0, 0);
+        let added2 = add_global_short_cycle_cuts(&g, &encoder, &mut cnf2, 2);
+        assert_eq!(added2, 0);
+
+        // Verify safety on 3-vertex triangle graph (must NOT prune N=3)
+        let mut g3 = Graph::new();
+        g3.add_edge(1, 2);
+        g3.add_edge(2, 3);
+        g3.add_edge(3, 1);
+        let mut encoder3 = Encoder::new();
+        let mut cnf_g3 = encoder3.encode(&g3, 1, 0, 0, 0, 0, 0);
+        let added_g3 = add_global_short_cycle_cuts(&g3, &encoder3, &mut cnf_g3, 4);
+        assert_eq!(added_g3, 0);
+
+        // Verify safety on 4-vertex 4-cycle graph (must NOT prune N=4)
+        let mut g4 = Graph::new();
+        g4.add_edge(1, 2);
+        g4.add_edge(2, 3);
+        g4.add_edge(3, 4);
+        g4.add_edge(4, 1);
+        let mut encoder4 = Encoder::new();
+        let mut cnf_g4 = encoder4.encode(&g4, 1, 0, 0, 0, 0, 0);
+        let added_g4 = add_global_short_cycle_cuts(&g4, &encoder4, &mut cnf_g4, 4);
+        assert_eq!(added_g4, 0);
     }
 }
 
