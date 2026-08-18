@@ -10,6 +10,7 @@ mod ils_patcher;
 mod macro_solver;
 mod matching_patcher;
 pub mod modular_solver;
+pub mod modular_tree;
 mod options;
 mod parallel_sub_hcp;
 mod patching;
