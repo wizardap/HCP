@@ -1,0 +1,17 @@
+# Build artifacts
+target/
+*.o
+*.a
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Benchmark dataset & large logs
+FHCPCS-col/
+*.log
+*.tou
+*.cnf
+
+# Tool indexes
+.codegraph/
