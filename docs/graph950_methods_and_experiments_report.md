@@ -1,5 +1,7 @@
 # Báo Cáo Nghiên Cứu & Đánh Giá Toàn Diện Các Phương Pháp Giải graph950.col
 
+> **Nguồn gốc đề tài & Mã nguồn cơ sở:** Nghiên cứu này được thực nghiệm dựa trên nền tảng mã nguồn và bộ benchmark giải Chu Trình Hamilton (HCP) của tác giả chính **Takehide Soh** (Kobe University, Japan) tại repository [`https://github.com/TakehideSoh/SAT-based-CEGAR`](https://github.com/TakehideSoh/SAT-based-CEGAR).
+
 **Ngày thực hiện:** 2026-08-21  
 **Mục tiêu:** Tìm chu trình Hamilton (Hamiltonian Cycle Problem - HCP) cho đồ thị `graph950.col` (thuộc bộ benchmark FHCP Challenge Set) với ràng buộc:
 - Thời gian thực thi $\le 1800$ giây (30 phút).

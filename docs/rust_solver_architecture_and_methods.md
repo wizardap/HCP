@@ -1,7 +1,11 @@
 # Tài Liệu Kỹ Thuật: Kiến Trúc & Các Phương Pháp Trong Mã Nguồn Rust (`cegar-fix`)
 
+> **Nguồn gốc & Tác quyền:** Mã nguồn bộ giải Rust `cegar-fix` được phát triển dựa trên công trình nghiên cứu và repository gốc của tác giả chính **Takehide Soh** (Kobe University, Japan) tại [`https://github.com/TakehideSoh/SAT-based-CEGAR`](https://github.com/TakehideSoh/SAT-based-CEGAR).
+
 **Thư mục mã nguồn:** `src/cegar-fix/src/`  
-**Ngôn ngữ:** Rust (Sử dụng backend `rustsat` và solver native `rustsat-cadical` / CaDiCaL)  
+**Tác giả chính:** Takehide Soh (Kobe University) & Các cộng tác viên  
+**Repository gốc (Upstream):** [TakehideSoh/SAT-based-CEGAR](https://github.com/TakehideSoh/SAT-based-CEGAR)  
+**Ngôn ngữ:** Rust (Sử dụng backend `rustsat` và solver native `rustsat-cadical` / CaDiCaL 1.9.4)  
 **Mục đích:** Bộ giải tối ưu hóa bài toán Chu Trình Hamilton (Hamiltonian Cycle Problem - HCP) kết hợp phương pháp CEGAR, mã hóa SAT hiện đại và các kỹ thuật Heuristic Patching đa cấp.
 
 ---

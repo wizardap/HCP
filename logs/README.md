@@ -1,5 +1,7 @@
 # Benchmark Execution Logs & Experimental Results
 
+> **Ghi nhận tác quyền & Nguồn gốc:** Dữ liệu log và bảng kết quả benchmark trong thư mục này được trích xuất và đo đạc dựa trên mã nguồn bộ giải của tác giả chính **Takehide Soh** (Kobe University, Japan) từ repository [`https://github.com/TakehideSoh/SAT-based-CEGAR`](https://github.com/TakehideSoh/SAT-based-CEGAR).
+
 Thư mục này tập hợp toàn bộ các kết quả thí nghiệm, dữ liệu đo đạc thời gian chạy (CPU seconds), và các file log chi tiết của các bộ giải trên bộ dữ liệu FHCP Challenge Set (1,001 bài toán):
 
 ---
