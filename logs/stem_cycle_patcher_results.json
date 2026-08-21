@@ -1,0 +1,330 @@
+{
+  "total_graphs": 1001,
+  "completed": 40,
+  "total_solved": 40,
+  "total_timeout": 0,
+  "total_error": 0,
+  "total_runtime_seconds": 2480.39,
+  "results": {
+    "graph1": {
+      "index": 1,
+      "graph": "graph1",
+      "status": "SATISFIABLE",
+      "time_sec": 5.295,
+      "baseline_time_sec": 0.036342871000000006,
+      "speedup": "0.01x"
+    },
+    "graph2": {
+      "index": 2,
+      "graph": "graph2",
+      "status": "SATISFIABLE",
+      "time_sec": 0.188,
+      "baseline_time_sec": 0.003869589,
+      "speedup": "0.02x"
+    },
+    "graph3": {
+      "index": 3,
+      "graph": "graph3",
+      "status": "SATISFIABLE",
+      "time_sec": 5.365,
+      "baseline_time_sec": 0.062538358,
+      "speedup": "0.01x"
+    },
+    "graph4": {
+      "index": 4,
+      "graph": "graph4",
+      "status": "SATISFIABLE",
+      "time_sec": 4.825,
+      "baseline_time_sec": 0.458601209,
+      "speedup": "0.10x"
+    },
+    "graph5": {
+      "index": 5,
+      "graph": "graph5",
+      "status": "SATISFIABLE",
+      "time_sec": 0.007,
+      "baseline_time_sec": 0.001623798,
+      "speedup": "0.23x"
+    },
+    "graph6": {
+      "index": 6,
+      "graph": "graph6",
+      "status": "SATISFIABLE",
+      "time_sec": 2.338,
+      "baseline_time_sec": 0.00549002,
+      "speedup": "0.00x"
+    },
+    "graph7": {
+      "index": 7,
+      "graph": "graph7",
+      "status": "SATISFIABLE",
+      "time_sec": 3.028,
+      "baseline_time_sec": 0.078245427,
+      "speedup": "0.03x"
+    },
+    "graph8": {
+      "index": 8,
+      "graph": "graph8",
+      "status": "SATISFIABLE",
+      "time_sec": 30.672,
+      "baseline_time_sec": 17.33967389,
+      "speedup": "0.57x"
+    },
+    "graph9": {
+      "index": 9,
+      "graph": "graph9",
+      "status": "SATISFIABLE",
+      "time_sec": 0.847,
+      "baseline_time_sec": 0.018130123,
+      "speedup": "0.02x"
+    },
+    "graph10": {
+      "index": 10,
+      "graph": "graph10",
+      "status": "SATISFIABLE",
+      "time_sec": 0.206,
+      "baseline_time_sec": 0.045828806,
+      "speedup": "0.22x"
+    },
+    "graph11": {
+      "index": 11,
+      "graph": "graph11",
+      "status": "SATISFIABLE",
+      "time_sec": 1.021,
+      "baseline_time_sec": 0.005361686,
+      "speedup": "0.01x"
+    },
+    "graph12": {
+      "index": 12,
+      "graph": "graph12",
+      "status": "SATISFIABLE",
+      "time_sec": 16.441,
+      "baseline_time_sec": 0.078747481,
+      "speedup": "0.00x"
+    },
+    "graph13": {
+      "index": 13,
+      "graph": "graph13",
+      "status": "SATISFIABLE",
+      "time_sec": 3.524,
+      "baseline_time_sec": 0.075861514,
+      "speedup": "0.02x"
+    },
+    "graph14": {
+      "index": 14,
+      "graph": "graph14",
+      "status": "SATISFIABLE",
+      "time_sec": 2.754,
+      "baseline_time_sec": 0.018826903000000002,
+      "speedup": "0.01x"
+    },
+    "graph15": {
+      "index": 15,
+      "graph": "graph15",
+      "status": "SATISFIABLE",
+      "time_sec": 0.399,
+      "baseline_time_sec": 0.030640061,
+      "speedup": "0.08x"
+    },
+    "graph16": {
+      "index": 16,
+      "graph": "graph16",
+      "status": "SATISFIABLE",
+      "time_sec": 130.53,
+      "baseline_time_sec": 0.014346002,
+      "speedup": "0.00x"
+    },
+    "graph17": {
+      "index": 17,
+      "graph": "graph17",
+      "status": "SATISFIABLE",
+      "time_sec": 0.383,
+      "baseline_time_sec": 0.020031624999999997,
+      "speedup": "0.05x"
+    },
+    "graph18": {
+      "index": 18,
+      "graph": "graph18",
+      "status": "SATISFIABLE",
+      "time_sec": 0.262,
+      "baseline_time_sec": 0.010834696,
+      "speedup": "0.04x"
+    },
+    "graph19": {
+      "index": 19,
+      "graph": "graph19",
+      "status": "SATISFIABLE",
+      "time_sec": 7.37,
+      "baseline_time_sec": 0.20784304,
+      "speedup": "0.03x"
+    },
+    "graph20": {
+      "index": 20,
+      "graph": "graph20",
+      "status": "SATISFIABLE",
+      "time_sec": 2.021,
+      "baseline_time_sec": 0.011464964,
+      "speedup": "0.01x"
+    },
+    "graph21": {
+      "index": 21,
+      "graph": "graph21",
+      "status": "SATISFIABLE",
+      "time_sec": 497.552,
+      "baseline_time_sec": 0.158388894,
+      "speedup": "0.00x"
+    },
+    "graph22": {
+      "index": 22,
+      "graph": "graph22",
+      "status": "SATISFIABLE",
+      "time_sec": 1.028,
+      "baseline_time_sec": 0.16236204599999998,
+      "speedup": "0.16x"
+    },
+    "graph23": {
+      "index": 23,
+      "graph": "graph23",
+      "status": "SATISFIABLE",
+      "time_sec": 0.167,
+      "baseline_time_sec": 0.063314104,
+      "speedup": "0.38x"
+    },
+    "graph24": {
+      "index": 24,
+      "graph": "graph24",
+      "status": "SATISFIABLE",
+      "time_sec": 4.196,
+      "baseline_time_sec": 0.03835651,
+      "speedup": "0.01x"
+    },
+    "graph25": {
+      "index": 25,
+      "graph": "graph25",
+      "status": "SATISFIABLE",
+      "time_sec": 1722.658,
+      "baseline_time_sec": 29.420868707,
+      "speedup": "0.02x"
+    },
+    "graph26": {
+      "index": 26,
+      "graph": "graph26",
+      "status": "SATISFIABLE",
+      "time_sec": 0.075,
+      "baseline_time_sec": 0.011344680999999999,
+      "speedup": "0.15x"
+    },
+    "graph27": {
+      "index": 27,
+      "graph": "graph27",
+      "status": "SATISFIABLE",
+      "time_sec": 0.74,
+      "baseline_time_sec": 0.044693708,
+      "speedup": "0.06x"
+    },
+    "graph28": {
+      "index": 28,
+      "graph": "graph28",
+      "status": "SATISFIABLE",
+      "time_sec": 0.49,
+      "baseline_time_sec": 0.06148123,
+      "speedup": "0.13x"
+    },
+    "graph29": {
+      "index": 29,
+      "graph": "graph29",
+      "status": "SATISFIABLE",
+      "time_sec": 12.835,
+      "baseline_time_sec": 0.7888283420000001,
+      "speedup": "0.06x"
+    },
+    "graph30": {
+      "index": 30,
+      "graph": "graph30",
+      "status": "SATISFIABLE",
+      "time_sec": 2.004,
+      "baseline_time_sec": 0.013020269000000001,
+      "speedup": "0.01x"
+    },
+    "graph31": {
+      "index": 31,
+      "graph": "graph31",
+      "status": "SATISFIABLE",
+      "time_sec": 3.112,
+      "baseline_time_sec": 0.026703506999999998,
+      "speedup": "0.01x"
+    },
+    "graph32": {
+      "index": 32,
+      "graph": "graph32",
+      "status": "SATISFIABLE",
+      "time_sec": 3.307,
+      "baseline_time_sec": 0.16683129600000002,
+      "speedup": "0.05x"
+    },
+    "graph33": {
+      "index": 33,
+      "graph": "graph33",
+      "status": "SATISFIABLE",
+      "time_sec": 3.442,
+      "baseline_time_sec": 0.164990859,
+      "speedup": "0.05x"
+    },
+    "graph34": {
+      "index": 34,
+      "graph": "graph34",
+      "status": "SATISFIABLE",
+      "time_sec": 0.499,
+      "baseline_time_sec": 0.011115736,
+      "speedup": "0.02x"
+    },
+    "graph35": {
+      "index": 35,
+      "graph": "graph35",
+      "status": "SATISFIABLE",
+      "time_sec": 0.291,
+      "baseline_time_sec": 0.024603688999999998,
+      "speedup": "0.08x"
+    },
+    "graph36": {
+      "index": 36,
+      "graph": "graph36",
+      "status": "SATISFIABLE",
+      "time_sec": 0.756,
+      "baseline_time_sec": 0.050739623000000005,
+      "speedup": "0.07x"
+    },
+    "graph37": {
+      "index": 37,
+      "graph": "graph37",
+      "status": "SATISFIABLE",
+      "time_sec": 6.715,
+      "baseline_time_sec": 0.191163072,
+      "speedup": "0.03x"
+    },
+    "graph38": {
+      "index": 38,
+      "graph": "graph38",
+      "status": "SATISFIABLE",
+      "time_sec": 1.491,
+      "baseline_time_sec": 0.029476284,
+      "speedup": "0.02x"
+    },
+    "graph39": {
+      "index": 39,
+      "graph": "graph39",
+      "status": "SATISFIABLE",
+      "time_sec": 0.481,
+      "baseline_time_sec": 0.039205654,
+      "speedup": "0.08x"
+    },
+    "graph40": {
+      "index": 40,
+      "graph": "graph40",
+      "status": "SATISFIABLE",
+      "time_sec": 1.075,
+      "baseline_time_sec": 0.052420584,
+      "speedup": "0.05x"
+    }
+  }
+}
