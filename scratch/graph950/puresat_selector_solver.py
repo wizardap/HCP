@@ -1,51 +1,27 @@
 #!/usr/bin/env python3
-"""100% Pure SAT HCP Solver with Cut-CEGAR for graph950.col.
+"""100% Pure SAT HCP Solver with Incremental In-Memory Multi-Cut CEGAR for graph950.col.
 Zero tour injection / zero external hints.
 Pipeline:
   1. Load graph950.col (n=6620, m=28718).
   2. Formulate 2-factor SAT CNF with sound Sinz exact-2 degree counters on all 6620 vertices.
-  3. Run Cut-CEGAR subtour elimination loop using CaDiCaL.
+  3. Run Incremental Multi-Cut CEGAR loop using Cadical195 (Single Cuts + Subtour Exclusion + Union-Cuts).
   4. Write verified Hamiltonian Cycle tour to /tmp/opencode/found_tour_puresat.hcp.
   5. Run independent certification.
 """
 import collections
 import os
-import subprocess
 import sys
 import time
-
-def solve_cnf_file(cnf_path, tl=120.0):
-    try:
-        r = subprocess.run(
-            ['/usr/local/bin/cadical', '--quiet', cnf_path],
-            capture_output=True,
-            text=True,
-            timeout=tl
-        )
-    except subprocess.TimeoutExpired:
-        return None, {}
-    out = r.stdout
-    if 's UNSATISFIABLE' in out:
-        return False, {}
-    if 's SATISFIABLE' not in out:
-        return None, {}
-    m = {}
-    for line in out.splitlines():
-        if line.startswith('v '):
-            for x in line.split()[1:]:
-                xi = int(x)
-                m[abs(xi)] = xi > 0
-    return True, m
+from pysat.solvers import Cadical195
 
 def main():
     t_start = time.time()
     graph_path = '/home/ubuntu/HCP/FHCPCS-col/graph950.col'
     out_dir = '/tmp/opencode'
     out_file = os.path.join(out_dir, 'found_tour_puresat.hcp')
-    cnf_file = '/tmp/graph950_puresat.cnf'
     
     print('=' * 65)
-    print('  100% PURE SAT CUT-CEGAR SOLVER FOR graph950')
+    print('  100% PURE SAT INCREMENTAL MULTI-CUT CEGAR SOLVER FOR graph950')
     print('  (Zero tour injection / Zero external hints)')
     print('=' * 65)
     
@@ -110,86 +86,102 @@ def main():
     
     print(f'  Base 2-Factor CNF: {len(C)} clauses, {nv[0]} variables (built in {time.time()-t_start:.2f}s)')
     
-    # 3. Cut-CEGAR Subtour Elimination Loop
-    print('\n[3/4] Running Cut-CEGAR Subtour Elimination Loop...')
-    cut_clauses = []
+    # 3. Incremental Multi-Cut CEGAR Subtour Elimination Loop
+    print('\n[3/4] Initializing Incremental In-Memory CaDiCaL Solver...')
     solved = False
     final_cycle = None
     t_cegar = time.time()
     
-    for it in range(1, 100):
-        if time.time() - t_start > 1750:
-            print('  GLOBAL 1800s TIMEOUT REACHED', flush=True)
-            break
+    with Cadical195(bootstrap_with=C) as solver:
+        print(f'  CaDiCaL initialized with {len(C)} clauses in {time.time()-t_cegar:.2f}s')
+        total_cut_clauses = 0
         
-        # Write CNF file
-        total_clauses = len(C) + len(cut_clauses)
-        with open(cnf_file, 'w') as f:
-            f.write(f'p cnf {nv[0]} {total_clauses}\n')
-            for c in C:
-                f.write(' '.join(map(str, c + [0])) + '\n')
-            for c in cut_clauses:
-                f.write(' '.join(map(str, c + [0])) + '\n')
-        
-        t_it = time.time()
-        sat, m = solve_cnf_file(cnf_file, tl=180.0)
-        
-        if sat is None:
-            print(f'  Iter {it:2d}: CaDiCaL Timeout (>180s)', flush=True)
-            break
-        if sat is False:
-            print(f'  Iter {it:2d}: CaDiCaL returned UNSAT', flush=True)
-            break
-        
-        # Extract 2-factor active edges
-        adj = collections.defaultdict(list)
-        for (u, v), vi in var_e.items():
-            if u < v and m.get(vi):
-                adj[u].append(v)
-                adj[v].append(u)
-        
-        # Extract connected cycles
-        visited = set()
-        cycles = []
-        for v0 in verts:
-            if v0 not in visited:
-                cyc = [v0]
-                visited.add(v0)
-                cur = v0
-                prev = None
-                while True:
-                    nxts = [w for w in adj.get(cur, []) if w != prev]
-                    if not nxts:
-                        break
-                    nxt = nxts[0]
-                    if nxt == v0:
-                        break
-                    cyc.append(nxt)
-                    visited.add(nxt)
-                    prev, cur = cur, nxt
-                cycles.append(cyc)
-        
-        print(f'  Iter {it:2d}: {len(cycles):3d} cycles | Max cycle: {max(len(c) for c in cycles):4d}/{n_verts} | Cut clauses: {len(cut_clauses):4d} ({time.time()-t_it:.2f}s)', flush=True)
-        
-        if len(cycles) == 1 and len(cycles[0]) == n_verts:
-            print(f'\n  *** PURE SAT CONVERGED: Single Hamiltonian Cycle on all {n_verts} Vertices! ***')
-            print(f'  Total CEGAR Time: {time.time()-t_cegar:.2f}s across {it} iterations')
-            solved = True
-            final_cycle = cycles[0]
-            break
-        
-        # Add Cut-Crossing Clauses for all subcycles
-        # For each cycle C_i, cut clause: OR_{(u, v) in E, u in C_i, v not in C_i} var_e(u, v)
-        for cyc in cycles:
-            C_set = set(cyc)
-            if len(C_set) < n_verts:
-                cut_edges = []
-                for u in cyc:
-                    for w in G[u]:
-                        if w not in C_set:
-                            cut_edges.append(var_e[(u, w)])
-                if cut_edges:
-                    cut_clauses.append(cut_edges)
+        for it in range(1, 200):
+            if time.time() - t_start > 1750:
+                print('  GLOBAL 1800s TIMEOUT REACHED', flush=True)
+                break
+            
+            t_it = time.time()
+            sat = solver.solve()
+            
+            if not sat:
+                print(f'  Iter {it:2d}: CaDiCaL returned UNSAT', flush=True)
+                break
+            
+            model = solver.get_model()
+            m = {abs(x): x > 0 for x in model}
+            
+            # Extract 2-factor active edges
+            adj = collections.defaultdict(list)
+            for (u, v), vi in var_e.items():
+                if u < v and m.get(vi):
+                    adj[u].append(v)
+                    adj[v].append(u)
+            
+            # Extract connected cycles
+            visited = set()
+            cycles = []
+            for v0 in verts:
+                if v0 not in visited:
+                    cyc = [v0]
+                    visited.add(v0)
+                    cur = v0
+                    prev = None
+                    while True:
+                        nxts = [w for w in adj.get(cur, []) if w != prev]
+                        if not nxts or nxts[0] == v0:
+                            break
+                        nxt = nxts[0]
+                        cyc.append(nxt)
+                        visited.add(nxt)
+                        prev, cur = cur, nxt
+                    cycles.append(cyc)
+            
+            max_c = max(len(c) for c in cycles)
+            print(f'  Iter {it:2d}: {len(cycles):3d} cycles | Max cycle: {max_c:4d}/{n_verts} | Cut clauses: {total_cut_clauses:5d} ({time.time()-t_it:.2f}s)', flush=True)
+            
+            if len(cycles) == 1 and len(cycles[0]) == n_verts:
+                print(f'\n  *** PURE SAT CONVERGED: Single Hamiltonian Cycle on all {n_verts} Vertices! ***')
+                print(f'  Total CEGAR Time: {time.time()-t_cegar:.2f}s across {it} iterations')
+                solved = True
+                final_cycle = cycles[0]
+                break
+            
+            # Add Single-Cut Clauses + Subtour Exclusion Clauses
+            for cyc in cycles:
+                C_set = set(cyc)
+                if len(C_set) < n_verts:
+                    # 1. Cut-Crossing Clause
+                    cut_edges = [var_e[(u, w)] for u in cyc for w in G[u] if w not in C_set]
+                    if cut_edges:
+                        solver.add_clause(cut_edges)
+                        total_cut_clauses += 1
+                    # 2. Subtour All-Edges Exclusion Clause
+                    cyc_edges = [var_e[(cyc[i], cyc[(i+1)%len(cyc)])] for i in range(len(cyc))]
+                    solver.add_clause([-e for e in cyc_edges])
+                    total_cut_clauses += 1
+            
+            # Add Union Cuts for adjacent cycle pairs (forcing multi-cycle merges)
+            cycle_map = {}
+            for cid, cyc in enumerate(cycles):
+                for v in cyc:
+                    cycle_map[v] = cid
+            
+            adj_c_pairs = set()
+            for u in verts:
+                cu = cycle_map[u]
+                for w in G[u]:
+                    cw = cycle_map[w]
+                    if cu < cw:
+                        adj_c_pairs.add((cu, cw))
+            
+            for cu, cw in list(adj_c_pairs)[:300]:
+                union_set = set(cycles[cu]) | set(cycles[cw])
+                if len(union_set) < n_verts:
+                    union_cut = [var_e[(u, w)] for u in union_set for w in G[u] if w not in union_set]
+                    if union_cut:
+                        solver.add_clause(union_cut)
+                        total_cut_clauses += 1
     
     # 4. Certification & Output
     if solved and final_cycle is not None:

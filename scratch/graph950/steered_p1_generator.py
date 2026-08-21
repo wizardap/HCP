@@ -252,33 +252,24 @@ def solve_strip_targeted(si, hh, vs, G, deg, K=4, seeds=(7, 11, 13), timeout=30.
     covers = []
     seen_fp = set()
 
-    # Strategy 1: Base unsteered solve
-    for seed in seeds:
-        sat, m = solve_cnf(nv[0], C, timeout=timeout, seed=seed)
-        if sat is True:
+    # Solve in-memory with PySAT Cadical195
+    from pysat.solvers import Cadical195
+    with Cadical195(bootstrap_with=C) as solver:
+        # Base solve
+        if solver.solve():
+            m = {abs(x): x > 0 for x in solver.get_model()}
             res = extract_cover(m)
             if res and res[0] not in seen_fp:
                 seen_fp.add(res[0])
                 covers.append(res)
-
-    # Strategy 2: Targeted steering for each adjacent M-hub
-    for h in mh:
-        Eh = [v for v in vs if h in G[v]]
-        steer_clause = [eof[v] for v in Eh]
-        for seed in seeds:
-            sat, m = solve_cnf(nv[0], C + [steer_clause], timeout=timeout, seed=seed)
-            if sat is True:
-                res = extract_cover(m)
-                if res and res[0] not in seen_fp:
-                    seen_fp.add(res[0])
-                    covers.append(res)
-
-    # Strategy 3: Joint steering for all adjacent M-hubs
-    if len(mh) > 1:
-        all_m = [[eof[v] for v in vs if h in G[v]] for h in mh]
-        for seed in seeds[:2]:
-            sat, m = solve_cnf(nv[0], C + all_m, timeout=timeout, seed=seed)
-            if sat is True:
+        
+        # Targeted steering for each adjacent M-hub
+        for h in mh:
+            Eh = [v for v in vs if h in G[v]]
+            steer_clause = [eof[v] for v in Eh]
+            solver.add_clause(steer_clause)
+            if solver.solve():
+                m = {abs(x): x > 0 for x in solver.get_model()}
                 res = extract_cover(m)
                 if res and res[0] not in seen_fp:
                     seen_fp.add(res[0])
