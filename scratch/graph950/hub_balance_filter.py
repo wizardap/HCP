@@ -290,12 +290,17 @@ def fallback_steer_undercovered_hubs(
             timeout=timeout,
         )
         # Deduplicate and append new covers
-        existing_fps = set(c[0] if isinstance(c, (tuple, list)) else None for c in cover_sets[si])
+        def _to_tuple_fp(fp):
+            if isinstance(fp, (tuple, list)):
+                return tuple(tuple(x) if isinstance(x, (tuple, list)) else x for x in fp)
+            return fp
+
+        existing_fps = set(_to_tuple_fp(c[0]) for c in cover_sets[si] if isinstance(c, (tuple, list)))
         for cov in new_covers:
-            fp = cov[0]
-            if fp not in existing_fps:
+            fp_tuple = _to_tuple_fp(cov[0])
+            if fp_tuple not in existing_fps:
                 cover_sets[si].append(cov)
-                existing_fps.add(fp)
+                existing_fps.add(fp_tuple)
 
     return cover_sets
 
