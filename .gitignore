@@ -15,3 +15,6 @@ FHCPCS-col/
 
 # Tool indexes
 .codegraph/
+*.log.gz
+*.gz
+*.swp
