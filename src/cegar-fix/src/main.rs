@@ -16,6 +16,7 @@ mod parallel_sub_hcp;
 mod patching;
 pub mod stem_cycle_patcher;
 pub mod two_tier_decomposer;
+pub mod pinpointed_strip_solver;
 
 use contraction::Degree2Contractor;
 use hub_registry::HubRegistry;
