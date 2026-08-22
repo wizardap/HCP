@@ -1,29 +1,19 @@
-import argparse
-import collections
-import os
-import sys
-import time
+import time, sys, os, argparse, collections
 from typing import Dict, List, Set, Tuple, Any, Optional
 
-# Ensure project root is in sys.path
-_repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-if _repo_root not in sys.path:
-    sys.path.insert(0, _repo_root)
-
-from scratch.graph950.two_tier_decomposer import load_graph, decompose_graph, DecompositionResult
+from scratch.graph950.two_tier_decomposer import load_graph, decompose_graph
 from scratch.graph950.pinpointed_strip_solver import PinpointedStripSolver
 from scratch.graph950.global_demand_coordinator import GlobalDemandCoordinator
-from scratch.graph950.macro_splicer import splice_and_verify_tour, splice_macro_tour, verify_tour_on_raw_graph
-from pysat.solvers import Cadical195
-from pysat.card import CardEnc, EncType
+from scratch.graph950.macro_splicer import splice_macro_tour, verify_tour_on_raw_graph
 
-
-def write_hcp_tour(tour: List[int], output_path: str, graph_name: str = "graph950"):
-    """Writes a tour in standard TSPLIB/HCP tour format."""
+def write_hcp_tour(tour: List[int], output_path: str):
+    """
+    Writes a certified tour in standard TSPLIB/HCP format.
+    """
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-    with open(output_path, "w") as f:
-        f.write(f"NAME : {graph_name}\n")
-        f.write(f"TYPE : TOUR\n")
+    with open(output_path, 'w') as f:
+        f.write("NAME : graph950.hcp.tour\n")
+        f.write("TYPE : TOUR\n")
         f.write(f"DIMENSION : {len(tour)}\n")
         f.write("TOUR_SECTION\n")
         for v in tour:
@@ -31,54 +21,33 @@ def write_hcp_tour(tour: List[int], output_path: str, graph_name: str = "graph95
         f.write("-1\n")
         f.write("EOF\n")
 
-
 def solve_graph950_two_tier(
     graph_path: str = "FHCPCS-col/graph950.col",
     timeout: float = 1800.0,
     dry_run: bool = False,
     output_path: str = "scratch/graph950/found_tour_puresat.hcp"
 ) -> bool:
-    """
-    End-to-End Two-Tier Demand-Coordinated Solver for graph950.col.
-    Integrates two-tier decomposition, global demand coordinator,
-    pinpointed strip solver with flexible K in {2, 3, 4, 5}, and
-    macro splicing with Cut-Block CEGAR loop.
-    """
     t_start = time.time()
     print(f"=== Starting Two-Tier Demand-Coordinated Solver on {graph_path} ===")
-    
+
     if not os.path.exists(graph_path):
-        print(f"Error: graph file {graph_path} not found.")
+        print(f"Error: Target graph file '{graph_path}' not found.")
         return False
-        
+
     G, degs = load_graph(graph_path)
     decomp = decompose_graph(G, degs)
-    print(f"Decomposition: {len(decomp.all_hubs)} hubs ({len(decomp.s_hubs)} S, {len(decomp.b_hubs)} B, {len(decomp.m_hubs)} M), {len(decomp.strips)} strips")
-    
+    print(
+        f"Decomposition: {len(decomp.all_hubs)} hubs "
+        f"({len(decomp.s_hubs)} S, {len(decomp.b_hubs)} B, {len(decomp.m_hubs)} M), "
+        f"{len(decomp.strips)} strips ({len([s for s in decomp.strips if len(s) == 125])} large)"
+    )
+
     if dry_run:
-        print("[DRY RUN] Initialized cleanly.")
+        print("[DRY RUN] Initialization complete. Exiting without solving.")
         return True
 
     strip_solver = PinpointedStripSolver(G, decomp)
     coordinator = GlobalDemandCoordinator(G, decomp)
-
-    # Determine supported K preference per strip
-    k_preferred = {}
-    for si, s in enumerate(decomp.strips):
-        if len(s) <= 10:
-            k_preferred[si] = 1
-        else:
-            s_hub = list(decomp.strip_adj_hubs[si] & set(decomp.s_hubs))[0] if (decomp.strip_adj_hubs[si] & set(decomp.s_hubs)) else None
-            b_hub = list(decomp.strip_adj_hubs[si] & set(decomp.b_hubs))[0] if (decomp.strip_adj_hubs[si] & set(decomp.b_hubs)) else None
-            for k in [4, 3, 5, 2]:
-                sat, res = strip_solver.solve_strip(si, {}, s_hub, b_hub, K=k)
-                if sat:
-                    k_preferred[si] = k
-                    break
-            if si not in k_preferred:
-                k_preferred[si] = 2
-
-    print(f"Computed Strip K Preferences: {collections.Counter(k_preferred.values())}")
 
     outer_it = 0
     while True:
@@ -88,13 +57,16 @@ def solve_graph950_two_tier(
             print(f"[TIMEOUT] Reached global {timeout}s limit at iteration {outer_it}")
             return False
 
-        print(f"\n--- Outer Iteration {outer_it} ({elapsed:.1f}s) ---")
+        if outer_it % 10 == 1 or outer_it <= 5:
+            print(f"\n--- Outer Iteration {outer_it} ({elapsed:.1f}s) ---")
+            
         is_sat, hh_edges, strip_demands = coordinator.solve_assignment()
         if not is_sat:
             print("Coordinator returned UNSAT: search space exhausted.")
             return False
 
-        print(f"Coordinator assigned {len(hh_edges)} Hub-Hub edges across {len(decomp.strips)} strips")
+        if outer_it % 10 == 1 or outer_it <= 5:
+            print(f"Coordinator assigned {len(hh_edges)} Hub-Hub edges across {len(decomp.strips)} strips")
 
         all_strips_sat = True
         strip_paths = {}
@@ -106,28 +78,19 @@ def solve_graph950_two_tier(
 
             s_hub = list(decomp.strip_adj_hubs[si] & set(decomp.s_hubs))[0] if (decomp.strip_adj_hubs[si] & set(decomp.s_hubs)) else None
             b_hub = list(decomp.strip_adj_hubs[si] & set(decomp.b_hubs))[0] if (decomp.strip_adj_hubs[si] & set(decomp.b_hubs)) else None
-            m_dem = strip_demands.get(si, {})
+            dem = strip_demands.get(si, {})
 
-            # Flexible K selection in {2, 3, 4, 5} for large strips or 1 for small strips
-            if len(s) <= 10:
-                k_candidates = [1]
-            else:
-                pref = k_preferred.get(si, 4)
-                other_k = [k for k in [4, 3, 2, 5] if k != pref]
-                k_candidates = [pref] + other_k
+            tot_d = sum(dem.values())
+            K = tot_d // 2 if tot_d >= 2 else (1 if len(s) < 10 else 4)
 
-            sat = False
-            res = None
-            for k in k_candidates:
-                sat, res = strip_solver.solve_strip(si, m_dem, s_hub, b_hub, K=k)
-                if sat:
-                    break
+            sat, res = strip_solver.solve_strip(si, dem, s_hub, b_hub, K=K)
 
             if not sat:
                 all_strips_sat = False
-                failed_core = res if isinstance(res, list) else list(m_dem.keys())
-                coordinator.add_conflict_clause(si, failed_core)
-                print(f"  Strip {si:2d} ({len(s)}v) UNSAT with core {failed_core} -> conflict learned")
+                failed_core = res if isinstance(res, list) else list(dem.keys())
+                coordinator.add_conflict_clause(si, dem, failed_core)
+                if outer_it % 10 == 1 or outer_it <= 5:
+                    print(f"  Strip {si:2d} ({len(s)}v) UNSAT with core {failed_core} -> conflict learned")
                 break
             else:
                 strip_paths[si] = res
@@ -135,8 +98,8 @@ def solve_graph950_two_tier(
         if not all_strips_sat:
             continue
 
-        print(f"All {len(decomp.strips)} strips SATISFIED! Splicing full tour...")
-        is_valid, res = splice_macro_tour(G, decomp, hh_edges, strip_paths)
+        print(f"All {len(decomp.strips)} strips SATISFIED at iter {outer_it} ({time.time()-t_start:.1f}s)! Splicing full tour...")
+        is_valid, res = splice_macro_tour(G, decomp, hh_edges, strip_paths, strip_demands)
 
         if is_valid:
             tour = res
@@ -152,12 +115,10 @@ def solve_graph950_two_tier(
                 return False
         else:
             subtours = res
-            print(f"Splicer detected {len(subtours)} disconnected subtours -> adding macro cut clauses")
-            for cyc in subtours:
-                cyc_hubs = set(cyc) & decomp.all_hubs
-                if 0 < len(cyc_hubs) < len(decomp.all_hubs):
-                    coordinator.add_macro_cut(cyc_hubs)
-
+            if isinstance(subtours, list) and len(subtours) > 0:
+                print(f"Splicer detected {len(subtours)} disconnected subtours -> adding macro cut clauses")
+                for cyc in subtours:
+                    coordinator.add_macro_cut(set(cyc), hh_edges, strip_demands)
 
 def main():
     parser = argparse.ArgumentParser(description="End-to-End Two-Tier Demand Coordinator Solver")
@@ -174,7 +135,6 @@ def main():
         output_path=args.out
     )
     sys.exit(0 if success else 1)
-
 
 if __name__ == "__main__":
     main()
