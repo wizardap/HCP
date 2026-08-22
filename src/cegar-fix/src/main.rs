@@ -21,6 +21,7 @@ pub mod global_demand_coordinator;
 pub mod macro_splicer;
 pub mod two_tier_orchestrator;
 pub mod staged_subcycle_filter;
+pub mod dual_cut_generator;
 
 use contraction::Degree2Contractor;
 use hub_registry::HubRegistry;

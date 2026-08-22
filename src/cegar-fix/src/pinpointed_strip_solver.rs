@@ -50,7 +50,7 @@ impl<'a> PinpointedStripSolver<'a> {
         let mut solver = CaDiCaL::default();
         let mut var_mgr = BasicVarManager::default();
 
-        // 1. Map internal edges in strip S
+        // 1. Internal edges
         let mut edge_vars: HashMap<(i32, i32), Lit> = HashMap::new();
         let mut vert_internal_lits: HashMap<i32, Vec<Lit>> = HashMap::new();
         for &v in strip_verts {
@@ -70,7 +70,7 @@ impl<'a> PinpointedStripSolver<'a> {
             }
         }
 
-        // 2. Map external edges between strip S and hubs
+        // 2. External edges to hubs
         let mut ext_edge_vars: HashMap<(i32, i32), Lit> = HashMap::new();
         let mut hub_to_ext_lits: HashMap<i32, Vec<Lit>> = HashMap::new();
         let mut vert_ext_lits: HashMap<i32, Vec<Lit>> = HashMap::new();
@@ -91,7 +91,7 @@ impl<'a> PinpointedStripSolver<'a> {
             }
         }
 
-        // 3. Degree constraint for each vertex u in strip S: degree == 2
+        // 3. Degree == 2 constraint for each vertex in strip
         for &u in strip_verts {
             let mut inc_lits = Vec::new();
             if let Some(int_lits) = vert_internal_lits.get(&u) {
@@ -100,7 +100,6 @@ impl<'a> PinpointedStripSolver<'a> {
             if let Some(ext_lits) = vert_ext_lits.get(&u) {
                 inc_lits.extend_from_slice(ext_lits);
             }
-
             add_exact_k(&mut solver, &mut var_mgr, &inc_lits, 2);
         }
 
@@ -111,11 +110,10 @@ impl<'a> PinpointedStripSolver<'a> {
         }
         add_exact_k(&mut solver, &mut var_mgr, &all_ext_lits, 2 * k);
 
-        // 5. Assumption variables for Hub demands
+        // 5. Hub demand assumptions
         let mut assump_lits = Vec::new();
         let mut assump_to_hub: HashMap<Lit, i32> = HashMap::new();
 
-        // Check all hubs that have external edges or are in dem
         let mut all_relevant_hubs: HashSet<i32> = HashSet::new();
         for &h in hub_to_ext_lits.keys() {
             all_relevant_hubs.insert(h);
@@ -129,17 +127,15 @@ impl<'a> PinpointedStripSolver<'a> {
             let ext_lits = hub_to_ext_lits.get(&h).cloned().unwrap_or_default();
 
             if demand == 0 {
-                // Hard constraint: no external edges to this hub if demand is 0
+                // No external edges to this hub if demand is 0
                 for &lit in &ext_lits {
                     let _ = solver.add_clause(clause![!lit]);
                 }
             } else {
-                // Assumption variable for this hub
                 let a_lit = var_mgr.new_var().pos_lit();
                 assump_lits.push(a_lit);
                 assump_to_hub.insert(a_lit, h);
 
-                // A_h -> sum(ext_lits) == demand
                 if ext_lits.len() < demand {
                     let _ = solver.add_clause(clause![!a_lit]);
                 } else if demand == 1 {
@@ -147,7 +143,6 @@ impl<'a> PinpointedStripSolver<'a> {
                     let mut cl = vec![!a_lit];
                     cl.extend_from_slice(&ext_lits);
                     let _ = solver.add_clause(Clause::from_iter(cl));
-
                     // At most 1
                     for i in 0..ext_lits.len() {
                         for j in (i + 1)..ext_lits.len() {
@@ -159,7 +154,6 @@ impl<'a> PinpointedStripSolver<'a> {
                     let mut cl = vec![!a_lit];
                     cl.extend_from_slice(&ext_lits);
                     let _ = solver.add_clause(Clause::from_iter(cl));
-
                     for i in 0..ext_lits.len() {
                         let mut cl_i = vec![!a_lit, !ext_lits[i]];
                         for j in 0..ext_lits.len() {
@@ -169,7 +163,6 @@ impl<'a> PinpointedStripSolver<'a> {
                         }
                         let _ = solver.add_clause(Clause::from_iter(cl_i));
                     }
-
                     // At most 2
                     for i in 0..ext_lits.len() {
                         for j in (i + 1)..ext_lits.len() {
@@ -178,43 +171,40 @@ impl<'a> PinpointedStripSolver<'a> {
                             }
                         }
                     }
-                } else {
-                    let _ = solver.add_clause(clause![!a_lit]);
                 }
             }
         }
 
-        // 6. Incremental Solve loop with Subtour Elimination
         loop {
-            let res = solver.solve_assumps(&assump_lits);
-            match res {
+            match solver.solve_assumps(&assump_lits) {
                 Ok(SolverResult::Sat) => {
                     let sol = solver.full_solution().expect("SAT solution must exist");
+                    let mut active_edges: Vec<(i32, i32)> = Vec::new();
+                    for (&(u, v), &lit) in &edge_vars {
+                        if sol.lit_value(lit) == TernaryVal::True {
+                            active_edges.push((u, v));
+                        }
+                    }
 
-                    // Extract active internal edges
+                    // Build adjacency graph for internal paths
                     let mut adj: HashMap<i32, Vec<i32>> = HashMap::new();
                     for &v in strip_verts {
                         adj.insert(v, Vec::new());
                     }
-
-                    for (&(u, v), &lit) in &edge_vars {
-                        if sol.lit_value(lit) == TernaryVal::True {
-                            adj.get_mut(&u).unwrap().push(v);
-                            adj.get_mut(&v).unwrap().push(u);
-                        }
+                    for &(u, v) in &active_edges {
+                        adj.get_mut(&u).unwrap().push(v);
+                        adj.get_mut(&v).unwrap().push(u);
                     }
 
-                    // Traverse components
                     let mut visited = HashSet::new();
-                    let mut cycles = Vec::new();
                     let mut paths = Vec::new();
+                    let mut cycles = Vec::new();
 
                     for &start_v in strip_verts {
                         if visited.contains(&start_v) {
                             continue;
                         }
 
-                        // Explore component
                         let mut comp_verts = Vec::new();
                         let mut queue = VecDeque::new();
                         visited.insert(start_v);
@@ -230,11 +220,9 @@ impl<'a> PinpointedStripSolver<'a> {
                             }
                         }
 
-                        // Check if component is a cycle (every vertex has degree 2 in internal edges)
                         let is_cycle = comp_verts.len() >= 3 && comp_verts.iter().all(|&v| adj[&v].len() == 2);
 
                         if is_cycle {
-                            // Extract cycle ordering
                             let mut cyc = Vec::new();
                             let mut c_curr = comp_verts[0];
                             let mut c_prev = -1;
@@ -247,11 +235,9 @@ impl<'a> PinpointedStripSolver<'a> {
                             }
                             cycles.push(cyc);
                         } else {
-                            // It is a path (or isolated vertex)
                             if comp_verts.len() == 1 {
                                 paths.push(comp_verts);
                             } else {
-                                // Find an endpoint (degree == 1)
                                 let start_ep = comp_verts.iter().find(|&&v| adj[&v].len() == 1).copied().unwrap_or(comp_verts[0]);
                                 let mut path = Vec::new();
                                 let mut p_curr = start_ep;
@@ -271,7 +257,6 @@ impl<'a> PinpointedStripSolver<'a> {
                         }
                     }
 
-                    // If cycles found, add blocking cut clauses and re-solve
                     if !cycles.is_empty() {
                         for cyc in cycles {
                             let mut block_clause = Vec::new();
@@ -290,7 +275,6 @@ impl<'a> PinpointedStripSolver<'a> {
                         continue;
                     }
 
-                    // Sort paths for determinism
                     paths.sort_by_key(|p| p[0]);
                     return Ok(paths);
                 }
@@ -298,7 +282,6 @@ impl<'a> PinpointedStripSolver<'a> {
                     let core_lits = solver.core().unwrap_or_default();
                     let mut failed_hubs = Vec::new();
                     for lit in core_lits {
-                        // The core contains the negated or positive assumption literal
                         if let Some(&h) = assump_to_hub.get(&lit) {
                             failed_hubs.push(h);
                         } else if let Some(&h) = assump_to_hub.get(&(!lit)) {
@@ -362,7 +345,6 @@ fn add_at_most_k<S: Solve>(
         return;
     }
 
-    // Sinz sequential counter for sum(lits) <= k
     let mut s: Vec<Vec<Lit>> = Vec::with_capacity(n - 1);
     for _ in 0..(n - 1) {
         let mut row = Vec::with_capacity(k);

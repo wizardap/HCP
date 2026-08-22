@@ -247,6 +247,115 @@ impl<'a> GlobalDemandCoordinator<'a> {
         }
     }
 
+    /// Adds exact No-Good blocking clauses for the active edges/demands forming each subtour.
+    pub fn add_exact_subtour_block(
+        &mut self,
+        active_hh: &[(i32, i32)],
+        strip_demands: &HashMap<usize, HashMap<i32, usize>>,
+        subtours: &[Vec<i32>],
+    ) {
+        for cyc in subtours {
+            let cyc_set: HashSet<i32> = cyc.iter().copied().collect();
+            let mut block_clause: Vec<Lit> = Vec::new();
+
+            for &(u, v) in active_hh {
+                if cyc_set.contains(&u) && cyc_set.contains(&v) {
+                    if let Some(&lit) = self.var_hh.get(&(u, v)) {
+                        block_clause.push(!lit);
+                    }
+                }
+            }
+
+            for (si, dem) in strip_demands {
+                if *si < self.decomp.strips.len() {
+                    let strip_verts = &self.decomp.strips[*si];
+                    let is_strip_in = strip_verts.iter().all(|v| cyc_set.contains(v));
+                    if is_strip_in {
+                        for (&h, &d) in dem {
+                            if d > 0 && cyc_set.contains(&h) {
+                                if let Some(&lit) = self.var_d1.get(&(*si, h)) {
+                                    block_clause.push(!lit);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            block_clause.sort();
+            block_clause.dedup();
+            if !block_clause.is_empty() {
+                let _ = self.solver.add_clause(Clause::from_iter(block_clause));
+            }
+        }
+    }
+
+    /// Injects MTZ order-encoding constraints strictly on a subtour component `comp_verts`.
+    /// Forbids ANY cycle contained entirely within `comp_verts`.
+    pub fn inject_component_mtz(&mut self, comp_verts: &[i32]) {
+        let hubs: Vec<i32> = comp_verts.iter().copied().filter(|v| self.decomp.all_hubs.contains(v)).collect();
+        if hubs.len() < 3 {
+            return;
+        }
+
+        let k_len = hubs.len();
+        let source = hubs[0];
+        let mut order_vars: HashMap<i32, Vec<Lit>> = HashMap::new();
+
+        for &v in &hubs {
+            let mut vars = Vec::new();
+            for _ in 0..(k_len - 1) {
+                let lit = Var::new(self.next_var_id).pos_lit();
+                self.next_var_id += 1;
+                vars.push(lit);
+            }
+            order_vars.insert(v, vars);
+        }
+
+        // 1. Monotonicity: o[v][t+1] -> o[v][t]  (!o[v][t+1] \/ o[v][t])
+        for &v in &hubs {
+            let vars = &order_vars[&v];
+            for t in 0..(vars.len() - 1) {
+                let _ = self.solver.add_clause(clause![!vars[t + 1], vars[t]]);
+            }
+        }
+
+        // 2. Source constraint: position(source) = 0 -> !o[source][t]
+        for lit in &order_vars[&source] {
+            let _ = self.solver.add_clause(clause![!*lit]);
+        }
+
+        // 3. MTZ constraints on directed Hub-Hub edges in component
+        let hub_set: HashSet<i32> = hubs.iter().copied().collect();
+        for &u in &hubs {
+            if let Some(nbrs) = self.g.adjacency_list.get(&u) {
+                for &v in nbrs {
+                    if !hub_set.contains(&v) || u == v {
+                        continue;
+                    }
+                    let x_uv = match self.var_hh.get(&(u, v)) {
+                        Some(&lit) => lit,
+                        None => continue,
+                    };
+
+                    if u == source {
+                        let o_v = &order_vars[&v];
+                        let _ = self.solver.add_clause(clause![!x_uv, o_v[0]]);
+                    } else if v == source {
+                        continue;
+                    } else {
+                        let o_u = &order_vars[&u];
+                        let o_v = &order_vars[&v];
+                        let _ = self.solver.add_clause(clause![!x_uv, o_v[0]]);
+                        for t in 0..(o_u.len() - 1) {
+                            let _ = self.solver.add_clause(clause![!x_uv, !o_u[t], o_v[t + 1]]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Adds a True Indicator Cut-Crossing Subtour Elimination Clause for a subtour/cycle on the 310 Hub partition.
     /// Forces at least one crossing HH edge or at least one strip bridging H_inside and H_outside.
     pub fn add_macro_cut(&mut self, cyc_verts: &HashSet<i32>) {

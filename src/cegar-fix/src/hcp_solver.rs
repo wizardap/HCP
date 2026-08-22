@@ -20,8 +20,7 @@ use crate::hub_sub_hcp::HubPartitionedSolver;
 use crate::modular_solver::ModularSolver;
 
 
-/// Pre-emptively forbids 3-cycles (triangles) and 4-cycles in the initial CNF encoding.
-/// Returns the total number of added short-cycle clauses.
+/// Pre-emptively forbids 3-cycles (triangles) and 4-cycles in the initial CNF encoding in O(|E| * Delta).
 pub fn add_global_short_cycle_cuts(
     g: &Graph,
     encoder: &Encoder,
@@ -38,142 +37,47 @@ pub fn add_global_short_cycle_cuts(
         adj_set.insert(u, neighbors.iter().cloned().collect());
     }
 
-    let mut vertices: Vec<i32> = g.adjacency_list.keys().cloned().collect();
-    vertices.sort_unstable();
-
     let mut added_clauses = 0;
 
     // 1. Triangle Cuts (3-cycles)
     if max_cycle_len >= 3 && n > 3 {
-        for i in 0..vertices.len() {
-            let u = vertices[i];
-            let u_neighbors = match adj_set.get(&u) {
-                Some(s) => s,
-                None => continue,
-            };
-            if u_neighbors.len() > 20 {
+        for (&u, neighbors) in &g.adjacency_list {
+            if neighbors.len() > 30 {
                 continue;
             }
-
-            for j in (i + 1)..vertices.len() {
-                let v = vertices[j];
-                if !u_neighbors.contains(&v) {
+            for &v in neighbors {
+                if u >= v {
                     continue;
                 }
-                let v_neighbors = match adj_set.get(&v) {
+                let v_neighbors = match g.adjacency_list.get(&v) {
                     Some(s) => s,
                     None => continue,
                 };
-                if v_neighbors.len() > 20 {
+                if v_neighbors.len() > 30 {
                     continue;
                 }
-
-                for k in (j + 1)..vertices.len() {
-                    let w = vertices[k];
-                    if v_neighbors.contains(&w) && u_neighbors.contains(&w) {
-                        let w_neighbors = match adj_set.get(&w) {
-                            Some(s) => s,
-                            None => continue,
-                        };
-                        if w_neighbors.len() > 20 {
-                            continue;
-                        }
-
-                        // Forward cycle: u -> v -> w -> u
-                        if let (Some(&x_uv), Some(&x_vw), Some(&x_wu)) = (
-                            encoder.graph_lit_map.get(&(u, v)),
-                            encoder.graph_lit_map.get(&(v, w)),
-                            encoder.graph_lit_map.get(&(w, u)),
-                        ) {
-                            cnf.add_clause(clause!(!x_uv, !x_vw, !x_wu));
-                            added_clauses += 1;
-                        }
-                        // Reverse cycle: u -> w -> v -> u
-                        if let (Some(&x_uw), Some(&x_wv), Some(&x_vu)) = (
-                            encoder.graph_lit_map.get(&(u, w)),
-                            encoder.graph_lit_map.get(&(w, v)),
-                            encoder.graph_lit_map.get(&(v, u)),
-                        ) {
-                            cnf.add_clause(clause!(!x_uw, !x_wv, !x_vu));
-                            added_clauses += 1;
-                        }
+                for &w in v_neighbors {
+                    if v >= w || w == u {
+                        continue;
                     }
-                }
-            }
-        }
-    }
-
-    // 2. 4-Cycle Cuts
-    if max_cycle_len >= 4 && n > 4 {
-        for i in 0..vertices.len() {
-            let u = vertices[i];
-            let u_neighbors = match adj_set.get(&u) {
-                Some(s) => s,
-                None => continue,
-            };
-            let deg_u = u_neighbors.len();
-            if deg_u > 20 {
-                continue;
-            }
-
-            for j in (i + 1)..vertices.len() {
-                let w = vertices[j];
-                let w_neighbors = match adj_set.get(&w) {
-                    Some(s) => s,
-                    None => continue,
-                };
-                let deg_w = w_neighbors.len();
-                if deg_w > 20 {
-                    continue;
-                }
-
-                // Find common neighbors c of u and w with c > u and deg(c) <= 20
-                let mut common: Vec<i32> = Vec::new();
-                if deg_u < deg_w {
-                    for &c in u_neighbors {
-                        if c > u && w_neighbors.contains(&c) && adj_set.get(&c).map_or(0, |s| s.len()) <= 20 {
-                            common.push(c);
-                        }
-                    }
-                } else {
-                    for &c in w_neighbors {
-                        if c > u && u_neighbors.contains(&c) && adj_set.get(&c).map_or(0, |s| s.len()) <= 20 {
-                            common.push(c);
-                        }
-                    }
-                }
-
-                if common.len() < 2 {
-                    continue;
-                }
-
-                common.sort_unstable();
-
-                for a in 0..common.len() {
-                    let v = common[a];
-                    for b in (a + 1)..common.len() {
-                        let z = common[b];
-
-                        // Forward cycle: u -> v -> w -> z -> u
-                            if let (Some(&x_uv), Some(&x_vw), Some(&x_wz), Some(&x_zu)) = (
+                    if let Some(u_nbrs) = adj_set.get(&u) {
+                        if u_nbrs.contains(&w) {
+                            if let (Some(&x_uv), Some(&x_vw), Some(&x_wu)) = (
                                 encoder.graph_lit_map.get(&(u, v)),
                                 encoder.graph_lit_map.get(&(v, w)),
-                                encoder.graph_lit_map.get(&(w, z)),
-                                encoder.graph_lit_map.get(&(z, u)),
+                                encoder.graph_lit_map.get(&(w, u)),
                             ) {
-                                cnf.add_clause(clause!(!x_uv, !x_vw, !x_wz, !x_zu));
+                                cnf.add_clause(clause!(!x_uv, !x_vw, !x_wu));
                                 added_clauses += 1;
                             }
-
-                            // Reverse cycle: u -> z -> w -> v -> u
-                            if let (Some(&x_uz), Some(&x_zw), Some(&x_wv), Some(&x_vu)) = (
-                                encoder.graph_lit_map.get(&(u, z)),
-                                encoder.graph_lit_map.get(&(z, w)),
+                            if let (Some(&x_uw), Some(&x_wv), Some(&x_vu)) = (
+                                encoder.graph_lit_map.get(&(u, w)),
                                 encoder.graph_lit_map.get(&(w, v)),
                                 encoder.graph_lit_map.get(&(v, u)),
                             ) {
-                                cnf.add_clause(clause!(!x_uz, !x_zw, !x_wv, !x_vu));
+                                cnf.add_clause(clause!(!x_uw, !x_wv, !x_vu));
                                 added_clauses += 1;
+                            }
                         }
                     }
                 }

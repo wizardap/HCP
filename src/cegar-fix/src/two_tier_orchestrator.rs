@@ -72,6 +72,7 @@ pub fn solve_graph_two_tier(g: &Graph, options: &TwoTierSolverOptions) -> Option
 
     let mut coordinator = GlobalDemandCoordinator::new(g, &decomp);
     let mut strip_solver = PinpointedStripSolver::new(g, &decomp);
+    let mut strip_cache: HashMap<(usize, Vec<(i32, usize)>, usize), Result<Vec<Vec<i32>>, Vec<i32>>> = HashMap::new();
 
     let mut outer_it = 0;
     while outer_it < options.max_iterations {
@@ -130,7 +131,19 @@ pub fn solve_graph_two_tier(g: &Graph, options: &TwoTierSolverOptions) -> Option
                 decomp.b_hubs.iter().find(|h| adj.contains(h)).copied()
             });
 
-            match strip_solver.solve_strip(si, &dem, s_hub, b_hub, k) {
+            let mut dem_vec: Vec<(i32, usize)> = dem.iter().map(|(&h, &d)| (h, d)).filter(|&(_, d)| d > 0).collect();
+            dem_vec.sort_unstable();
+            let cache_key = (si, dem_vec, k);
+
+            let res = if let Some(cached) = strip_cache.get(&cache_key) {
+                cached.clone()
+            } else {
+                let r = strip_solver.solve_strip(si, &dem, s_hub, b_hub, k);
+                strip_cache.insert(cache_key, r.clone());
+                r
+            };
+
+            match res {
                 Ok(paths) => {
                     strip_paths.insert(si, paths);
                 }
@@ -202,9 +215,11 @@ pub fn solve_graph_two_tier(g: &Graph, options: &TwoTierSolverOptions) -> Option
                     "Splicer detected {} disconnected subtours -> adding macro cut clauses",
                     cycles.len()
                 );
+                coordinator.add_exact_subtour_block(&hh_edges, &strip_demands, &cycles);
                 for cyc in &cycles {
                     let cyc_verts: HashSet<i32> = cyc.iter().copied().collect();
                     coordinator.add_macro_cut(&cyc_verts);
+                    coordinator.inject_component_mtz(cyc);
                 }
             } else {
                 println!("Splicer failed boundary matching -> learning conflict clauses on strips");
