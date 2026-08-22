@@ -213,6 +213,28 @@ pub fn get_options() -> clap::ArgMatches {
                 .help("Maximum vertices per cluster for sub-HCP solving (default: 500)")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("two-tier")
+                .long("two-tier")
+                .value_name("n")
+                .help("Two-tier demand-coordinated solver:\n 0: Disabled (default)\n 1: Enabled")
+                .takes_value(true)
+                .min_values(0),
+        )
+        .arg(
+            Arg::with_name("timeout")
+                .long("timeout")
+                .value_name("SECONDS")
+                .help("Timeout in seconds (default: 1800.0)")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("output-tour")
+                .long("output-tour")
+                .value_name("FILE")
+                .help("Output HCP tour file path (default: scratch/graph950/found_tour_rust.hcp)")
+                .takes_value(true),
+        )
         .get_matches();
 }
 

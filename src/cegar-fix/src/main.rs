@@ -19,6 +19,7 @@ pub mod two_tier_decomposer;
 pub mod pinpointed_strip_solver;
 pub mod global_demand_coordinator;
 pub mod macro_splicer;
+pub mod two_tier_orchestrator;
 
 use contraction::Degree2Contractor;
 use hub_registry::HubRegistry;
@@ -51,6 +52,9 @@ fn main() {
     let adaptive_escalation = matches.value_of_t::<i32>("adaptive-escalation").unwrap_or(1);
     let sub_hcp_timeout = matches.value_of_t::<u64>("sub-hcp-timeout").unwrap_or(60);
     let max_cluster_size = matches.value_of_t::<usize>("max-cluster-size").unwrap_or(500);
+    let is_two_tier = matches.is_present("two-tier") && matches.value_of("two-tier").map_or(true, |v| v != "0");
+    let timeout_secs = matches.value_of_t::<f64>("timeout").unwrap_or(1800.0);
+    let output_tour_path = matches.value_of("output-tour").map(|s| s.to_string());
     // solver,encodingのオプションを&strで受け取る
     let input_filename = matches.value_of("input").unwrap_or("default");
     let output_foldername = matches.value_of("output").unwrap_or("default");
@@ -60,6 +64,28 @@ fn main() {
     let mut g = file_operations::input_to_graph(input_filename);
     if de_arcify != 0{
         g.remove_redundant_arcs();
+    }
+    if is_two_tier {
+        let opt = two_tier_orchestrator::TwoTierSolverOptions {
+            timeout_secs,
+            max_iterations: 50_000,
+            enable_patching: true,
+            output_path: output_tour_path,
+        };
+        let res = two_tier_orchestrator::solve_graph_two_tier(&g, &opt);
+        if let Some(tour) = res {
+            println!("s SATISFIABLE");
+            print!("solution: \n");
+            for v in &tour {
+                print!("{} ", v);
+            }
+            println!();
+            println!("overall time = {:?}", instant.elapsed());
+        } else {
+            println!("s UNSATISFIABLE");
+            println!("overall time = {:?}", instant.elapsed());
+        }
+        return;
     }
     if g.has_articulation_points() {
         println!("Graph has cut-vertex or is disconnected.");
