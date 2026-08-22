@@ -17,6 +17,7 @@ mod patching;
 pub mod stem_cycle_patcher;
 pub mod two_tier_decomposer;
 pub mod pinpointed_strip_solver;
+pub mod global_demand_coordinator;
 
 use contraction::Degree2Contractor;
 use hub_registry::HubRegistry;
