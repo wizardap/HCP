@@ -22,6 +22,7 @@ pub mod macro_splicer;
 pub mod two_tier_orchestrator;
 pub mod staged_subcycle_filter;
 pub mod dual_cut_generator;
+pub mod staged_lazy_smt_solver;
 
 use contraction::Degree2Contractor;
 use hub_registry::HubRegistry;
@@ -55,6 +56,7 @@ fn main() {
     let sub_hcp_timeout = matches.value_of_t::<u64>("sub-hcp-timeout").unwrap_or(60);
     let max_cluster_size = matches.value_of_t::<usize>("max-cluster-size").unwrap_or(500);
     let is_two_tier = matches.is_present("two-tier") && matches.value_of("two-tier").map_or(true, |v| v != "0");
+    let is_staged_smt = matches.is_present("staged-smt") && matches.value_of("staged-smt").map_or(true, |v| v != "0");
     let timeout_secs = matches.value_of_t::<f64>("timeout").unwrap_or(1800.0);
     let output_tour_path = matches.value_of("output-tour").map(|s| s.to_string());
     // solver,encodingのオプションを&strで受け取る
@@ -66,6 +68,27 @@ fn main() {
     let mut g = file_operations::input_to_graph(input_filename);
     if de_arcify != 0{
         g.remove_redundant_arcs();
+    }
+    if is_staged_smt {
+        let opt = staged_lazy_smt_solver::StagedLazySmtOptions {
+            max_batch_size: 500,
+            timeout_secs,
+            output_path: output_tour_path,
+        };
+        let res = staged_lazy_smt_solver::solve_staged_lazy_smt(&g, &opt);
+        if let Some(tour) = res {
+            println!("s SATISFIABLE");
+            print!("solution: \n");
+            for v in &tour {
+                print!("{} ", v);
+            }
+            println!();
+            println!("overall time = {:?}", instant.elapsed());
+        } else {
+            println!("s UNSATISFIABLE");
+            println!("overall time = {:?}", instant.elapsed());
+        }
+        return;
     }
     if is_two_tier {
         let opt = two_tier_orchestrator::TwoTierSolverOptions {

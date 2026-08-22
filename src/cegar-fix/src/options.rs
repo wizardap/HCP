@@ -222,6 +222,14 @@ pub fn get_options() -> clap::ArgMatches {
                 .min_values(0),
         )
         .arg(
+            Arg::with_name("staged-smt")
+                .long("staged-smt")
+                .value_name("n")
+                .help("Staged-length lazy SMT solver:\n 0: Disabled (default)\n 1: Enabled")
+                .takes_value(true)
+                .min_values(0),
+        )
+        .arg(
             Arg::with_name("timeout")
                 .long("timeout")
                 .value_name("SECONDS")
