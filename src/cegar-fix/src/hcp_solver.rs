@@ -85,6 +85,52 @@ pub fn add_global_short_cycle_cuts(
         }
     }
 
+    // 2. Quad Cuts (4-cycles)
+    if max_cycle_len >= 4 && n > 4 {
+        for (&u, neighbors) in &g.adjacency_list {
+            if neighbors.len() > 30 {
+                continue;
+            }
+            let u_neighbors: Vec<i32> = neighbors.iter().filter(|&&v| v > u).copied().collect();
+            for i in 0..u_neighbors.len() {
+                let v = u_neighbors[i];
+                let v_nbrs = match adj_set.get(&v) {
+                    Some(s) => s,
+                    None => continue,
+                };
+                for j in (i + 1)..u_neighbors.len() {
+                    let z = u_neighbors[j];
+                    let z_nbrs = match adj_set.get(&z) {
+                        Some(s) => s,
+                        None => continue,
+                    };
+                    for &w in v_nbrs {
+                        if w > u && w != z && z_nbrs.contains(&w) {
+                            if let (Some(&x_uv), Some(&x_vw), Some(&x_wz), Some(&x_zu)) = (
+                                encoder.graph_lit_map.get(&(u, v)),
+                                encoder.graph_lit_map.get(&(v, w)),
+                                encoder.graph_lit_map.get(&(w, z)),
+                                encoder.graph_lit_map.get(&(z, u)),
+                            ) {
+                                cnf.add_clause(clause!(!x_uv, !x_vw, !x_wz, !x_zu));
+                                added_clauses += 1;
+                            }
+                            if let (Some(&x_uz), Some(&x_zw), Some(&x_wv), Some(&x_vu)) = (
+                                encoder.graph_lit_map.get(&(u, z)),
+                                encoder.graph_lit_map.get(&(z, w)),
+                                encoder.graph_lit_map.get(&(w, v)),
+                                encoder.graph_lit_map.get(&(v, u)),
+                            ) {
+                                cnf.add_clause(clause!(!x_uz, !x_zw, !x_wv, !x_vu));
+                                added_clauses += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     added_clauses
 }
 
