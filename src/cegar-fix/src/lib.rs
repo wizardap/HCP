@@ -20,3 +20,4 @@ pub mod pinpointed_strip_solver;
 pub mod global_demand_coordinator;
 pub mod macro_splicer;
 pub mod two_tier_orchestrator;
+pub mod staged_subcycle_filter;
