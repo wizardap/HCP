@@ -234,7 +234,7 @@ pub fn add_cluster_cut_constraints(
     added_clauses
 }
 
-pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &HubRegistry, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, _cegar_fallback:i32, _mtz_stall:i32, _adaptive_escalation:i32, _sub_hcp_timeout: u64, _max_cluster_size: usize, instant:Instant,output_folder:&str) {
+pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &HubRegistry, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, _cegar_fallback:i32, _mtz_stall:i32, _adaptive_escalation:i32, _sub_hcp_timeout: u64, _max_cluster_size: usize, timeout_secs: f64, instant:Instant,output_folder:&str) {
     let now = instant.elapsed();
     let mut encoder = Encoder::new();
     // グラフをcnf形式に変形し、cnfへ格納
@@ -315,6 +315,7 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
         instant,
         cnf_normalize,
         balanced,
+        timeout_secs,
         instant.elapsed(),
         current_cnf,
         output_folder,
@@ -346,6 +347,7 @@ fn cegar(
     instant: Instant,
     cnf_normalize: i32,
     balanced: i32,
+    timeout_secs: f64,
     mut previous_time: Duration,
     mut previous_cnf: Cnf,
     output_folder: &str,
@@ -379,6 +381,11 @@ fn cegar(
     }
 
     loop {
+        if instant.elapsed().as_secs_f64() >= timeout_secs {
+            println!("\ns UNKNOWN (TIMEOUT: {:.2}s reached >= {:.2}s limit)", instant.elapsed().as_secs_f64(), timeout_secs);
+            return (count, clause_count);
+        }
+
         // SATソルバーで解を求める
         let res = solver.solve().unwrap();
         let now = instant.elapsed();
