@@ -18,6 +18,9 @@ use crate::ils_patcher::IteratedLocalSearchPatcher;
 use crate::macro_solver::MacroGraphSolver;
 use crate::hub_sub_hcp::HubPartitionedSolver;
 use crate::modular_solver::ModularSolver;
+use crate::subcycle_absorber::SubcycleAbsorber;
+use crate::bridge_cut_generator::BridgeCutGenerator;
+use crate::backbone_freezer::BackboneFreezer;
 
 
 /// Pre-emptively forbids 3-cycles (triangles) and 4-cycles in the initial CNF encoding in O(|E| * Delta).
@@ -247,20 +250,6 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
             }
         }
     }
-    // Add global short-cycle cuts (triangles and 4-cycles)
-    if loop_prohibition >= 1 || hub_registry.hub_vertices.len() >= 3 {
-        let added_cuts = add_global_short_cycle_cuts(&g, &encoder, &mut cnf, 4);
-        if added_cuts > 0 {
-            println!("added global short-cycle cuts = {}", added_cuts);
-        }
-    }
-    // Add cluster cut constraints for CaDiCaL satellite space pruning
-    if hub_registry.hub_vertices.len() >= 5 {
-        let added_cluster_cuts = add_cluster_cut_constraints(&g, &encoder, &mut cnf);
-        if added_cluster_cuts > 0 {
-            println!("added cluster cut constraints = {}", added_cluster_cuts);
-        }
-    }
     let current_cnf = if output_folder != "default" {
         //フォルダーの作成
         let _ = file_operations::create_folder_if_not_exists(output_folder);
@@ -378,9 +367,27 @@ fn cegar(
         }
     }
 
+    let mut assumptions: Vec<Lit> = Vec::new();
+
     loop {
         // SATソルバーで解を求める
-        let res = solver.solve().unwrap();
+        let (res, _used_assumps) = if !assumptions.is_empty() {
+            match solver.solve_assumps(&assumptions) {
+                Ok(SolverResult::Sat) => (SolverResult::Sat, true),
+                Ok(SolverResult::Unsat) => {
+                    // Assumptions too restrictive; fall back to unconstrained solving
+                    assumptions.clear();
+                    (solver.solve().unwrap_or(SolverResult::Unsat), false)
+                }
+                Ok(other) => (other, true),
+                Err(_) => {
+                    assumptions.clear();
+                    (solver.solve().unwrap_or(SolverResult::Unsat), false)
+                }
+            }
+        } else {
+            (solver.solve().unwrap_or(SolverResult::Unsat), false)
+        };
         let now = instant.elapsed();
         let sat_solving_time = now - previous_time;
 
@@ -582,6 +589,15 @@ fn cegar(
                     let _ = solver.add_cnf(cnf);
                 }
 
+                if _active_cycles.len() <= 30 && _active_cycles.len() > 1 {
+                    assumptions = BackboneFreezer::extract_backbone_assumptions(&_active_cycles, &g, encoder, 0.35);
+                    if !assumptions.is_empty() {
+                        println!("BackboneFreezer: locked {} internal backbone edges as assumptions", assumptions.len());
+                    }
+                } else {
+                    assumptions.clear();
+                }
+
                 let time = now - previous_time;
                 let add_block_clauses_time = now - previous_time - sat_solving_time;
                 previous_time = now;
@@ -739,11 +755,27 @@ fn two_opt(
         }
     }
 
-    let active_cycles = get_active_cycles(&cycles, &active_cycles_number);
+    let mut active_cycles = get_active_cycles(&cycles, &active_cycles_number);
+    if active_cycles.len() > 1 {
+        let absorbed = SubcycleAbsorber::absorb_subcycles(&active_cycles, g, contractor, hub_registry);
+        if absorbed.len() < active_cycles.len() {
+            println!("SubcycleAbsorber: merged from {} to {} subcycles (giant cycle len {})", active_cycles.len(), absorbed.len(), absorbed[0].len());
+            active_cycles = absorbed;
+        }
+    }
+
     let block_clauses = if active_cycles.len() == 1 && active_cycles[0].len() == g.adjacency_list.len() {
         Vec::new()
     } else {
-        get_blocking_clauses(sol_cycles, encoder, g, block_method, balanced)
+        match opt {
+            3 => get_blocking_clauses(&active_cycles, encoder, g, block_method, balanced),
+            2 => {
+                let mut cl = get_blocking_clauses(sol_cycles, encoder, g, block_method, balanced);
+                cl.extend(get_blocking_clauses(&active_cycles, encoder, g, block_method, balanced));
+                cl
+            }
+            _ => get_blocking_clauses(sol_cycles, encoder, g, block_method, balanced),
+        }
     };
 
     println!("number of connected cycles = {}", cycles.len() - sol_cycles.len());
@@ -1133,6 +1165,7 @@ fn get_blocking_clauses(
                 // Technique A1 & A3: Boundary Minimal Cut & Complementary Cut with Totalizer support
                 let cut_clauses = get_boundary_cut_clauses(sol_cycle, encoder, g, total_v, balanced);
                 clauses.extend(cut_clauses);
+                clauses.extend(cegar_blocking_clauses(sol_cycle, &encoder.graph_lit_map));
 
                 // Technique A2: Induced Subgraph SECs for |C| <= 4
                 if sol_cycle.len() <= 4 {

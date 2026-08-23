@@ -1,0 +1,62 @@
+[
+  {
+    "graph": "graph560.col",
+    "class": "B1",
+    "status": "TIMEOUT",
+    "duration_seconds": 300
+  },
+  {
+    "graph": "graph584.col",
+    "class": "B1",
+    "status": "TIMEOUT",
+    "duration_seconds": 300
+  },
+  {
+    "graph": "graph612.col",
+    "class": "B1",
+    "status": "TIMEOUT",
+    "duration_seconds": 300
+  },
+  {
+    "graph": "graph797.col",
+    "class": "B1",
+    "status": "TIMEOUT",
+    "duration_seconds": 300
+  },
+  {
+    "graph": "graph479.col",
+    "class": "B2a",
+    "status": "TIMEOUT",
+    "duration_seconds": 300
+  },
+  {
+    "graph": "graph566.col",
+    "class": "B2b",
+    "status": "TIMEOUT",
+    "duration_seconds": 300
+  },
+  {
+    "graph": "graph677.col",
+    "class": "B2b",
+    "status": "TIMEOUT",
+    "duration_seconds": 300
+  },
+  {
+    "graph": "graph725.col",
+    "class": "B2b",
+    "status": "TIMEOUT",
+    "duration_seconds": 300
+  },
+  {
+    "graph": "graph810.col",
+    "class": "B2b",
+    "status": "TIMEOUT",
+    "duration_seconds": 300
+  },
+  {
+    "graph": "graph940.col",
+    "class": "B2b",
+    "status": "TIMEOUT",
+    "duration_seconds": 300
+  }
+]
