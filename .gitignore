@@ -8,7 +8,6 @@ __pycache__/
 *.pyc
 
 # Benchmark dataset & large logs
-FHCPCS-col/
 *.log
 *.tou
 *.cnf
