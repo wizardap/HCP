@@ -29,3 +29,4 @@ pub mod bridge_cut_generator;
 pub mod backbone_freezer;
 pub mod cycle_chain_absorber;
 pub mod tour_verifier;
+pub mod hybrid_orchestrator;

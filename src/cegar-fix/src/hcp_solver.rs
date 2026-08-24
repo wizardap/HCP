@@ -19,7 +19,7 @@ use crate::macro_solver::MacroGraphSolver;
 use crate::hub_sub_hcp::HubPartitionedSolver;
 use crate::modular_solver::ModularSolver;
 use crate::subcycle_absorber::SubcycleAbsorber;
-use crate::bridge_cut_generator::BridgeCutGenerator;
+use crate::cycle_chain_absorber::CycleChainAbsorber;
 use crate::backbone_freezer::BackboneFreezer;
 
 
@@ -237,7 +237,7 @@ pub fn add_cluster_cut_constraints(
     added_clauses
 }
 
-pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &HubRegistry, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, _cegar_fallback:i32, _mtz_stall:i32, _adaptive_escalation:i32, _sub_hcp_timeout: u64, _max_cluster_size: usize, timeout_secs: f64, instant:Instant,output_folder:&str) {
+pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &HubRegistry, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, _cegar_fallback:i32, _mtz_stall:i32, _adaptive_escalation:i32, _sub_hcp_timeout: u64, _max_cluster_size: usize, timeout_secs: f64, instant:Instant,output_folder:&str) -> Option<Vec<i32>> {
     let now = instant.elapsed();
     let mut encoder = Encoder::new();
     // グラフをcnf形式に変形し、cnfへ格納
@@ -290,7 +290,7 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
         let _ = solver.add_cnf(cnf);
     }
     // cegar関数により、解を求め、increment数と追加したblock節の合計を返す
-    let (increment, block) = cegar(
+    let (increment, block, tour) = cegar(
         &mut encoder,
         solver,
         0,
@@ -311,6 +311,7 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
     );
     println!("overall incremented number = {}", increment);
     println!("overall number of added block clauses = {}", block);
+    tour
 }
 
 fn print_tour(tour: &[i32], contractor: &Degree2Contractor) {
@@ -340,14 +341,15 @@ fn cegar(
     mut previous_time: Duration,
     mut previous_cnf: Cnf,
     output_folder: &str,
-) -> (i32, i32) {
+) -> (i32, i32, Option<Vec<i32>>) {
     // Attempt Modular Macro-Decomposition when dense hubs are detected
     if hub_registry.hub_vertices.len() >= 5 {
         if let Some(tour) = ModularSolver::solve_via_modular_decomposition(&g, contractor, hub_registry) {
             println!("s SATISFIABLE (via Modular Macro-Decomposition)");
             println!("overall incremented number = 0");
+            let final_tour = contractor.uncontract_cycle(&tour);
             print_tour(&tour, contractor);
-            return (0, 0);
+            return (0, 0, Some(final_tour));
         }
     }
 
@@ -364,7 +366,7 @@ fn cegar(
                 println!("solution: ");
                 println!("{}\n", line);
                 println!("s SATISFIABLE");
-                return (0, 0);
+                return (0, 0, Some(final_tour));
             }
         }
     }
@@ -374,7 +376,7 @@ fn cegar(
     loop {
         if instant.elapsed().as_secs_f64() >= timeout_secs {
             println!("\ns UNKNOWN (TIMEOUT: {:.2}s reached >= {:.2}s limit)", instant.elapsed().as_secs_f64(), timeout_secs);
-            return (count, clause_count);
+            return (count, clause_count, None);
         }
 
         // SATソルバーで解を求める
@@ -421,12 +423,10 @@ fn cegar(
                 println!("solution: ");
                 println!("{}\n", line);
                 println!("s SATISFIABLE");
-                return (count, clause_count);
+                return (count, clause_count, Some(full_cycle));
             } else {
                 println!("number of subcycles found = {}", sol_cycles.len());
                 println!("sat solution cycle lengths map (length:number) = {:?}", map_cycle_lengths(&sol_cycles));
-
-                let raw_sol_cycles = sol_cycles.clone();
 
                 // Attempt Multi-Subcycle Hub Patching
                 let sol_cycles = if sol_cycles.len() > 1 && !hub_registry.hub_vertices.is_empty() {
@@ -445,7 +445,7 @@ fn cegar(
                         println!("solution: ");
                         println!("{}\n", line);
                         println!("s SATISFIABLE");
-                        return (count, clause_count);
+                        return (count, clause_count, Some(final_tour));
                     }
                     patched
                 } else {
@@ -469,7 +469,7 @@ fn cegar(
                         println!("solution: ");
                         println!("{}\n", line);
                         println!("s SATISFIABLE");
-                        return (count, clause_count);
+                        return (count, clause_count, Some(final_tour));
                     }
                     patched
                 } else {
@@ -493,7 +493,7 @@ fn cegar(
                         println!("solution: ");
                         println!("{}\n", line);
                         println!("s SATISFIABLE");
-                        return (count, clause_count);
+                        return (count, clause_count, Some(final_tour));
                     }
                     patched
                 } else {
@@ -517,7 +517,7 @@ fn cegar(
                         println!("solution: ");
                         println!("{}\n", line);
                         println!("s SATISFIABLE");
-                        return (count, clause_count);
+                        return (count, clause_count, Some(final_tour));
                     }
                     patched
                 } else {
@@ -525,7 +525,7 @@ fn cegar(
                 };
 
                 // Attempt Macro-Graph Hierarchical Contraction Solver
-                if sol_cycles.len() > 1 {
+                let sol_cycles = if sol_cycles.len() > 1 {
                     if let Some(macro_tour) = MacroGraphSolver::solve_via_macro_graph(&sol_cycles, &g, contractor, hub_registry) {
                         if macro_tour.len() == g.adjacency_list.len() {
                             println!("number of subcycles found = 1 (via macro-graph solver)");
@@ -540,17 +540,44 @@ fn cegar(
                             println!("solution: ");
                             println!("{}\n", line);
                             println!("s SATISFIABLE");
-                            return (count, clause_count);
+                            return (count, clause_count, Some(final_tour));
                         }
                     }
-                }
+                    sol_cycles
+                } else {
+                    sol_cycles
+                };
+
+                // Attempt Multi-Cycle Alternating Chain Splicer & Absorber
+                let sol_cycles = if sol_cycles.len() > 1 {
+                    let absorbed = CycleChainAbsorber::absorb_all(&sol_cycles, &g, contractor, hub_registry);
+                    if absorbed.len() == 1 && absorbed[0].len() == g.adjacency_list.len() {
+                        println!("number of subcycles found = 1 (via cycle chain absorber)");
+                        let flat: Vec<i32> = absorbed.into_iter().flatten().collect();
+                        let final_tour = contractor.uncontract_cycle(&flat);
+                        let line = final_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                        let time = now - previous_time;
+                        let add_block_clauses_time = now - previous_time - sat_solving_time;
+                        println!("number of added block clauses = {}", clause_count);
+                        println!("add block clauses time = {:?}", add_block_clauses_time);
+                        println!("increment time = {:?}", time);
+                        println!();
+                        println!("solution: ");
+                        println!("{}\n", line);
+                        println!("s SATISFIABLE");
+                        return (count, clause_count, Some(final_tour));
+                    }
+                    absorbed
+                } else {
+                    sol_cycles
+                };
 
 
                 // 2-opt / 3-opt solution constructor
                 let (block_clauses, _active_cycles) = if opt == 0 {
-                    (get_blocking_clauses(&raw_sol_cycles, encoder, &g, block_method, balanced), raw_sol_cycles.clone())
+                    (get_blocking_clauses(&sol_cycles, encoder, &g, block_method, balanced), sol_cycles.clone())
                 } else if opt >= 1 {
-                    let (clauses, cycles) = two_opt(&raw_sol_cycles, encoder, &g, contractor, hub_registry, block_method, balanced, opt, three_opt);
+                    let (clauses, cycles) = two_opt(&sol_cycles, encoder, &g, contractor, hub_registry, block_method, balanced, opt, three_opt);
                     if cycles.len() == 1 && cycles[0].len() == g.adjacency_list.len() {
                         let flat: Vec<i32> = cycles.into_iter().flatten().collect();
                         let full_cycle = contractor.uncontract_cycle(&flat);
@@ -566,7 +593,7 @@ fn cegar(
                         println!("solution: ");
                         println!("{}\n", line);
                         println!("s SATISFIABLE");
-                        return (count, clause_count);
+                        return (count, clause_count, Some(full_cycle));
                     }
                     (clauses, cycles)
                 } else {
@@ -614,7 +641,7 @@ fn cegar(
             }
         } else {
             println!("s UNSATISFIABLE");
-            return (count, clause_count);
+            return (count, clause_count, None);
         }
     }
 }
@@ -764,10 +791,16 @@ fn two_opt(
 
     let mut active_cycles = get_active_cycles(&cycles, &active_cycles_number);
     if active_cycles.len() > 1 {
-        let absorbed = SubcycleAbsorber::absorb_subcycles(&active_cycles, g, contractor, hub_registry);
+        let absorbed = CycleChainAbsorber::absorb_all(&active_cycles, g, contractor, hub_registry);
         if absorbed.len() < active_cycles.len() {
-            println!("SubcycleAbsorber: merged from {} to {} subcycles (giant cycle len {})", active_cycles.len(), absorbed.len(), absorbed[0].len());
+            println!("CycleChainAbsorber: merged from {} to {} subcycles (giant cycle len {})", active_cycles.len(), absorbed.len(), absorbed[0].len());
             active_cycles = absorbed;
+        } else {
+            let old_absorbed = SubcycleAbsorber::absorb_subcycles(&active_cycles, g, contractor, hub_registry);
+            if old_absorbed.len() < active_cycles.len() {
+                println!("SubcycleAbsorber: merged from {} to {} subcycles (giant cycle len {})", active_cycles.len(), old_absorbed.len(), old_absorbed[0].len());
+                active_cycles = old_absorbed;
+            }
         }
     }
 

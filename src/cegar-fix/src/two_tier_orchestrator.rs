@@ -27,6 +27,35 @@ impl Default for TwoTierSolverOptions {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct TwoTierOptions {
+    pub timeout_secs: f64,
+    pub output_tour: Option<String>,
+}
+
+impl Default for TwoTierOptions {
+    fn default() -> Self {
+        Self {
+            timeout_secs: 1800.0,
+            output_tour: None,
+        }
+    }
+}
+
+pub struct TwoTierOrchestrator;
+
+impl TwoTierOrchestrator {
+    pub fn solve(g: &Graph, options: &TwoTierOptions) -> Option<Vec<i32>> {
+        let opt = TwoTierSolverOptions {
+            timeout_secs: options.timeout_secs,
+            max_iterations: 50_000,
+            enable_patching: true,
+            output_path: options.output_tour.clone(),
+        };
+        solve_graph_two_tier(g, &opt)
+    }
+}
+
 /// Writes a certified tour in standard TSPLIB/HCP format.
 pub fn write_hcp_tour(tour: &[i32], output_path: &str) -> std::io::Result<()> {
     if let Some(parent) = Path::new(output_path).parent() {

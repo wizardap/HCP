@@ -26,6 +26,10 @@ pub mod staged_lazy_smt_solver;
 pub mod subcycle_absorber;
 pub mod bridge_cut_generator;
 pub mod backbone_freezer;
+pub mod auto_classifier;
+pub mod cycle_chain_absorber;
+pub mod tour_verifier;
+pub mod hybrid_orchestrator;
 
 use contraction::Degree2Contractor;
 use hub_registry::HubRegistry;
@@ -60,6 +64,7 @@ fn main() {
     let max_cluster_size = matches.value_of_t::<usize>("max-cluster-size").unwrap_or(500);
     let is_two_tier = matches.is_present("two-tier") && matches.value_of("two-tier").map_or(true, |v| v != "0");
     let is_staged_smt = matches.is_present("staged-smt") && matches.value_of("staged-smt").map_or(true, |v| v != "0");
+    let auto_mode = matches.value_of("auto").map_or(true, |v| v != "0");
     let timeout_secs = matches.value_of_t::<f64>("timeout").unwrap_or(1800.0);
     let output_tour_path = matches.value_of("output-tour").map(|s| s.to_string());
     // solver,encodingのオプションを&strで受け取る
@@ -113,6 +118,27 @@ fn main() {
             println!("s UNSATISFIABLE");
             println!("overall time = {:?}", instant.elapsed());
         }
+        return;
+    }
+
+    let has_manual_overrides = matches.is_present("encoding")
+        || matches.is_present("blocking")
+        || matches.is_present("symmetry")
+        || matches.is_present("2-opt")
+        || matches.is_present("three-opt")
+        || matches.is_present("set-configration");
+
+    if auto_mode && !has_manual_overrides {
+        let hybrid_opts = hybrid_orchestrator::HybridOptions {
+            auto_mode: true,
+            timeout_secs,
+            output_tour: output_tour_path,
+        };
+        let res = hybrid_orchestrator::HybridOrchestrator::solve(&g, &hybrid_opts);
+        if res.is_none() {
+            println!("s UNSATISFIABLE");
+        }
+        println!("overall time = {:?}", instant.elapsed());
         return;
     }
     if g.has_articulation_points() {

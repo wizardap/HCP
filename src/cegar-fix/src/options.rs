@@ -243,6 +243,14 @@ pub fn get_options() -> clap::ArgMatches {
                 .help("Output HCP tour file path (default: scratch/graph950/found_tour_rust.hcp)")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("auto")
+                .long("auto")
+                .value_name("n")
+                .help("Auto topology classification and hybrid solver routing:\n 0: Disabled\n 1: Enabled (default)")
+                .takes_value(true)
+                .default_value("1"),
+        )
         .get_matches();
 }
 
