@@ -27,3 +27,4 @@ pub mod staged_lazy_smt_solver;
 pub mod subcycle_absorber;
 pub mod bridge_cut_generator;
 pub mod backbone_freezer;
+pub mod cycle_chain_absorber;

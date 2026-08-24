@@ -1,6 +1,7 @@
 use crate::graph::Graph;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+#[derive(Clone, Debug, Default)]
 pub struct Degree2Contractor {
     pub chain_map: HashMap<(i32, i32), Vec<i32>>,
     pub original_vertices_count: usize,
@@ -10,6 +11,16 @@ pub struct Degree2Contractor {
 }
 
 impl Degree2Contractor {
+    pub fn new() -> Self {
+        Self {
+            chain_map: HashMap::new(),
+            original_vertices_count: 0,
+            contracted_vertices_count: 0,
+            is_direct_cycle: None,
+            is_infeasible: false,
+        }
+    }
+
     pub fn contract(g: &Graph) -> (Graph, Degree2Contractor) {
         let total_v = g.adjacency_list.len();
         let mut adj: HashMap<i32, HashSet<i32>> = HashMap::new();
