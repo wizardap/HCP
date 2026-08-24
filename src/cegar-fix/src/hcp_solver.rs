@@ -623,8 +623,8 @@ fn cegar(
                     let _ = solver.add_cnf(cnf);
                 }
 
-                if _active_cycles.len() <= 30 && _active_cycles.len() > 1 {
-                    assumptions = BackboneFreezer::extract_backbone_assumptions(&_active_cycles, &g, encoder, 0.35);
+                if _active_cycles.len() <= 100 && _active_cycles.len() > 1 {
+                    assumptions = BackboneFreezer::extract_backbone_assumptions(&_active_cycles, &g, encoder, 0.15);
                     if !assumptions.is_empty() {
                         println!("BackboneFreezer: locked {} internal backbone edges as assumptions", assumptions.len());
                     }

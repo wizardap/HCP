@@ -6,9 +6,10 @@ use crate::encoder::Encoder;
 pub struct BackboneFreezer;
 
 impl BackboneFreezer {
-    /// Identifies the internal backbone of the giant cycle and extracts assumption literals.
-    /// A vertex u on C_giant is internal if neither u nor its immediate cycle neighbors
-    /// have any edges to other subcycles.
+    /// Identifies the internal backbone of all significant subcycles (each with length >= min_giant_ratio * total_v)
+    /// and extracts assumption literals for their internal edges.
+    /// A vertex u on cycle C is internal if neither u nor its immediate cycle neighbors
+    /// have any edges to vertices outside C.
     pub fn extract_backbone_assumptions(
         cycles: &[Vec<i32>],
         g: &Graph,
@@ -21,58 +22,41 @@ impl BackboneFreezer {
         }
 
         let total_v = g.adjacency_list.len();
-        let mut max_idx = 0;
-        let mut max_len = 0;
-        for (i, c) in cycles.iter().enumerate() {
-            if c.len() > max_len {
-                max_len = c.len();
-                max_idx = i;
+        let min_len = ((total_v as f64) * min_giant_ratio).max(3.0) as usize;
+
+        for cycle in cycles.iter() {
+            if cycle.len() < min_len {
+                continue;
             }
-        }
 
-        // Only freeze if giant cycle contains at least min_giant_ratio of total vertices
-        if (max_len as f64) < (total_v as f64) * min_giant_ratio {
-            return assumptions;
-        }
+            let n_c = cycle.len();
+            let c_vertices: HashSet<i32> = cycle.iter().copied().collect();
 
-        let giant_cycle = &cycles[max_idx];
-        let n_giant = giant_cycle.len();
-
-        // Collect all external vertices belonging to other subcycles
-        let mut external_vertices = HashSet::new();
-        for (i, c) in cycles.iter().enumerate() {
-            if i != max_idx {
-                for &v in c {
-                    external_vertices.insert(v);
-                }
-            }
-        }
-
-        // Identify boundary vertices on C_giant (vertices with neighbors in external_vertices)
-        let mut is_boundary = vec![false; n_giant];
-        for (i, &u) in giant_cycle.iter().enumerate() {
-            if let Some(neighbors) = g.adjacency_list.get(&u) {
-                for &v in neighbors {
-                    if external_vertices.contains(&v) {
-                        // Mark u and its immediate cycle neighbors as boundary (safety buffer of 1)
-                        is_boundary[i] = true;
-                        is_boundary[(i + 1) % n_giant] = true;
-                        is_boundary[(i + n_giant - 1) % n_giant] = true;
-                        break;
+            // Identify boundary vertices on this cycle (vertices with neighbors outside this cycle)
+            let mut is_boundary = vec![false; n_c];
+            for (i, &u) in cycle.iter().enumerate() {
+                if let Some(neighbors) = g.adjacency_list.get(&u) {
+                    for &v in neighbors {
+                        if !c_vertices.contains(&v) {
+                            // Mark u and its immediate cycle neighbors as boundary (safety buffer of 1)
+                            is_boundary[i] = true;
+                            is_boundary[(i + 1) % n_c] = true;
+                            is_boundary[(i + n_c - 1) % n_c] = true;
+                            break;
+                        }
                     }
                 }
             }
-        }
 
-        // Extract internal backbone directed edges
-        for i in 0..n_giant {
-            let u = giant_cycle[i];
-            let v = giant_cycle[(i + 1) % n_giant];
+            // Extract internal backbone directed edges
+            for i in 0..n_c {
+                let u = cycle[i];
+                let v = cycle[(i + 1) % n_c];
 
-            // If neither endpoint is a boundary vertex, freeze the directed arc u -> v
-            if !is_boundary[i] && !is_boundary[(i + 1) % n_giant] {
-                if let Some(&lit) = encoder.graph_lit_map.get(&(u, v)) {
-                    assumptions.push(lit);
+                if !is_boundary[i] && !is_boundary[(i + 1) % n_c] {
+                    if let Some(&lit) = encoder.graph_lit_map.get(&(u, v)) {
+                        assumptions.push(lit);
+                    }
                 }
             }
         }
