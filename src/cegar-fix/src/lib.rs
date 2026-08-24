@@ -1,3 +1,4 @@
+pub mod auto_classifier;
 pub mod chained_lk;
 pub mod contraction;
 pub mod encoder;
