@@ -17,3 +17,7 @@ __pycache__/
 *.log.gz
 *.gz
 *.swp
+
+# Temporary scratch folders
+src/cegar-fix/scratch/
+
