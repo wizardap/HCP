@@ -98,7 +98,7 @@ fn test_hybrid_orchestrator_b1_ladder_synthetic() {
     }
     g.add_edge(119, 100);
 
-    let opts = HybridOptions {
+    let _opts = HybridOptions {
         auto_mode: true,
         timeout_secs: 10.0,
         output_tour: None,
