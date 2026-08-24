@@ -193,7 +193,16 @@ fn main() {
     // println!("solver={},encoding={}",solver,encoding);
     // println!("{:?}",g);
     println!("file input time = {:?}", time1);
-    hcp_solver::solve_hamilton(contracted_g, &contractor, &hub_registry, solver, encoding, blocking, symmetry, two_opt, loop_prohibition, cnf_normalize, balanced, de_arcify,config,degree_order,arcs_order,three_opt,cegar_fallback,mtz_stall,adaptive_escalation,sub_hcp_timeout,max_cluster_size,timeout_secs,instant,output_foldername);
+    let tour = hcp_solver::solve_hamilton(contracted_g, &contractor, &hub_registry, solver, encoding, blocking, symmetry, two_opt, loop_prohibition, cnf_normalize, balanced, de_arcify,config,degree_order,arcs_order,three_opt,cegar_fallback,mtz_stall,adaptive_escalation,sub_hcp_timeout,max_cluster_size,timeout_secs,instant,output_foldername);
+    if let Some(ref t) = tour {
+        if let Some(ref out_path) = output_tour_path {
+            if let Err(e) = tour_verifier::TourVerifier::write_tsplib_hcp(t, "tour", out_path) {
+                eprintln!("Warning: failed to write tour to {}: {}", out_path, e);
+            } else {
+                println!("Wrote certified tour to {}", out_path);
+            }
+        }
+    }
     let time2 = instant.elapsed() - time1;
 
     // println!("solving time = {:?} sec",instant2.elapsed().as_secs());
