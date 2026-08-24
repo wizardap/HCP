@@ -102,7 +102,7 @@ fn test_write_hcp_tour_format() {
     let content = fs::read_to_string(temp_out).unwrap();
     let lines: Vec<&str> = content.lines().collect();
 
-    assert_eq!(lines[0], "NAME : graph950.hcp.tour");
+    assert_eq!(lines[0], "NAME : test_format_tour");
     assert_eq!(lines[1], "TYPE : TOUR");
     assert_eq!(lines[2], "DIMENSION : 4");
     assert_eq!(lines[3], "TOUR_SECTION");

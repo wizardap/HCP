@@ -4,8 +4,6 @@ use crate::macro_splicer::{splice_macro_tour, verify_tour_on_raw_graph};
 use crate::pinpointed_strip_solver::PinpointedStripSolver;
 use crate::two_tier_decomposer::decompose_graph;
 use std::collections::{HashMap, HashSet};
-use std::fs::{self, File};
-use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
 
@@ -58,22 +56,11 @@ impl TwoTierOrchestrator {
 
 /// Writes a certified tour in standard TSPLIB/HCP format.
 pub fn write_hcp_tour(tour: &[i32], output_path: &str) -> std::io::Result<()> {
-    if let Some(parent) = Path::new(output_path).parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent)?;
-        }
-    }
-    let mut file = File::create(output_path)?;
-    writeln!(file, "NAME : graph950.hcp.tour")?;
-    writeln!(file, "TYPE : TOUR")?;
-    writeln!(file, "DIMENSION : {}", tour.len())?;
-    writeln!(file, "TOUR_SECTION")?;
-    for &v in tour {
-        writeln!(file, "{}", v)?;
-    }
-    writeln!(file, "-1")?;
-    writeln!(file, "EOF")?;
-    Ok(())
+    let name = Path::new(output_path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("tour");
+    crate::tour_verifier::TourVerifier::write_tsplib_hcp(tour, name, output_path)
 }
 
 /// Top-level solver function integrating:
