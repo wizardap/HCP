@@ -13,6 +13,23 @@ fn test_synthetic_classification() {
     let feat_b1 = AutoTopologyClassifier::extract_features(&g_b1);
     assert_eq!(AutoTopologyClassifier::classify(&feat_b1), TargetTrack::B1LadderTwoTier);
 
+    let mut g_gadget = Graph::new();
+    for i in 1..=10 {
+        let next = if i == 10 { 1 } else { i + 1 };
+        g_gadget.add_edge(i, next);
+    }
+    g_gadget.add_edge(1, 5); // creates degree-2 vertices
+    let feat_gadget = AutoTopologyClassifier::extract_features(&g_gadget);
+    assert_eq!(AutoTopologyClassifier::classify(&feat_gadget), TargetTrack::GadgetInterfaceParity);
+
+    let mut g_snark = Graph::new();
+    g_snark.add_edge(1, 2); g_snark.add_edge(2, 3); g_snark.add_edge(3, 4);
+    g_snark.add_edge(4, 5); g_snark.add_edge(5, 6); g_snark.add_edge(6, 1);
+    g_snark.add_edge(1, 4); g_snark.add_edge(2, 5); g_snark.add_edge(3, 6);
+    g_snark.add_edge(1, 3);
+    let feat_snark = AutoTopologyClassifier::extract_features(&g_snark);
+    assert_eq!(AutoTopologyClassifier::classify(&feat_snark), TargetTrack::SnarkKeyBridge);
+
     let mut g_sparse = Graph::new();
     // Create large 3-regular cycle graph (density = 1.5, n = 2000)
     for i in 1..=2000 {
@@ -22,7 +39,7 @@ fn test_synthetic_classification() {
         g_sparse.add_edge(i, cross);
     }
     let feat_sparse = AutoTopologyClassifier::extract_features(&g_sparse);
-    assert_eq!(AutoTopologyClassifier::classify(&feat_sparse), TargetTrack::B2SinzChainSMT);
+    assert_eq!(AutoTopologyClassifier::classify(&feat_sparse), TargetTrack::GeneralCaDiCaL);
 }
 
 #[test]
@@ -53,6 +70,9 @@ fn test_feature_extraction_details() {
     assert_eq!(feat.m, 5);
     assert_eq!(feat.max_degree, 3);
     assert_eq!(feat.degree2_count, 2);
+    assert_eq!(feat.deg3_count, 2);
+    assert_eq!(feat.deg4_count, 0);
     assert_eq!(feat.hub_count, 0);
     assert!((feat.density - 1.25).abs() < 1e-6);
 }
+

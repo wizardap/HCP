@@ -5,6 +5,8 @@ use std::collections::HashSet;
 pub enum TargetTrack {
     B1LadderTwoTier,
     B2SinzChainSMT,
+    GadgetInterfaceParity,
+    SnarkKeyBridge,
     GeneralCaDiCaL,
 }
 
@@ -16,6 +18,8 @@ pub struct TopologyFeatures {
     pub max_degree: usize,
     pub hub_count: usize,
     pub degree2_count: usize,
+    pub deg3_count: usize,
+    pub deg4_count: usize,
 }
 
 pub struct AutoTopologyClassifier;
@@ -27,6 +31,8 @@ impl AutoTopologyClassifier {
         let mut max_degree = 0;
         let mut hub_count = 0;
         let mut degree2_count = 0;
+        let mut deg3_count = 0;
+        let mut deg4_count = 0;
 
         for (&u, nbrs) in &g.adjacency_list {
             let deg = nbrs.len();
@@ -38,6 +44,12 @@ impl AutoTopologyClassifier {
             }
             if deg == 2 {
                 degree2_count += 1;
+            }
+            if deg == 3 {
+                deg3_count += 1;
+            }
+            if deg == 4 {
+                deg4_count += 1;
             }
             for &v in nbrs {
                 let pair = if u < v { (u, v) } else { (v, u) };
@@ -55,16 +67,21 @@ impl AutoTopologyClassifier {
             max_degree,
             hub_count,
             degree2_count,
+            deg3_count,
+            deg4_count,
         }
     }
 
     pub fn classify(features: &TopologyFeatures) -> TargetTrack {
-        if features.hub_count >= 50 && features.density >= 2.8 {
+        if features.n >= 4 && features.deg3_count == features.n - 2 && features.deg4_count == 2 {
+            TargetTrack::SnarkKeyBridge
+        } else if features.hub_count >= 50 && features.density >= 2.8 {
             TargetTrack::B1LadderTwoTier
-        } else if features.density <= 2.2 && features.n >= 1000 {
-            TargetTrack::B2SinzChainSMT
+        } else if features.degree2_count > 0 {
+            TargetTrack::GadgetInterfaceParity
         } else {
             TargetTrack::GeneralCaDiCaL
         }
     }
 }
+

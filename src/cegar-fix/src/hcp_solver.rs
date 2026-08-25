@@ -21,6 +21,8 @@ use crate::modular_solver::ModularSolver;
 use crate::subcycle_absorber::SubcycleAbsorber;
 use crate::cycle_chain_absorber::CycleChainAbsorber;
 use crate::backbone_freezer::BackboneFreezer;
+use crate::snark_bridge::SnarkBridgeEngine;
+use crate::gadget_parity::GadgetInterfaceParityEngine;
 
 
 /// Pre-emptively forbids 3-cycles (triangles) and 4-cycles in the initial CNF encoding in O(|E| * Delta).
@@ -250,6 +252,21 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
             }
         }
     }
+
+    // Snark Key-Bridge Unit Locking
+    if let Some((u, v, lit)) = SnarkBridgeEngine::detect_and_extract_key_bridge(&g, &encoder) {
+        println!("SnarkBridgeEngine: detected key bridge ({}, {}), locking bridge edge", u, v);
+        if let Some(&rev_lit) = encoder.graph_lit_map.get(&(v, u)) {
+            if rev_lit != lit {
+                cnf.add_clause(clause!(lit, rev_lit));
+            } else {
+                cnf.add_clause(clause!(lit));
+            }
+        } else {
+            cnf.add_clause(clause!(lit));
+        }
+    }
+
     let current_cnf = if output_folder != "default" {
         //フォルダーの作成
         let _ = file_operations::create_folder_if_not_exists(output_folder);
@@ -599,6 +616,58 @@ fn cegar(
                 } else {
                     panic!("2-opt option \n-t 0:2-opt off\n-t 1,2,3:2-opt on");
                 };
+
+                // Gadget Interface Parity & Direct Splicing Check
+                if _active_cycles.len() >= 2 {
+                    let total_nodes = g.adjacency_list.len();
+                    let max_cycle_idx = _active_cycles
+                        .iter()
+                        .enumerate()
+                        .max_by_key(|(_, c)| c.len())
+                        .map(|(idx, _)| idx);
+
+                    if let Some(giant_idx) = max_cycle_idx {
+                        let mut giant = _active_cycles[giant_idx].clone();
+                        if giant.len() > total_nodes / 2 {
+                            for (c_idx, subcycle) in _active_cycles.iter().enumerate() {
+                                if c_idx != giant_idx && subcycle.len() <= 32 {
+                                    let gadget_res = GadgetInterfaceParityEngine::analyze_subcycle_gadget(
+                                        subcycle,
+                                        &g,
+                                        Some(&giant),
+                                        encoder,
+                                    );
+
+                                    // 1. Direct splice check
+                                    if let Some(spliced) = gadget_res.direct_spliced_tour {
+                                        giant = spliced;
+                                        if giant.len() == total_nodes {
+                                            println!("GadgetInterfaceParity: direct spliced full tour found ({} vertices)", giant.len());
+                                            let full_cycle = contractor.uncontract_cycle(&giant);
+                                            let line = full_cycle.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                                            println!();
+                                            println!("solution: ");
+                                            println!("{}\n", line);
+                                            println!("s SATISFIABLE");
+                                            return (count, clause_count, Some(full_cycle));
+                                        }
+                                    }
+
+                                    // 2. Infeasible port pruning clauses & boundary cut parity clauses
+                                    for cl in gadget_res.pruning_clauses {
+                                        clause_count += 1;
+                                        let _ = solver.add_clause(cl);
+                                    }
+                                    for cl in gadget_res.cut_parity_clauses {
+                                        clause_count += 1;
+                                        let _ = solver.add_clause(cl);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
 
                 let mut cnf = Cnf::new();
                 cnf.extend(block_clauses);

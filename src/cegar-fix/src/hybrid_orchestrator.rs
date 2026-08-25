@@ -32,7 +32,7 @@ impl HybridOrchestrator {
         let track = if options.auto_mode {
             AutoTopologyClassifier::classify(&features)
         } else {
-            TargetTrack::B2SinzChainSMT
+            TargetTrack::GadgetInterfaceParity
         };
 
         println!(
@@ -106,15 +106,44 @@ impl HybridOrchestrator {
                 }
 
                 let start = Instant::now();
-                hcp_solver::solve_hamilton(
-                    contracted_g,
-                    &contractor,
-                    &hub_reg,
-                    0, 1, 3, 2, 3, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 60, 200,
-                    options.timeout_secs,
-                    start,
-                    "",
-                )
+                match track {
+                    TargetTrack::SnarkKeyBridge => {
+                        // CaDiCaL encoding: -e 0 -b 3 -l 1 --three-opt 1 --set-configration 1
+                        hcp_solver::solve_hamilton(
+                            contracted_g,
+                            &contractor,
+                            &hub_reg,
+                            0, 0, 3, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 60, 200,
+                            options.timeout_secs,
+                            start,
+                            "",
+                        )
+                    }
+                    TargetTrack::GadgetInterfaceParity | TargetTrack::B2SinzChainSMT => {
+                        // Sinz encoding: -e 1 -b 3 -y 2 -t 3 -l 1 --three-opt 1 --set-configration 1
+                        hcp_solver::solve_hamilton(
+                            contracted_g,
+                            &contractor,
+                            &hub_reg,
+                            0, 1, 3, 2, 3, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 60, 200,
+                            options.timeout_secs,
+                            start,
+                            "",
+                        )
+                    }
+                    _ => {
+                        // General CaDiCaL encoding: -e 0 -b 3 -l 1
+                        hcp_solver::solve_hamilton(
+                            contracted_g,
+                            &contractor,
+                            &hub_reg,
+                            0, 0, 3, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 60, 200,
+                            options.timeout_secs,
+                            start,
+                            "",
+                        )
+                    }
+                }
             }
         };
 

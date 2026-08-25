@@ -112,3 +112,82 @@ fn test_hybrid_orchestrator_b1_ladder_synthetic() {
     );
 }
 
+#[test]
+fn test_auto_classifier_snark_bridge_route() {
+    let mut g = Graph::new();
+    // 3-regular cubic on 6 vertices + 1 edge: 2 degree-4 vertices, 4 degree-3 vertices
+    g.add_edge(1, 2); g.add_edge(2, 3); g.add_edge(3, 4);
+    g.add_edge(4, 5); g.add_edge(5, 6); g.add_edge(6, 1);
+    g.add_edge(1, 4); g.add_edge(2, 5); g.add_edge(3, 6);
+    g.add_edge(1, 3); // deg(1)=4, deg(3)=4, all others deg=3
+
+    let feat = cegar_fix::auto_classifier::AutoTopologyClassifier::extract_features(&g);
+    assert_eq!(
+        cegar_fix::auto_classifier::AutoTopologyClassifier::classify(&feat),
+        cegar_fix::auto_classifier::TargetTrack::SnarkKeyBridge
+    );
+}
+
+#[test]
+fn test_auto_classifier_gadget_parity_route() {
+    let mut g = Graph::new();
+    // Graph with degree-2 vertices
+    g.add_edge(1, 2); g.add_edge(2, 3); g.add_edge(3, 4);
+    g.add_edge(4, 5); g.add_edge(5, 1);
+    g.add_edge(1, 6); g.add_edge(6, 3); // vertex 6 has degree 2
+
+    let feat = cegar_fix::auto_classifier::AutoTopologyClassifier::extract_features(&g);
+    assert_eq!(
+        cegar_fix::auto_classifier::AutoTopologyClassifier::classify(&feat),
+        cegar_fix::auto_classifier::TargetTrack::GadgetInterfaceParity
+    );
+}
+
+#[test]
+fn test_hybrid_orchestrator_snark_bridge_solve() {
+    let mut g = Graph::new();
+    // Petersen graph (10 vertices: outer 1..=5, inner 6..=10) + edge (6, 7)
+    g.add_edge(1, 2); g.add_edge(2, 3); g.add_edge(3, 4); g.add_edge(4, 5); g.add_edge(5, 1);
+    g.add_edge(1, 6); g.add_edge(2, 7); g.add_edge(3, 8); g.add_edge(4, 9); g.add_edge(5, 10);
+    g.add_edge(6, 8); g.add_edge(8, 10); g.add_edge(10, 7); g.add_edge(7, 9); g.add_edge(9, 6);
+    g.add_edge(6, 7); // key bridge between degree-4 vertices 6 and 7
+
+    let opts = HybridOptions {
+        auto_mode: true,
+        timeout_secs: 10.0,
+        output_tour: None,
+    };
+
+    let tour = HybridOrchestrator::solve(&g, &opts);
+    assert!(tour.is_some(), "SnarkKeyBridge solver should find tour");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 10);
+    assert!(TourVerifier::verify_raw_tour(&t, &g).is_ok());
+}
+
+
+#[test]
+fn test_hybrid_orchestrator_gadget_parity_solve() {
+    let mut g = Graph::new();
+    // Giant cycle: 1 - 2 - 3 - 4 - 5 - 1
+    g.add_edge(1, 2); g.add_edge(2, 3); g.add_edge(3, 4); g.add_edge(4, 5); g.add_edge(5, 1);
+    // Gadget: 10 - 11 - 12 - 13 - 10
+    g.add_edge(10, 11); g.add_edge(11, 12); g.add_edge(12, 13); g.add_edge(13, 10);
+    // Ports: 10 connects to 1, 11 connects to 2
+    g.add_edge(10, 1);
+    g.add_edge(11, 2);
+
+    let opts = HybridOptions {
+        auto_mode: true,
+        timeout_secs: 10.0,
+        output_tour: None,
+    };
+
+    let tour = HybridOrchestrator::solve(&g, &opts);
+    assert!(tour.is_some(), "GadgetInterfaceParity solver should find tour");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 9);
+    assert!(TourVerifier::verify_raw_tour(&t, &g).is_ok());
+}
+
+
