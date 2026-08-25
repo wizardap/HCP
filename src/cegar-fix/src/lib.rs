@@ -31,3 +31,4 @@ pub mod cycle_chain_absorber;
 pub mod tour_verifier;
 pub mod hybrid_orchestrator;
 pub mod snark_bridge;
+pub mod gadget_parity;
