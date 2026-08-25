@@ -121,7 +121,7 @@ impl GadgetInterfaceParityEngine {
         // exactly twice (1 entry, 1 exit), requiring a single spanning Hamiltonian path through G[gadget].
         // For any port pair (p1, p2) with no feasible internal Hamiltonian path, forbid entering at p1 and exiting at p2.
         let total_ext_edges: usize = port_to_external_neighbors.values().map(|v| v.len()).sum();
-        if total_ext_edges <= 3 {
+        if ports.len() == 2 || total_ext_edges <= 3 {
             for i in 0..ports.len() {
                 for j in (i + 1)..ports.len() {
                     let p1 = ports[i];
