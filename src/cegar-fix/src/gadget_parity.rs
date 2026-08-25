@@ -117,20 +117,25 @@ impl GadgetInterfaceParityEngine {
         }
 
         // 4. Generate Infeasible Port Pruning Clauses:
-        // For any port pair (p1, p2) with no feasible internal Hamiltonian path, forbid entering at p1 and exiting at p2, and vice-versa
-        for i in 0..ports.len() {
-            for j in (i + 1)..ports.len() {
-                let p1 = ports[i];
-                let p2 = ports[j];
-                if !feasible_port_pairs.contains(&(p1, p2)) {
-                    if let (Some(ext1), Some(ext2)) = (port_to_external_neighbors.get(&p1), port_to_external_neighbors.get(&p2)) {
-                        for &v1 in ext1 {
-                            for &v2 in ext2 {
-                                if let (Some(&lit1), Some(&lit2)) = (encoder.graph_lit_map.get(&(v1, p1)), encoder.graph_lit_map.get(&(p2, v2))) {
-                                    result.pruning_clauses.push(Clause::from_iter([!lit1, !lit2]));
-                                }
-                                if let (Some(&lit2_in), Some(&lit1_out)) = (encoder.graph_lit_map.get(&(v2, p2)), encoder.graph_lit_map.get(&(p1, v1))) {
-                                    result.pruning_clauses.push(Clause::from_iter([!lit2_in, !lit1_out]));
+        // By cut parity theorem, if |delta(gadget)| <= 3, any Hamiltonian cycle must cross delta(gadget)
+        // exactly twice (1 entry, 1 exit), requiring a single spanning Hamiltonian path through G[gadget].
+        // For any port pair (p1, p2) with no feasible internal Hamiltonian path, forbid entering at p1 and exiting at p2.
+        let total_ext_edges: usize = port_to_external_neighbors.values().map(|v| v.len()).sum();
+        if total_ext_edges <= 3 {
+            for i in 0..ports.len() {
+                for j in (i + 1)..ports.len() {
+                    let p1 = ports[i];
+                    let p2 = ports[j];
+                    if !feasible_port_pairs.contains(&(p1, p2)) {
+                        if let (Some(ext1), Some(ext2)) = (port_to_external_neighbors.get(&p1), port_to_external_neighbors.get(&p2)) {
+                            for &v1 in ext1 {
+                                for &v2 in ext2 {
+                                    if let (Some(&lit1), Some(&lit2)) = (encoder.graph_lit_map.get(&(v1, p1)), encoder.graph_lit_map.get(&(p2, v2))) {
+                                        result.pruning_clauses.push(Clause::from_iter([!lit1, !lit2]));
+                                    }
+                                    if let (Some(&lit2_in), Some(&lit1_out)) = (encoder.graph_lit_map.get(&(v2, p2)), encoder.graph_lit_map.get(&(p1, v1))) {
+                                        result.pruning_clauses.push(Clause::from_iter([!lit2_in, !lit1_out]));
+                                    }
                                 }
                             }
                         }
