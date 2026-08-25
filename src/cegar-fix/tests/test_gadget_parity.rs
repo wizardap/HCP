@@ -96,3 +96,31 @@ fn test_gadget_parity_boundary_cases() {
     assert!(res.pruning_clauses.is_empty());
     assert!(res.cut_parity_clauses.is_empty());
 }
+
+#[test]
+fn test_gadget_parity_wraparound_adjacency_splice() {
+    let mut g = Graph::new();
+    // Giant cycle: 1 - 2 - 3 - 4 - 5 - 1 (indices 0..5, where index 4 connects to index 0)
+    g.add_edge(1, 2); g.add_edge(2, 3); g.add_edge(3, 4); g.add_edge(4, 5); g.add_edge(5, 1);
+    
+    // Gadget: 10 - 11 - 12 - 13 - 10
+    g.add_edge(10, 11); g.add_edge(11, 12); g.add_edge(12, 13); g.add_edge(13, 10);
+    
+    // Interface ports connect to wrap-around edge: 10 connects to 5 (pos 4), 11 connects to 1 (pos 0)
+    g.add_edge(10, 5);
+    g.add_edge(11, 1);
+    
+    let mut encoder = Encoder::new();
+    let _cnf = encoder.encode(&g, 0, 0, 0, 0, 0, 0);
+    
+    let giant = vec![1, 2, 3, 4, 5];
+    let gadget = vec![10, 11, 12, 13];
+    
+    let result = GadgetInterfaceParityEngine::analyze_subcycle_gadget(&gadget, &g, Some(&giant), &encoder);
+    
+    assert!(result.direct_spliced_tour.is_some(), "Should directly splice gadget on wrap-around boundary (5 <-> 1)");
+    let tour = result.direct_spliced_tour.unwrap();
+    assert_eq!(tour.len(), 9, "Tour must contain exactly 9 unique vertices without duplication");
+    let verify_res = TourVerifier::verify_raw_tour(&tour, &g);
+    assert!(verify_res.is_ok(), "Wrap-around spliced tour must be valid: {:?}", verify_res);
+}

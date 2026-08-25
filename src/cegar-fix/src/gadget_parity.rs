@@ -87,13 +87,9 @@ impl GadgetInterfaceParityEngine {
                                 if let (Some(&pos_in), Some(&pos_out)) = (giant_pos.get(&v_in), giant_pos.get(&v_out)) {
                                     // Case A: v_in and v_out are immediately adjacent on C_giant (v_in -> v_out)
                                     if (pos_in + 1) % n_giant == pos_out {
-                                        // Splicing: giant[pos_out ..] + giant[..=pos_in] + path
                                         let mut tour = Vec::with_capacity(n_giant + k);
-                                        for idx in pos_out..n_giant {
-                                            tour.push(giant[idx]);
-                                        }
-                                        for idx in 0..=pos_in {
-                                            tour.push(giant[idx]);
+                                        for i in 0..n_giant {
+                                            tour.push(giant[(pos_out + i) % n_giant]);
                                         }
                                         for &v in path.iter() {
                                             tour.push(v);
@@ -103,11 +99,8 @@ impl GadgetInterfaceParityEngine {
                                     } else if (pos_out + 1) % n_giant == pos_in {
                                         // Case B: v_out and v_in are immediately adjacent on C_giant (v_out -> v_in)
                                         let mut tour = Vec::with_capacity(n_giant + k);
-                                        for idx in pos_in..n_giant {
-                                            tour.push(giant[idx]);
-                                        }
-                                        for idx in 0..=pos_out {
-                                            tour.push(giant[idx]);
+                                        for i in 0..n_giant {
+                                            tour.push(giant[(pos_in + i) % n_giant]);
                                         }
                                         for &v in path.iter().rev() {
                                             tour.push(v);
