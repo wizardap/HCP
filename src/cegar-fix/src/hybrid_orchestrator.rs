@@ -46,105 +46,15 @@ impl HybridOrchestrator {
                     timeout_secs: options.timeout_secs,
                     output_tour: options.output_tour.clone(),
                 };
-                TwoTierOrchestrator::solve(g, &tt_opts)
-            }
-            _ => {
-                // Pre-flight check: cut-vertices or disconnected components
-                if g.has_articulation_points() {
-                    println!("Graph has cut-vertex or is disconnected.");
-                    println!("s UNSATISFIABLE");
-                    return None;
-                }
-                let mut uncontracted_g = g.clone();
-                let pruned = uncontracted_g.prune_degree2_triangles();
-                if pruned > 0 {
-                    println!("Pruned {} degree-2 triangle shortcut edges", pruned);
-                }
-                let (contracted_g, contractor) = Degree2Contractor::contract(&uncontracted_g);
-
-                if let Some(cycle) = contractor.is_direct_cycle.clone() {
-                    println!("Graph is a single 2-regular Hamiltonian cycle.");
-                    let uncontracted = contractor.uncontract_cycle(&cycle);
-                    let line = uncontracted
-                        .iter()
-                        .map(|i| i.to_string())
-                        .collect::<Vec<String>>()
-                        .join(" ");
-                    println!();
-                    println!("solution: ");
-                    println!("{}\n", line);
-                    println!("s SATISFIABLE");
-                    if let Some(ref out_path) = options.output_tour {
-                        let _ = TourVerifier::write_tsplib_hcp(&uncontracted, "tour", out_path);
-                    }
-                    return Some(uncontracted);
-                }
-
-                if contractor.is_infeasible {
-                    println!("Infeasible degree-2 structure detected.");
-                    println!("s UNSATISFIABLE");
-                    return None;
-                }
-
-                if contractor.contracted_vertices_count < contractor.original_vertices_count {
-                    println!(
-                        "Degree-2 contraction: compressed graph from {} to {} vertices (reduced by {}%)",
-                        contractor.original_vertices_count,
-                        contractor.contracted_vertices_count,
-                        (contractor.original_vertices_count - contractor.contracted_vertices_count) * 100
-                            / contractor.original_vertices_count
-                    );
-                }
-
-                let hub_reg = HubRegistry::new(&contracted_g);
-                if !hub_reg.hub_vertices.is_empty() {
-                    println!(
-                        "Dense Hub optimization: detected {} hub vertices (sample: {:?})",
-                        hub_reg.hub_vertices.len(),
-                        &hub_reg.hub_vertices[..hub_reg.hub_vertices.len().min(5)]
-                    );
-                }
-
-                let start = Instant::now();
-                match track {
-                    TargetTrack::SnarkKeyBridge => {
-                        // CaDiCaL encoding: -e 0 -b 3 -l 1 --three-opt 1 --set-configration 1
-                        hcp_solver::solve_hamilton(
-                            contracted_g,
-                            &contractor,
-                            &hub_reg,
-                            0, 0, 3, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 60, 200,
-                            options.timeout_secs,
-                            start,
-                            "",
-                        )
-                    }
-                    TargetTrack::GadgetInterfaceParity | TargetTrack::B2SinzChainSMT => {
-                        // Sinz encoding: -e 1 -b 3 -y 2 -t 3 -l 1 --three-opt 1 --set-configration 1
-                        hcp_solver::solve_hamilton(
-                            contracted_g,
-                            &contractor,
-                            &hub_reg,
-                            0, 1, 3, 2, 3, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 60, 200,
-                            options.timeout_secs,
-                            start,
-                            "",
-                        )
-                    }
-                    _ => {
-                        // General CaDiCaL encoding: -e 0 -b 3 -l 1
-                        hcp_solver::solve_hamilton(
-                            contracted_g,
-                            &contractor,
-                            &hub_reg,
-                            0, 0, 3, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 60, 200,
-                            options.timeout_secs,
-                            start,
-                            "",
-                        )
-                    }
+                let res = TwoTierOrchestrator::solve(g, &tt_opts);
+                if res.is_some() {
+                    res
+                } else {
+                    println!("TwoTier decomposition finished without tour. Falling back to Global CEGAR solver...");
+                    Self::solve_global(g, options, TargetTrack::GeneralCaDiCaL)
                 }
             }
+            _ => Self::solve_global(g, options, track),
         };
 
         if let Some(ref t) = tour {
@@ -158,5 +68,103 @@ impl HybridOrchestrator {
         }
 
         tour
+    }
+
+    fn solve_global(g: &Graph, options: &HybridOptions, track: TargetTrack) -> Option<Vec<i32>> {
+        // Pre-flight check: cut-vertices or disconnected components
+        if g.has_articulation_points() {
+            println!("Graph has cut-vertex or is disconnected.");
+            println!("s UNSATISFIABLE");
+            return None;
+        }
+        let mut uncontracted_g = g.clone();
+        let pruned = uncontracted_g.prune_degree2_triangles();
+        if pruned > 0 {
+            println!("Pruned {} degree-2 triangle shortcut edges", pruned);
+        }
+        let (contracted_g, contractor) = Degree2Contractor::contract(&uncontracted_g);
+
+        if let Some(cycle) = contractor.is_direct_cycle.clone() {
+            println!("Graph is a single 2-regular Hamiltonian cycle.");
+            let uncontracted = contractor.uncontract_cycle(&cycle);
+            let line = uncontracted
+                .iter()
+                .map(|i| i.to_string())
+                .collect::<Vec<String>>()
+                .join(" ");
+            println!();
+            println!("solution: ");
+            println!("{}\n", line);
+            println!("s SATISFIABLE");
+            if let Some(ref out_path) = options.output_tour {
+                let _ = TourVerifier::write_tsplib_hcp(&uncontracted, "tour", out_path);
+            }
+            return Some(uncontracted);
+        }
+
+        if contractor.is_infeasible {
+            println!("Infeasible degree-2 structure detected.");
+            println!("s UNSATISFIABLE");
+            return None;
+        }
+
+        if contractor.contracted_vertices_count < contractor.original_vertices_count {
+            println!(
+                "Degree-2 contraction: compressed graph from {} to {} vertices (reduced by {}%)",
+                contractor.original_vertices_count,
+                contractor.contracted_vertices_count,
+                (contractor.original_vertices_count - contractor.contracted_vertices_count) * 100
+                    / contractor.original_vertices_count
+            );
+        }
+
+        let hub_reg = HubRegistry::new(&contracted_g);
+        if !hub_reg.hub_vertices.is_empty() {
+            println!(
+                "Dense Hub optimization: detected {} hub vertices (sample: {:?})",
+                hub_reg.hub_vertices.len(),
+                &hub_reg.hub_vertices[..hub_reg.hub_vertices.len().min(5)]
+            );
+        }
+
+        let start = Instant::now();
+        match track {
+            TargetTrack::SnarkKeyBridge => {
+                // CaDiCaL encoding: -e 0 -b 3 -l 1 --three-opt 1 --set-configration 1
+                hcp_solver::solve_hamilton(
+                    contracted_g,
+                    &contractor,
+                    &hub_reg,
+                    0, 0, 3, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 60, 200,
+                    options.timeout_secs,
+                    start,
+                    "",
+                )
+            }
+            TargetTrack::GadgetInterfaceParity | TargetTrack::B2SinzChainSMT => {
+                // Sinz encoding: -e 1 -b 3 -y 2 -t 3 -l 1 --three-opt 1 --set-configration 1
+                hcp_solver::solve_hamilton(
+                    contracted_g,
+                    &contractor,
+                    &hub_reg,
+                    0, 1, 3, 2, 3, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 60, 200,
+                    options.timeout_secs,
+                    start,
+                    "",
+                )
+            }
+            _ => {
+                // General CaDiCaL encoding: -e 0 -b 3 -l 1
+                hcp_solver::solve_hamilton(
+                    contracted_g,
+                    &contractor,
+                    &hub_reg,
+                    0, 0, 3, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 60, 200,
+                    options.timeout_secs,
+                    start,
+                    "",
+                )
+            }
+        }
     }
 }
