@@ -105,20 +105,22 @@ impl<'a> GlobalDemandCoordinator<'a> {
                 // Small strip (size 2-3): exactly 2 endpoints (K = 1)
                 add_exact_2(&mut solver, &mut next_var_id, &strip_lits);
 
-                // Per-vertex endpoint capacity in small strip: at most 1 hub per bulk vertex
-                for &u in s {
-                    if let Some(nbrs) = g.adjacency_list.get(&u) {
-                        let mut u_lits = Vec::new();
-                        for &h in nbrs {
-                            if decomp.all_hubs.contains(&h) {
-                                if let Some(&lit1) = var_d1.get(&(si, h)) {
-                                    u_lits.push(lit1);
+                // Per-vertex endpoint capacity in small strip: at most 1 hub per bulk vertex when s.len() > 1
+                if s.len() > 1 {
+                    for &u in s {
+                        if let Some(nbrs) = g.adjacency_list.get(&u) {
+                            let mut u_lits = Vec::new();
+                            for &h in nbrs {
+                                if decomp.all_hubs.contains(&h) {
+                                    if let Some(&lit1) = var_d1.get(&(si, h)) {
+                                        u_lits.push(lit1);
+                                    }
                                 }
                             }
-                        }
-                        for i in 0..u_lits.len() {
-                            for j in (i + 1)..u_lits.len() {
-                                let _ = solver.add_clause(clause![!u_lits[i], !u_lits[j]]);
+                            for i in 0..u_lits.len() {
+                                for j in (i + 1)..u_lits.len() {
+                                    let _ = solver.add_clause(clause![!u_lits[i], !u_lits[j]]);
+                                }
                             }
                         }
                     }
