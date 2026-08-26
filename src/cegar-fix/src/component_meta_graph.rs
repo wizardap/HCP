@@ -38,7 +38,7 @@ impl ComponentMetaGraph {
 
         let mut meta_adj: Vec<Vec<usize>> = vec![Vec::new(); num_components];
         for (&(c1, c2), edges) in &cross_edges {
-            if !edges.is_empty() {
+            if edges.len() >= 2 {
                 meta_adj[c1].push(c2);
                 meta_adj[c2].push(c1);
             }

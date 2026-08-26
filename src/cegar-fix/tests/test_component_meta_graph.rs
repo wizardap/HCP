@@ -83,8 +83,8 @@ fn test_component_meta_graph_merge_potential() {
     let cycles = vec![vec![1, 2, 3], vec![4, 5, 6]];
     let meta_graph = ComponentMetaGraph::build(&cycles, &g);
 
-    assert_eq!(meta_graph.is_connected(), true);
-    assert_eq!(meta_graph.get_meta_components().len(), 1);
+    assert_eq!(meta_graph.is_connected(), false);
+    assert_eq!(meta_graph.get_meta_components().len(), 2);
     assert_eq!(meta_graph.has_merge_potential(0, 1), false);
 
     // Add a second cross edge
