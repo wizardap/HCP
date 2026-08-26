@@ -205,3 +205,80 @@ fn test_splice_macro_tour_synthetic() {
         assert!(verify_tour_on_raw_graph(&tours[0], &g));
     }
 }
+
+#[test]
+fn test_2opt_fast_pruning_disconnected_cycles() {
+    let mut g = Graph::new();
+    // Cycle 1: 1 - 2 - 3 - 1
+    g.add_edge(1, 2);
+    g.add_edge(2, 3);
+    g.add_edge(3, 1);
+
+    // Cycle 2: 4 - 5 - 6 - 4
+    g.add_edge(4, 5);
+    g.add_edge(5, 6);
+    g.add_edge(6, 4);
+
+    // Zero cross edges between C1 and C2
+    let cycles = vec![vec![1, 2, 3], vec![4, 5, 6]];
+    let patched = patch_cycles_2opt(cycles.clone(), &g);
+
+    assert_eq!(patched.len(), 2, "Disconnected cycles cannot be merged");
+    assert_eq!(patched, cycles, "Cycles must remain unchanged");
+}
+
+#[test]
+fn test_2opt_fast_pruning_single_cross_edge() {
+    let mut g = Graph::new();
+    // Cycle 1: 1 - 2 - 3 - 1
+    g.add_edge(1, 2);
+    g.add_edge(2, 3);
+    g.add_edge(3, 1);
+
+    // Cycle 2: 4 - 5 - 6 - 4
+    g.add_edge(4, 5);
+    g.add_edge(5, 6);
+    g.add_edge(6, 4);
+
+    // Only 1 cross edge: (1, 4)
+    g.add_edge(1, 4);
+
+    let cycles = vec![vec![1, 2, 3], vec![4, 5, 6]];
+    let patched = patch_cycles_2opt(cycles.clone(), &g);
+
+    assert_eq!(
+        patched.len(),
+        2,
+        "Cycles with single cross edge cannot be 2-opt merged"
+    );
+    assert_eq!(patched, cycles, "Cycles must remain unchanged");
+}
+
+#[test]
+fn test_2opt_merge_with_valid_cross_edges() {
+    let mut g = Graph::new();
+    // Cycle 1: 1 - 2 - 3 - 1
+    g.add_edge(1, 2);
+    g.add_edge(2, 3);
+    g.add_edge(3, 1);
+
+    // Cycle 2: 4 - 5 - 6 - 4
+    g.add_edge(4, 5);
+    g.add_edge(5, 6);
+    g.add_edge(6, 4);
+
+    // 2 valid cross edges: (1, 4) and (2, 5)
+    g.add_edge(1, 4);
+    g.add_edge(2, 5);
+
+    let cycles = vec![vec![1, 2, 3], vec![4, 5, 6]];
+    let patched = patch_cycles_2opt(cycles, &g);
+
+    assert_eq!(patched.len(), 1, "Expected 2 cycles to merge into 1");
+    assert_eq!(patched[0].len(), 6, "Expected merged tour of length 6");
+    assert!(
+        verify_tour_on_raw_graph(&patched[0], &g),
+        "Merged tour must be valid on raw graph"
+    );
+}
+

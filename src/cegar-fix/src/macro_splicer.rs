@@ -1,3 +1,4 @@
+use crate::component_meta_graph::ComponentMetaGraph;
 use crate::graph::Graph;
 use crate::two_tier_decomposer::DecompositionResult;
 use std::collections::{HashMap, HashSet};
@@ -223,6 +224,11 @@ pub fn patch_cycles_2opt(mut cycles: Vec<Vec<i32>>, g: &Graph) -> Vec<Vec<i32>> 
             break;
         }
 
+        let meta_graph = ComponentMetaGraph::build(&cycles, g);
+        if meta_graph.cross_edges.is_empty() {
+            return cycles;
+        }
+
         let mut merged = false;
         let mut vert_map: HashMap<i32, (usize, usize)> = HashMap::new();
         for (c_idx, c) in cycles.iter().enumerate() {
@@ -241,6 +247,9 @@ pub fn patch_cycles_2opt(mut cycles: Vec<Vec<i32>>, g: &Graph) -> Vec<Vec<i32>> 
                     for &u2 in neighbors {
                         if let Some(&(c2_idx, j)) = vert_map.get(&u2) {
                             if c2_idx == c1_idx {
+                                continue;
+                            }
+                            if !meta_graph.has_merge_potential(c1_idx, c2_idx) {
                                 continue;
                             }
 
