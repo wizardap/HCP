@@ -87,7 +87,15 @@ pub fn solve_graph_two_tier(g: &Graph, options: &TwoTierSolverOptions) -> Option
         large_strips_count
     );
 
-    let mut coordinator = GlobalDemandCoordinator::new(g, &decomp);
+    let enable_mtz = decomp.all_hubs.len() >= 2 && decomp.all_hubs.len() <= 250;
+    if enable_mtz {
+        println!(
+            "Active Macro Order-Encoding (MTZ) enabled on {} hubs",
+            decomp.all_hubs.len()
+        );
+    }
+
+    let mut coordinator = GlobalDemandCoordinator::new_with_mtz(g, &decomp, enable_mtz);
     let mut strip_solver = PinpointedStripSolver::new(g, &decomp);
     let mut strip_cache: HashMap<(usize, Vec<(i32, usize)>, usize), Result<Vec<Vec<i32>>, Vec<i32>>> = HashMap::new();
 
