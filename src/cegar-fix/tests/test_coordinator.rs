@@ -2,7 +2,7 @@ use cegar_fix::component_meta_graph::ComponentMetaGraph;
 use cegar_fix::file_operations::input_to_graph;
 use cegar_fix::global_demand_coordinator::GlobalDemandCoordinator;
 use cegar_fix::graph::Graph;
-use cegar_fix::two_tier_decomposer::decompose_graph;
+use cegar_fix::two_tier_decomposer::{decompose_graph, DecompositionResult};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
@@ -358,4 +358,98 @@ fn test_coordinator_meta_component_cuts() {
     coord.add_meta_component_cuts(&single_comp, &cycles);
     assert!(coord.solve_assignment().is_some());
 }
+
+#[test]
+fn test_coordinator_mtz_guarantees_connectivity() {
+    // 1. Synthetic graph with 6 hubs forming 2 disjoint triangles:
+    // Triangle 1: (1, 2), (2, 3), (1, 3)
+    // Triangle 2: (4, 5), (5, 6), (4, 6)
+    let mut g = Graph::new();
+    let mut all_hubs = HashSet::new();
+    for h in 1..=6 {
+        all_hubs.insert(h);
+    }
+
+    let hh_edges_disjoint = vec![
+        (1, 2), (2, 3), (1, 3), // Triangle 1
+        (4, 5), (5, 6), (4, 6), // Triangle 2
+    ];
+    for &(u, v) in &hh_edges_disjoint {
+        g.add_edge(u, v);
+    }
+
+    let decomp_disjoint = DecompositionResult {
+        s_hubs: vec![],
+        b_hubs: vec![],
+        m_hubs: vec![1, 2, 3, 4, 5, 6],
+        all_hubs: all_hubs.clone(),
+        hh_edges: hh_edges_disjoint.clone(),
+        strips: vec![],
+        strip_adj_hubs: HashMap::new(),
+        hub_adj_strips: HashMap::new(),
+    };
+
+    // Without MTZ, coordinator finds SAT by activating both disjoint triangles
+    let mut coord_no_mtz = GlobalDemandCoordinator::new_with_mtz(&g, &decomp_disjoint, false);
+    assert!(coord_no_mtz.mtz_encoder.is_none());
+    let res_no_mtz = coord_no_mtz.solve_assignment();
+    assert!(
+        res_no_mtz.is_some(),
+        "Without MTZ, coordinator should find SAT on 2 disjoint hub cycles"
+    );
+    let (active_hh_no_mtz, _) = res_no_mtz.unwrap();
+    assert_eq!(active_hh_no_mtz.len(), 6); // All 6 triangle edges active
+
+    // With MTZ enabled, the disjoint 2-subcycle state cannot form a single connected cycle
+    // and must be declared UNSAT.
+    let mut coord_mtz = GlobalDemandCoordinator::new_with_mtz(&g, &decomp_disjoint, true);
+    assert!(coord_mtz.mtz_encoder.is_some());
+    let res_mtz = coord_mtz.solve_assignment();
+    assert!(
+        res_mtz.is_none(),
+        "With MTZ, coordinator must return UNSAT for 2 disjoint hub cycles"
+    );
+
+    // 2. Now add bridging edges (3, 4) and (1, 6) connecting the two components
+    g.add_edge(3, 4);
+    g.add_edge(1, 6);
+
+    let mut hh_edges_connected = hh_edges_disjoint.clone();
+    hh_edges_connected.push((3, 4));
+    hh_edges_connected.push((1, 6));
+
+    let decomp_connected = DecompositionResult {
+        s_hubs: vec![],
+        b_hubs: vec![],
+        m_hubs: vec![1, 2, 3, 4, 5, 6],
+        all_hubs: all_hubs.clone(),
+        hh_edges: hh_edges_connected,
+        strips: vec![],
+        strip_adj_hubs: HashMap::new(),
+        hub_adj_strips: HashMap::new(),
+    };
+
+    let mut coord_connected = GlobalDemandCoordinator::new_with_mtz(&g, &decomp_connected, true);
+    assert!(coord_connected.mtz_encoder.is_some());
+    let res_connected = coord_connected.solve_assignment();
+    assert!(
+        res_connected.is_some(),
+        "With MTZ and bridges present, coordinator must return SAT for single connected 6-cycle"
+    );
+
+    let (active_hh_edges, _) = res_connected.unwrap();
+
+    // Verify that bridging HH edges (3, 4) and (1, 6) are active, while chords (1, 3) and (4, 6) are inactive
+    let has_edge = |u: i32, v: i32| active_hh_edges.contains(&(u.min(v), u.max(v)));
+    assert!(has_edge(3, 4), "Bridge edge (3, 4) must be active");
+    assert!(has_edge(1, 6), "Bridge edge (1, 6) must be active");
+    assert!(has_edge(1, 2), "Edge (1, 2) must be active");
+    assert!(has_edge(2, 3), "Edge (2, 3) must be active");
+    assert!(has_edge(4, 5), "Edge (4, 5) must be active");
+    assert!(has_edge(5, 6), "Edge (5, 6) must be active");
+    assert!(!has_edge(1, 3), "Chord (1, 3) must be inactive");
+    assert!(!has_edge(4, 6), "Chord (4, 6) must be inactive");
+}
+
+
 
