@@ -158,6 +158,20 @@ impl MacroMtzEncoder {
                         add_mtz_implication(solver, u, v, s_uv, &hub_order_vars);
                     }
                 }
+
+                // If strip endpoints u and v are both active, exactly one traversal direction must be chosen
+                for i in 0..sorted_adj.len() {
+                    for j in (i + 1)..sorted_adj.len() {
+                        let u = sorted_adj[i];
+                        let v = sorted_adj[j];
+                        if let (Some(&d1_u), Some(&d1_v)) = (var_d1.get(&(si, u)), var_d1.get(&(si, v))) {
+                            if let (Some(&s_uv), Some(&s_vu)) = (dir_strip_vars.get(&(si, u, v)), dir_strip_vars.get(&(si, v, u))) {
+                                let _ = solver.add_clause(clause![!d1_u, !d1_v, s_uv, s_vu]);
+                                let _ = solver.add_clause(clause![!s_uv, !s_vu]);
+                            }
+                        }
+                    }
+                }
             }
         }
 

@@ -277,18 +277,12 @@ fn test_macro_mtz_prevents_subcycles_with_strips() {
         let _ = solver.add_clause(clause![var_hh[&(1, 2)]]);
         let _ = solver.add_clause(clause![var_d1[&(0, 1)]]);
         let _ = solver.add_clause(clause![var_d1[&(0, 2)]]);
-        let s0_12 = encoder.dir_strip_vars[&(0, 1, 2)];
-        let s0_21 = encoder.dir_strip_vars[&(0, 2, 1)];
-        let _ = solver.add_clause(clause![s0_12, s0_21]);
 
         // Activate Subcycle B:
         // HH(3,4) = true, Strip 1 active on 3 and 4
         let _ = solver.add_clause(clause![var_hh[&(3, 4)]]);
         let _ = solver.add_clause(clause![var_d1[&(1, 3)]]);
         let _ = solver.add_clause(clause![var_d1[&(1, 4)]]);
-        let s1_34 = encoder.dir_strip_vars[&(1, 3, 4)];
-        let s1_43 = encoder.dir_strip_vars[&(1, 4, 3)];
-        let _ = solver.add_clause(clause![s1_34, s1_43]);
 
         // Deactivate connecting edges
         let _ = solver.add_clause(clause![!var_hh[&(2, 3)]]);

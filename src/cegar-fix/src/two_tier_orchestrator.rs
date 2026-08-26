@@ -87,7 +87,7 @@ pub fn solve_graph_two_tier(g: &Graph, options: &TwoTierSolverOptions) -> Option
         large_strips_count
     );
 
-    let enable_mtz = decomp.all_hubs.len() >= 2 && decomp.all_hubs.len() <= 250;
+    let enable_mtz = decomp.all_hubs.len() >= 2 && decomp.all_hubs.len() <= 200;
     if enable_mtz {
         println!(
             "Active Macro Order-Encoding (MTZ) enabled on {} hubs",
