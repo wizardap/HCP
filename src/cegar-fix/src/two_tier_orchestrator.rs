@@ -1,3 +1,4 @@
+use crate::component_meta_graph::ComponentMetaGraph;
 use crate::global_demand_coordinator::GlobalDemandCoordinator;
 use crate::graph::Graph;
 use crate::macro_splicer::{splice_macro_tour, verify_tour_on_raw_graph};
@@ -231,6 +232,16 @@ pub fn solve_graph_two_tier(g: &Graph, options: &TwoTierSolverOptions) -> Option
                     "Splicer detected {} disconnected subtours -> adding macro cut clauses",
                     cycles.len()
                 );
+                if cycles.len() > 1 {
+                    let meta_graph = ComponentMetaGraph::build(&cycles, g);
+                    if meta_graph.meta_components.len() > 1 {
+                        println!(
+                            "Meta-graph partitioned into {} disconnected components -> generating multi-component SEC cuts",
+                            meta_graph.meta_components.len()
+                        );
+                        coordinator.add_meta_component_cuts(meta_graph.get_meta_components(), &cycles);
+                    }
+                }
                 coordinator.add_exact_subtour_block(&hh_edges, &strip_demands, &cycles);
                 for cyc in &cycles {
                     let cyc_verts: HashSet<i32> = cyc.iter().copied().collect();

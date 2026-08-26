@@ -422,6 +422,31 @@ impl<'a> GlobalDemandCoordinator<'a> {
             let _ = self.solver.add_clause(Clause::from_iter(cut_clause));
         }
     }
+
+    /// Adds macro cut clauses for all disconnected meta-components.
+    pub fn add_meta_component_cuts(
+        &mut self,
+        meta_components: &[Vec<usize>],
+        cycles: &[Vec<i32>],
+    ) {
+        if meta_components.len() <= 1 {
+            return;
+        }
+
+        for comp in meta_components {
+            let mut comp_verts = HashSet::new();
+            for &c_idx in comp {
+                if c_idx < cycles.len() {
+                    for &v in &cycles[c_idx] {
+                        comp_verts.insert(v);
+                    }
+                }
+            }
+            if !comp_verts.is_empty() {
+                self.add_macro_cut(&comp_verts);
+            }
+        }
+    }
 }
 
 /// Adds cardinality constraints to enforce sum(lits) == 1

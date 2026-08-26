@@ -1,3 +1,4 @@
+use cegar_fix::component_meta_graph::ComponentMetaGraph;
 use cegar_fix::file_operations::input_to_graph;
 use cegar_fix::global_demand_coordinator::GlobalDemandCoordinator;
 use cegar_fix::graph::Graph;
@@ -292,3 +293,69 @@ fn test_graph950_coordinator_solving_and_bounds() {
     let is_identical = failed.iter().all(|&h| dem0.get(&h) == dem0_after.get(&h));
     assert!(!is_identical, "Strip 0 demand should have changed after conflict clause");
 }
+
+#[test]
+fn test_coordinator_meta_component_cuts() {
+    let mut g = Graph::new();
+    // Auxiliary hubs 10..35
+    for i in 10..35 {
+        for j in (i + 1)..=35 {
+            g.add_edge(i, j);
+        }
+    }
+    // 4 Hubs: 1, 2, 3, 4
+    for i in 10..30 {
+        g.add_edge(1, i);
+        g.add_edge(2, i);
+        g.add_edge(3, i);
+        g.add_edge(4, i);
+    }
+    // Disconnected hub components: (1-2) and (3-4)
+    g.add_edge(1, 2);
+    g.add_edge(3, 4);
+
+    // Strips: 101-102 (between 1 and 2), 201-202 (between 3 and 4)
+    // 301-302 (bridging strip between 2 and 3)
+    g.add_edge(101, 102);
+    g.add_edge(1, 101);
+    g.add_edge(2, 102);
+
+    g.add_edge(201, 202);
+    g.add_edge(3, 201);
+    g.add_edge(4, 202);
+
+    g.add_edge(301, 302);
+    g.add_edge(2, 301);
+    g.add_edge(3, 302);
+
+    let decomp = decompose_graph(&g);
+    let mut coord = GlobalDemandCoordinator::new(&g, &decomp);
+
+    // Form 2 subtours: cycle 0 on {1, 2, 101, 102} and cycle 1 on {3, 4, 201, 202}
+    let cycles = vec![
+        vec![1, 101, 102, 2],
+        vec![3, 201, 202, 4],
+    ];
+
+    let meta_graph = ComponentMetaGraph::build(&cycles, &g);
+    assert_eq!(meta_graph.meta_components.len(), 2, "Meta graph should have 2 disconnected components");
+
+    // Add meta-component cuts
+    coord.add_meta_component_cuts(meta_graph.get_meta_components(), &cycles);
+
+    let res = coord.solve_assignment();
+    assert!(res.is_some(), "Expected SAT after adding meta-component cuts");
+    let (_hh, strip_demands) = res.unwrap();
+
+    // Check bridging strip 301-302
+    let si_bridge = decomp.strips.iter().position(|s| s.contains(&301)).unwrap();
+    let bridge_dem = strip_demands.get(&si_bridge).unwrap();
+    assert!(bridge_dem.get(&2).copied().unwrap_or(0) >= 1);
+    assert!(bridge_dem.get(&3).copied().unwrap_or(0) >= 1);
+
+    // Also test single meta-component early exit
+    let single_comp = vec![vec![0, 1]];
+    coord.add_meta_component_cuts(&single_comp, &cycles);
+    assert!(coord.solve_assignment().is_some());
+}
+
