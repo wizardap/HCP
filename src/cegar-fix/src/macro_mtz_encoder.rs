@@ -132,6 +132,11 @@ impl MacroMtzEncoder {
         strip_keys.sort_unstable();
 
         for si in strip_keys {
+            let is_small_strip = decomp.strips.get(si).map_or(false, |s| s.len() < 10);
+            if !is_small_strip {
+                continue;
+            }
+
             if let Some(adj) = decomp.strip_adj_hubs.get(&si) {
                 let mut sorted_adj: Vec<i32> = adj.iter().copied().collect();
                 sorted_adj.sort_unstable();
