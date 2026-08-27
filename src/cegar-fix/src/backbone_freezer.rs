@@ -18,12 +18,16 @@ impl BackboneFreezer {
         max_cycle_count_trigger: usize,
     ) -> Vec<Lit> {
         let mut assumptions = Vec::new();
-        if cycles.len() < 2 || cycles.len() > max_cycle_count_trigger {
-            return assumptions;
-        }
-
         let total_v = g.adjacency_list.len();
         let min_len = ((total_v as f64) * min_giant_ratio).max(3.0) as usize;
+
+        let max_cycle_len = cycles.iter().map(|c| c.len()).max().unwrap_or(0);
+        let has_giant = max_cycle_len >= min_len;
+        let count_ok = cycles.len() <= max_cycle_count_trigger;
+
+        if cycles.len() < 2 || (!has_giant && !count_ok) {
+            return assumptions;
+        }
 
         for cycle in cycles.iter() {
             if cycle.len() < min_len {

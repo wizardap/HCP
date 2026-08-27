@@ -81,9 +81,15 @@ fn test_backbone_freezer_giant_cycle_preservation_6_cycles() {
     assert!(lit_50_51.is_some());
     assert!(assumps_25.contains(&lit_50_51.unwrap()), "Edge (50, 51) should be in assumptions");
 
-    // When max_cycle_count_trigger is 5, with 6 cycles it should return empty
-    let assumps_5 = BackboneFreezer::extract_backbone_assumptions(&cycles, &g, &encoder, 0.50, 5);
-    assert!(assumps_5.is_empty(), "No assumptions should be extracted when cycle count exceeds max_cycle_count_trigger");
+    // When max_cycle_count_trigger is 5, but giant cycle is 80% (>= 50%),
+    // the giant cycle ratio should override the count trigger and yield assumptions!
+    let assumps_giant_override = BackboneFreezer::extract_backbone_assumptions(&cycles, &g, &encoder, 0.50, 5);
+    assert!(!assumps_giant_override.is_empty(), "Giant cycle >= 50% must override max_cycle_count_trigger");
+
+    // When neither condition is met (min_giant_ratio = 0.90 > 80% AND trigger = 5 < 6 cycles),
+    // it should return empty.
+    let assumps_none = BackboneFreezer::extract_backbone_assumptions(&cycles, &g, &encoder, 0.90, 5);
+    assert!(assumps_none.is_empty(), "No assumptions when neither giant ratio nor cycle count threshold is met");
 }
 
 #[test]

@@ -104,3 +104,37 @@ fn test_solve_staged_smt_petersen_subgraph() {
     let tour = solve_staged_lazy_smt(&g, &options);
     assert!(tour.is_none(), "Petersen graph is hypohamiltonian and must be UNSAT");
 }
+
+#[test]
+fn test_cegar_adaptive_backbone_freezing_integration() {
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use std::time::Instant;
+
+    let mut g = Graph::new();
+    // 20-node cycle with chords
+    for i in 1..20 {
+        g.add_edge(i, i + 1);
+    }
+    g.add_edge(20, 1);
+    g.add_edge(1, 10);
+    g.add_edge(10, 20);
+    g.add_edge(5, 15);
+
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+    let hub_reg = HubRegistry::new(&contracted_g);
+    let start = Instant::now();
+
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "output"
+    );
+    assert!(tour.is_some(), "Graph must be solvable with CEGAR and adaptive freezing");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 20);
+}
+
+
