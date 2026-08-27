@@ -693,10 +693,12 @@ fn cegar(
                     let _ = solver.add_cnf(cnf);
                 }
 
-                if _active_cycles.len() <= 5 && _active_cycles.len() > 1 {
-                    assumptions = BackboneFreezer::extract_backbone_assumptions(&_active_cycles, &g, encoder, 0.70);
+                let total_v = g.adjacency_list.len();
+                let max_cycle_len = _active_cycles.iter().map(|c| c.len()).max().unwrap_or(0);
+                if _active_cycles.len() > 1 && (max_cycle_len >= total_v / 2 || _active_cycles.len() <= 25) {
+                    assumptions = BackboneFreezer::extract_backbone_assumptions(&_active_cycles, &g, encoder, 0.50, 25);
                     if !assumptions.is_empty() {
-                        println!("BackboneFreezer: locked {} internal backbone edges as assumptions", assumptions.len());
+                        println!("BackboneFreezer: locked {} internal backbone edges (giant cycle len {})", assumptions.len(), max_cycle_len);
                     }
                 } else {
                     assumptions.clear();
