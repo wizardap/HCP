@@ -123,14 +123,13 @@ fn test_cut_selector_boundary_cuts() {
 
     // 1. Boundary cuts enabled (default):
     // Direct clause: ¬x_{1->2} ∨ ¬x_{2->3} ∨ ¬x_{3->1}
-    // Outgoing cut edges from {1, 2, 3} to {4} are (1, 4) and (3, 4).
-    // |delta(C)| == 2 => 2 unit clauses: [x_{1->4}], [x_{3->4}]
+    // Outgoing cut edges from {1, 2, 3} to {4} are (1, 4) and (3, 4) -> boundary disjunction: x_{1->4} ∨ x_{3->4}
     let options = CutSelectorOptions::default();
     let (clauses, selected) =
         CutSelector::select_and_generate_cuts(&cycles, &g, &encoder, &options);
 
     assert_eq!(selected, vec![triangle.clone()]);
-    assert_eq!(clauses.len(), 3);
+    assert_eq!(clauses.len(), 2);
 
     let lit_1_2 = encoder.graph_lit_map[&(1, 2)];
     let lit_2_3 = encoder.graph_lit_map[&(2, 3)];
@@ -149,17 +148,16 @@ fn test_cut_selector_boundary_cuts() {
     });
     assert!(direct_found, "Direct blocking clause must be generated");
 
-    // Verify unit clauses for boundary edges are present
-    let unit_1_4_found = clauses.iter().any(|c| {
-        let lits: Vec<_> = c.iter().copied().collect();
-        lits == vec![lit_1_4]
+    // Verify boundary disjunction clause is present
+    let mut expected_boundary = vec![lit_1_4, lit_3_4];
+    expected_boundary.sort_unstable();
+
+    let boundary_found = clauses.iter().any(|c| {
+        let mut lits: Vec<_> = c.iter().copied().collect();
+        lits.sort_unstable();
+        lits == expected_boundary
     });
-    let unit_3_4_found = clauses.iter().any(|c| {
-        let lits: Vec<_> = c.iter().copied().collect();
-        lits == vec![lit_3_4]
-    });
-    assert!(unit_1_4_found, "Unit clause for (1, 4) must be generated");
-    assert!(unit_3_4_found, "Unit clause for (3, 4) must be generated");
+    assert!(boundary_found, "Boundary disjunction clause must be generated");
 
     // 2. Boundary cuts disabled: only 1 direct clause
     let no_boundary_options = CutSelectorOptions {
@@ -253,3 +251,33 @@ fn test_cut_selector_empty_and_thresholds() {
     assert_eq!(selected_thresh.len(), 1);
     assert_eq!(clauses_thresh.len(), 1); // direct only
 }
+
+#[test]
+fn test_cut_selector_fallback_when_all_cycles_exceed_max_len() {
+    let mut g = Graph::new();
+    let mut cycle_70 = Vec::new();
+    for i in 1..=70 {
+        cycle_70.push(i);
+        let next = if i == 70 { 1 } else { i + 1 };
+        g.add_edge(i, next);
+    }
+    let mut enc = Encoder::new();
+    let _ = enc.encode(&g, 0, 0, 0, 0, 0, 0);
+
+    // max_cycle_len_for_cut is 64, but cycle is 70.
+    // Fallback should still select the single shortest cycle and generate a direct blocking clause!
+    let opts = CutSelectorOptions {
+        max_cycle_len_for_cut: 64,
+        ..CutSelectorOptions::default()
+    };
+    let (clauses, selected) = CutSelector::select_and_generate_cuts(
+        &[cycle_70.clone()],
+        &g,
+        &enc,
+        &opts,
+    );
+    assert_eq!(selected.len(), 1);
+    assert_eq!(selected[0], cycle_70);
+    assert_eq!(clauses.len(), 1);
+}
+

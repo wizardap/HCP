@@ -44,11 +44,22 @@ impl CutSelector {
         candidates.sort_by_key(|c| c.len());
 
         // 2. Budget Capping:
-        // Take the first min(candidates.len(), options.max_cuts_per_round) cycles
-        let selected_cycles: Vec<Vec<i32>> = candidates
-            .into_iter()
-            .take(options.max_cuts_per_round)
-            .collect();
+        // Take the first min(candidates.len(), options.max_cuts_per_round) cycles.
+        // Fallback: if candidates is empty (all cycles > max_cycle_len_for_cut), take the shortest cycle to guarantee progress.
+        let selected_cycles: Vec<Vec<i32>> = if candidates.is_empty() {
+            cycles
+                .iter()
+                .filter(|c| c.len() >= 3)
+                .min_by_key(|c| c.len())
+                .cloned()
+                .into_iter()
+                .collect()
+        } else {
+            candidates
+                .into_iter()
+                .take(options.max_cuts_per_round)
+                .collect()
+        };
 
         // 3. Clause Generation:
         let mut clauses = Vec::new();
@@ -74,7 +85,7 @@ impl CutSelector {
                 }
             }
 
-            // Boundary cut for tiny cycles
+            // Boundary cut for tiny cycles: at least one outgoing edge from the cycle must be traversed
             if options.enable_boundary_cuts && cycle.len() <= options.small_cycle_threshold {
                 let cycle_set: HashSet<i32> = cycle.iter().copied().collect();
                 let mut cut_edges = Vec::new();
@@ -90,15 +101,7 @@ impl CutSelector {
                     }
                 }
 
-                // If |delta(C)| == 2: force both cut edges via unit clauses
-                // If |delta(C)| > 2: force at least one cut edge via disjunction
-                if cut_edges.len() == 2 {
-                    for edge in cut_edges {
-                        if let Some(&lit) = encoder.graph_lit_map.get(&edge) {
-                            clauses.push(Clause::from_iter([lit]));
-                        }
-                    }
-                } else if cut_edges.len() > 2 {
+                if !cut_edges.is_empty() {
                     let mut boundary_lits = Vec::new();
                     for edge in cut_edges {
                         if let Some(&lit) = encoder.graph_lit_map.get(&edge) {
