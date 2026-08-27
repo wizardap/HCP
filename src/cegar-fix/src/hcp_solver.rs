@@ -23,6 +23,7 @@ use crate::cycle_chain_absorber::CycleChainAbsorber;
 use crate::backbone_freezer::BackboneFreezer;
 use crate::snark_bridge::SnarkBridgeEngine;
 use crate::gadget_parity::GadgetInterfaceParityEngine;
+use crate::cut_selector::{CutSelector, CutSelectorOptions};
 
 
 /// Pre-emptively forbids 3-cycles (triangles) and 4-cycles in the initial CNF encoding in O(|E| * Delta).
@@ -1259,37 +1260,21 @@ fn inject_partial_mtz(
 }
 
 fn get_blocking_clauses(
-    sol_cycles: &Vec<Vec<i32>>,
-    encoder: &mut Encoder,
+    cycles: &Vec<Vec<i32>>,
+    encoder: &Encoder,
     g: &Graph,
-    block_method: i32,
-    balanced: i32,
+    _block_method: i32,
+    _balanced: i32,
 ) -> Vec<Clause> {
-    let mut clauses = Vec::new();
-    let total_v = g.adjacency_list.len();
-
-    for sol_cycle in sol_cycles.iter() {
-        match block_method {
-            3 => {
-                // Technique A1 & A3: Boundary Minimal Cut & Complementary Cut with Totalizer support
-                let cut_clauses = get_boundary_cut_clauses(sol_cycle, encoder, g, total_v, balanced);
-                clauses.extend(cut_clauses);
-                clauses.extend(cegar_blocking_clauses(sol_cycle, &encoder.graph_lit_map));
-
-                // Technique A2: Induced Subgraph SECs for |C| <= 4
-                if sol_cycle.len() <= 4 {
-                    let sec_clauses = get_induced_subgraph_sec_clauses(sol_cycle, encoder, g);
-                    clauses.extend(sec_clauses);
-                }
-            }
-            0 => clauses.extend(cegar_blocking_clauses(sol_cycle, &encoder.graph_lit_map)),
-            1 => clauses.extend(asp_blocking_clauses(sol_cycle, encoder, g, 1, balanced)),
-            _ => clauses.extend(asp_blocking_clauses(sol_cycle, encoder, g, 2, balanced)),
-        }
+    let options = CutSelectorOptions::default();
+    let (clauses, selected) = CutSelector::select_and_generate_cuts(cycles, g, encoder, &options);
+    if !selected.is_empty() {
+        println!("CutSelector: selected {}/{} subcycles (generated {} budgeted clauses)", selected.len(), cycles.len(), clauses.len());
     }
     clauses
 }
 
+#[allow(dead_code)]
 fn cegar_blocking_clauses(cycle:&Vec<i32>,lit_map:&BTreeMap<(i32,i32),Lit>)-> Vec<Clause>{
     let mut clauses =  Vec::new();
     // for cycle in sol_cycles.iter() {
@@ -1316,6 +1301,7 @@ fn cegar_blocking_clauses(cycle:&Vec<i32>,lit_map:&BTreeMap<(i32,i32),Lit>)-> Ve
 
 }
 
+#[allow(dead_code)]
 fn asp_blocking_clauses(cycle:&Vec<i32>,encoder: &mut Encoder,g:&Graph, method: i32,balanced:i32) -> Vec<Clause>{
     let mut clauses = Vec::new();
     if method != 4{
