@@ -34,6 +34,7 @@ pub mod snark_bridge;
 pub mod gadget_parity;
 pub mod component_meta_graph;
 pub mod macro_mtz_encoder;
+pub mod cut_selector;
 
 
 use contraction::Degree2Contractor;
