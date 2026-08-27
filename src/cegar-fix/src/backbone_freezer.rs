@@ -15,9 +15,10 @@ impl BackboneFreezer {
         g: &Graph,
         encoder: &Encoder,
         min_giant_ratio: f64,
+        max_cycle_count_trigger: usize,
     ) -> Vec<Lit> {
         let mut assumptions = Vec::new();
-        if cycles.len() < 2 {
+        if cycles.len() < 2 || cycles.len() > max_cycle_count_trigger {
             return assumptions;
         }
 
