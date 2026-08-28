@@ -74,43 +74,46 @@ impl StaticCycleCutter {
                 for i in 0..sorted_nbrs.len() {
                     let v = sorted_nbrs[i];
                     if v <= u { continue; }
+                    let sorted_v_nbrs = if let Some(v_nbrs) = g.adjacency_list.get(&v) {
+                        let mut s = v_nbrs.clone();
+                        s.sort_unstable();
+                        s.dedup();
+                        s
+                    } else {
+                        Vec::new()
+                    };
+
                     for j in (i + 1)..sorted_nbrs.len() {
                         let w = sorted_nbrs[j];
                         if w <= u { continue; }
                         // Look for common neighbors x of v and w (where x != u)
-                        if let Some(v_nbrs) = g.adjacency_list.get(&v) {
-                            let mut sorted_v_nbrs = v_nbrs.clone();
-                            sorted_v_nbrs.sort_unstable();
-                            sorted_v_nbrs.dedup();
+                        for &x in &sorted_v_nbrs {
+                            if x == u || x <= u { continue; }
+                            if adj_sets.get(&w).is_some_and(|s| s.contains(&x)) {
+                                // Found 4-cycle: (u, v, x, w)
+                                let mut canonical = [u, v, x, w];
+                                canonical.sort_unstable();
+                                if !seen_4cycles.insert(canonical) {
+                                    continue;
+                                }
 
-                            for &x in &sorted_v_nbrs {
-                                if x == u || x <= u { continue; }
-                                if adj_sets.get(&w).map_or(false, |s| s.contains(&x)) {
-                                    // Found 4-cycle: (u, v, x, w)
-                                    let mut canonical = [u, v, x, w];
-                                    canonical.sort_unstable();
-                                    if !seen_4cycles.insert(canonical) {
-                                        continue;
-                                    }
-
-                                    // Direction 1: u -> v -> x -> w -> u
-                                    if let (Some(&l_uv), Some(&l_vx), Some(&l_xw), Some(&l_wu)) = (
-                                        encoder.graph_lit_map.get(&(u, v)),
-                                        encoder.graph_lit_map.get(&(v, x)),
-                                        encoder.graph_lit_map.get(&(x, w)),
-                                        encoder.graph_lit_map.get(&(w, u)),
-                                    ) {
-                                        cnf.add_clause(clause!(!l_uv, !l_vx, !l_xw, !l_wu));
-                                    }
-                                    // Direction 2: u -> w -> x -> v -> u
-                                    if let (Some(&l_uw), Some(&l_wx), Some(&l_xv), Some(&l_vu)) = (
-                                        encoder.graph_lit_map.get(&(u, w)),
-                                        encoder.graph_lit_map.get(&(w, x)),
-                                        encoder.graph_lit_map.get(&(x, v)),
-                                        encoder.graph_lit_map.get(&(v, u)),
-                                    ) {
-                                        cnf.add_clause(clause!(!l_uw, !l_wx, !l_xv, !l_vu));
-                                    }
+                                // Direction 1: u -> v -> x -> w -> u
+                                if let (Some(&l_uv), Some(&l_vx), Some(&l_xw), Some(&l_wu)) = (
+                                    encoder.graph_lit_map.get(&(u, v)),
+                                    encoder.graph_lit_map.get(&(v, x)),
+                                    encoder.graph_lit_map.get(&(x, w)),
+                                    encoder.graph_lit_map.get(&(w, u)),
+                                ) {
+                                    cnf.add_clause(clause!(!l_uv, !l_vx, !l_xw, !l_wu));
+                                }
+                                // Direction 2: u -> w -> x -> v -> u
+                                if let (Some(&l_uw), Some(&l_wx), Some(&l_xv), Some(&l_vu)) = (
+                                    encoder.graph_lit_map.get(&(u, w)),
+                                    encoder.graph_lit_map.get(&(w, x)),
+                                    encoder.graph_lit_map.get(&(x, v)),
+                                    encoder.graph_lit_map.get(&(v, u)),
+                                ) {
+                                    cnf.add_clause(clause!(!l_uw, !l_wx, !l_xv, !l_vu));
                                 }
                             }
                         }

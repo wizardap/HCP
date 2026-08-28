@@ -245,3 +245,70 @@ fn test_cegar_hemisphere_splicer_integration() {
         );
     }
 }
+
+#[test]
+fn test_cegar_static_cycle_cutter_integration() {
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use cegar_fix::static_cycle_cutter::StaticCycleCutter;
+    use cegar_fix::encoder::Encoder;
+    use std::time::Instant;
+
+    let mut g = Graph::new();
+    // 8-vertex 3-regular ladder / 3-cube graph with 6 4-cycles:
+    // Cycle A: 1-2-3-4-1
+    // Cycle B: 5-6-7-8-5
+    // Rungs: (1,5), (2,6), (3,7), (4,8)
+    g.add_edge(1, 2);
+    g.add_edge(2, 3);
+    g.add_edge(3, 4);
+    g.add_edge(4, 1);
+
+    g.add_edge(5, 6);
+    g.add_edge(6, 7);
+    g.add_edge(7, 8);
+    g.add_edge(8, 5);
+
+    g.add_edge(1, 5);
+    g.add_edge(2, 6);
+    g.add_edge(3, 7);
+    g.add_edge(4, 8);
+
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+    let hub_reg = HubRegistry::new(&contracted_g);
+
+    // Verify static cuts generated
+    let mut encoder = Encoder::new();
+    let _ = encoder.encode(&contracted_g, 0, 0, 0, 0, 0, 0);
+    let static_cuts = StaticCycleCutter::generate_static_small_cycle_cuts(&contracted_g, &encoder);
+    assert!(!static_cuts.is_empty(), "Static cuts should detect 4-cycles in 3-cube graph");
+
+    let start = Instant::now();
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+    assert!(tour.is_some(), "Graph must be solved with CEGAR and static cycle cutter wired");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 8);
+
+    // Verify validity of Hamiltonian cycle on g
+    let mut seen = std::collections::HashSet::new();
+    for &v in &t {
+        assert!(seen.insert(v), "Duplicate vertex {} in tour", v);
+    }
+    for i in 0..t.len() {
+        let u = t[i];
+        let v = t[(i + 1) % t.len()];
+        assert!(
+            g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v)),
+            "Edge ({}, {}) must exist in graph",
+            u,
+            v
+        );
+    }
+}
+

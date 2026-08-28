@@ -26,6 +26,7 @@ use crate::gadget_parity::GadgetInterfaceParityEngine;
 use crate::cut_selector::{CutSelector, CutSelectorOptions};
 use crate::solver_reseeder::{SolverReseeder, ReseederOptions};
 use crate::hemisphere_splicer::HemisphereSplicer;
+use crate::static_cycle_cutter::StaticCycleCutter;
 
 
 /// Pre-emptively forbids 3-cycles (triangles) and 4-cycles in the initial CNF encoding in O(|E| * Delta).
@@ -268,6 +269,13 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
         } else {
             cnf.add_clause(clause!(lit));
         }
+    }
+
+    // Static Substructure Cycle Cutter: inject 3-cycle and 4-cycle subtour elimination clauses
+    let static_cuts = StaticCycleCutter::generate_static_small_cycle_cuts(&g, &encoder);
+    if !static_cuts.is_empty() {
+        println!("StaticCycleCutter: injected {} static small-cycle elimination clauses at Round 0", static_cuts.len());
+        cnf.extend(static_cuts);
     }
 
     let current_cnf = if output_folder != "default" {
