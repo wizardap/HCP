@@ -64,7 +64,6 @@ impl StaticCycleCutter {
         }
 
         // 2. Find all 4-cycles (squares)
-        let mut seen_4cycles = HashSet::new();
         for &u in &vertices {
             if let Some(u_nbrs) = g.adjacency_list.get(&u) {
                 let mut sorted_nbrs = u_nbrs.clone();
@@ -86,17 +85,10 @@ impl StaticCycleCutter {
                     for j in (i + 1)..sorted_nbrs.len() {
                         let w = sorted_nbrs[j];
                         if w <= u { continue; }
-                        // Look for common neighbors x of v and w (where x != u)
+                        // Look for common neighbors x of v and w (where x > u)
                         for &x in &sorted_v_nbrs {
-                            if x == u || x <= u { continue; }
+                            if x <= u { continue; }
                             if adj_sets.get(&w).is_some_and(|s| s.contains(&x)) {
-                                // Found 4-cycle: (u, v, x, w)
-                                let mut canonical = [u, v, x, w];
-                                canonical.sort_unstable();
-                                if !seen_4cycles.insert(canonical) {
-                                    continue;
-                                }
-
                                 // Direction 1: u -> v -> x -> w -> u
                                 if let (Some(&l_uv), Some(&l_vx), Some(&l_xw), Some(&l_wu)) = (
                                     encoder.graph_lit_map.get(&(u, v)),
