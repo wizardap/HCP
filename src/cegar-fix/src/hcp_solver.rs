@@ -397,6 +397,7 @@ fn cegar(
 
     let mut assumptions: Vec<Lit> = Vec::new();
     let mut accumulated_cut_cnfs: Vec<Cnf> = Vec::new();
+    let reseeder_opts = ReseederOptions::default();
 
     loop {
         if instant.elapsed().as_secs_f64() >= timeout_secs {
@@ -726,7 +727,6 @@ fn cegar(
                 println!("add block clauses time = {:?}", add_block_clauses_time);
                 println!("increment time = {:?}", time);
 
-                let reseeder_opts = ReseederOptions::default();
                 if SolverReseeder::should_reseed(sat_solving_time.as_secs_f64(), count as usize, &reseeder_opts) {
                     println!("SolverReseeder: refreshing CaDiCaL instance (round {}, last SAT time {:.2}s, accumulated cuts: {})",
                         count, sat_solving_time.as_secs_f64(), accumulated_cut_cnfs.len());
