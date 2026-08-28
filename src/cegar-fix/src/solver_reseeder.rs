@@ -41,9 +41,9 @@ impl SolverReseeder {
     ) -> CaDiCaL<'static, 'static> {
         let mut solver = CaDiCaL::default();
         match cadical_config {
-            1 => { let _ = solver.set_configuration(Config::Default); }
+            1 => { let _ = solver.set_configuration(Config::Sat); }
             2 => { let _ = solver.set_configuration(Config::Plain); }
-            3 => { let _ = solver.set_configuration(Config::Sat); }
+            3 => { let _ = solver.set_configuration(Config::Default); }
             4 => { let _ = solver.set_configuration(Config::Unsat); }
             _ => {}
         }
