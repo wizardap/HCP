@@ -38,3 +38,4 @@ pub mod cut_selector;
 pub mod solver_reseeder;
 pub mod hemisphere_splicer;
 pub mod static_cycle_cutter;
+pub mod boundary_alternating_patcher;
