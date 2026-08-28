@@ -1,6 +1,7 @@
 use cegar_fix::graph::Graph;
 use cegar_fix::encoder::Encoder;
-use cegar_fix::backbone_freezer::BackboneFreezer;
+use cegar_fix::backbone_freezer::{BackboneFreezer, FreezerOptions};
+use cegar_fix::contraction::Degree2Contractor;
 
 #[test]
 fn test_backbone_freezer_extraction() {
@@ -145,4 +146,96 @@ fn test_backbone_freezer_boundary_exclusion() {
     assert!(assumps.contains(&lit_8_9), "Edge (8, 9) should be included");
     assert!(assumps.contains(&lit_9_10), "Edge (9, 10) should be included");
     assert!(assumps.contains(&lit_10_1), "Edge (10, 1) should be included");
+}
+
+#[test]
+fn test_backbone_freezer_budget_capping() {
+    let mut g = Graph::new();
+    // 1000-node giant cycle: 1 -> 2 -> ... -> 1000 -> 1
+    for i in 1..1000 {
+        g.add_edge(i, i + 1);
+    }
+    g.add_edge(1000, 1);
+
+    // Small cycle: 1001 -> 1002 -> 1003 -> 1004 -> 1001
+    for i in 1001..1004 {
+        g.add_edge(i, i + 1);
+    }
+    g.add_edge(1004, 1001);
+
+    // Cross edge connecting node 1 to node 1001
+    g.add_edge(1, 1001);
+
+    let mut encoder = Encoder::new();
+    let _cnf = encoder.encode(&g, 0, 0, 0, 0, 0, 0);
+
+    let giant: Vec<i32> = (1..=1000).collect();
+    let small: Vec<i32> = (1001..=1004).collect();
+    let cycles = vec![giant, small];
+
+    let opts = FreezerOptions::default();
+    let contractor = Degree2Contractor::new();
+
+    let assumps = BackboneFreezer::select_adaptive_frozen_assumptions(
+        &cycles,
+        &g,
+        &encoder,
+        &contractor,
+        &opts,
+        0.0,
+    );
+
+    assert_eq!(
+        assumps.len(),
+        opts.max_frozen_edges,
+        "Assumptions must be capped at max_frozen_edges (250)"
+    );
+    assert_eq!(opts.max_frozen_edges, 250);
+}
+
+#[test]
+fn test_backbone_freezer_adaptive_relaxation() {
+    let mut g = Graph::new();
+    // 1000-node giant cycle: 1 -> 2 -> ... -> 1000 -> 1
+    for i in 1..1000 {
+        g.add_edge(i, i + 1);
+    }
+    g.add_edge(1000, 1);
+
+    // Small cycle: 1001 -> 1002 -> 1003 -> 1004 -> 1001
+    for i in 1001..1004 {
+        g.add_edge(i, i + 1);
+    }
+    g.add_edge(1004, 1001);
+
+    // Cross edge connecting node 1 to node 1001
+    g.add_edge(1, 1001);
+
+    let mut encoder = Encoder::new();
+    let _cnf = encoder.encode(&g, 0, 0, 0, 0, 0, 0);
+
+    let giant: Vec<i32> = (1..=1000).collect();
+    let small: Vec<i32> = (1001..=1004).collect();
+    let cycles = vec![giant, small];
+
+    let opts = FreezerOptions::default();
+    let contractor = Degree2Contractor::new();
+
+    // When last_sat_time_secs = 15.0 >= adaptive_relax_time_secs (10.0),
+    // effective_max_edges = (250 / 2).max(50) = 125.
+    let assumps_relaxed = BackboneFreezer::select_adaptive_frozen_assumptions(
+        &cycles,
+        &g,
+        &encoder,
+        &contractor,
+        &opts,
+        15.0,
+    );
+
+    assert_eq!(
+        assumps_relaxed.len(),
+        125,
+        "Frozen assumptions must be relaxed to <= 125 when SAT time exceeds threshold"
+    );
+    assert!(assumps_relaxed.len() <= 125);
 }

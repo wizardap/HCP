@@ -20,7 +20,7 @@ use crate::hub_sub_hcp::HubPartitionedSolver;
 use crate::modular_solver::ModularSolver;
 use crate::subcycle_absorber::SubcycleAbsorber;
 use crate::cycle_chain_absorber::CycleChainAbsorber;
-use crate::backbone_freezer::BackboneFreezer;
+use crate::backbone_freezer::{BackboneFreezer, FreezerOptions};
 use crate::snark_bridge::SnarkBridgeEngine;
 use crate::gadget_parity::GadgetInterfaceParityEngine;
 use crate::cut_selector::{CutSelector, CutSelectorOptions};
@@ -777,7 +777,15 @@ fn cegar(
                 let total_v = g.adjacency_list.len();
                 let max_cycle_len = _active_cycles.iter().map(|c| c.len()).max().unwrap_or(0);
                 if _active_cycles.len() > 1 && (max_cycle_len >= total_v / 2 || _active_cycles.len() <= 25) {
-                    assumptions = BackboneFreezer::extract_backbone_assumptions(&_active_cycles, &g, encoder, 0.50, 25);
+                    let freezer_opts = FreezerOptions::default();
+                    assumptions = BackboneFreezer::select_adaptive_frozen_assumptions(
+                        &_active_cycles,
+                        &g,
+                        encoder,
+                        contractor,
+                        &freezer_opts,
+                        sat_solving_time.as_secs_f64(),
+                    );
                     if !assumptions.is_empty() {
                         println!("BackboneFreezer: locked {} internal backbone edges (giant cycle len {})", assumptions.len(), max_cycle_len);
                     }

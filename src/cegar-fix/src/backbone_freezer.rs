@@ -2,32 +2,61 @@ use std::collections::HashSet;
 use rustsat::types::Lit;
 use crate::graph::Graph;
 use crate::encoder::Encoder;
+use crate::contraction::Degree2Contractor;
+
+#[derive(Debug, Clone)]
+pub struct FreezerOptions {
+    pub ratio_threshold: f64,
+    pub max_subcycles_trigger: usize,
+    pub max_frozen_edges: usize,       // Default: 250
+    pub adaptive_relax_time_secs: f64, // Default: 10.0
+}
+
+impl Default for FreezerOptions {
+    fn default() -> Self {
+        Self {
+            ratio_threshold: 0.5,
+            max_subcycles_trigger: 25,
+            max_frozen_edges: 250,
+            adaptive_relax_time_secs: 10.0,
+        }
+    }
+}
 
 pub struct BackboneFreezer;
 
 impl BackboneFreezer {
-    /// Identifies the internal backbone of all significant subcycles (each with length >= min_giant_ratio * total_v)
-    /// and extracts assumption literals for their internal edges.
-    /// A vertex u on cycle C is internal if neither u nor its immediate cycle neighbors
-    /// have any edges to vertices outside C.
-    pub fn extract_backbone_assumptions(
+    /// Selects adaptive frozen assumptions with budget capping and dynamic relaxation.
+    pub fn select_adaptive_frozen_assumptions(
         cycles: &[Vec<i32>],
         g: &Graph,
         encoder: &Encoder,
-        min_giant_ratio: f64,
-        max_cycle_count_trigger: usize,
+        _contractor: &Degree2Contractor,
+        opts: &FreezerOptions,
+        last_sat_time_secs: f64,
     ) -> Vec<Lit> {
-        let mut assumptions = Vec::new();
         let total_v = g.adjacency_list.len();
-        let min_len = ((total_v as f64) * min_giant_ratio).max(3.0) as usize;
+        let min_len = ((total_v as f64) * opts.ratio_threshold).max(3.0) as usize;
 
         let max_cycle_len = cycles.iter().map(|c| c.len()).max().unwrap_or(0);
         let has_giant = max_cycle_len >= min_len;
-        let count_ok = cycles.len() <= max_cycle_count_trigger;
+        let count_ok = cycles.len() <= opts.max_subcycles_trigger;
 
         if cycles.len() < 2 || (!has_giant && !count_ok) {
-            return assumptions;
+            return Vec::new();
         }
+
+        let effective_max_edges = if last_sat_time_secs >= opts.adaptive_relax_time_secs {
+            (opts.max_frozen_edges / 2).max(50)
+        } else {
+            opts.max_frozen_edges
+        };
+
+        if effective_max_edges == 0 {
+            return Vec::new();
+        }
+
+        let mut candidate_edges = Vec::new();
 
         for cycle in cycles.iter() {
             if cycle.len() < min_len {
@@ -60,12 +89,45 @@ impl BackboneFreezer {
 
                 if !is_boundary[i] && !is_boundary[(i + 1) % n_c] {
                     if let Some(&lit) = encoder.graph_lit_map.get(&(u, v)) {
-                        assumptions.push(lit);
+                        candidate_edges.push(lit);
                     }
                 }
             }
         }
 
-        assumptions
+        let candidate_count = candidate_edges.len();
+        if candidate_count <= effective_max_edges {
+            candidate_edges
+        } else {
+            let stride = candidate_count / effective_max_edges;
+            let mut assumptions = Vec::with_capacity(effective_max_edges);
+            let mut idx = 0;
+            while idx < candidate_count && assumptions.len() < effective_max_edges {
+                assumptions.push(candidate_edges[idx]);
+                idx += stride;
+            }
+            assumptions
+        }
+    }
+
+    /// Identifies the internal backbone of all significant subcycles (each with length >= min_giant_ratio * total_v)
+    /// and extracts assumption literals for their internal edges.
+    /// A vertex u on cycle C is internal if neither u nor its immediate cycle neighbors
+    /// have any edges to vertices outside C.
+    pub fn extract_backbone_assumptions(
+        cycles: &[Vec<i32>],
+        g: &Graph,
+        encoder: &Encoder,
+        min_giant_ratio: f64,
+        max_cycle_count_trigger: usize,
+    ) -> Vec<Lit> {
+        let contractor = Degree2Contractor::new();
+        let opts = FreezerOptions {
+            ratio_threshold: min_giant_ratio,
+            max_subcycles_trigger: max_cycle_count_trigger,
+            max_frozen_edges: usize::MAX,
+            adaptive_relax_time_secs: f64::MAX,
+        };
+        Self::select_adaptive_frozen_assumptions(cycles, g, encoder, &contractor, &opts, 0.0)
     }
 }
