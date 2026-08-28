@@ -35,3 +35,4 @@ pub mod gadget_parity;
 pub mod component_meta_graph;
 pub mod macro_mtz_encoder;
 pub mod cut_selector;
+pub mod solver_reseeder;
