@@ -312,3 +312,69 @@ fn test_cegar_static_cycle_cutter_integration() {
     }
 }
 
+#[test]
+fn test_cegar_boundary_alternating_patcher_integration() {
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use std::time::Instant;
+
+    let mut g = Graph::new();
+    // Cycle 1: 1-2-3-4-5-6-1
+    g.add_edge(1, 2);
+    g.add_edge(2, 3);
+    g.add_edge(3, 4);
+    g.add_edge(4, 5);
+    g.add_edge(5, 6);
+    g.add_edge(6, 1);
+
+    // Cycle 2: 7-8-9-10-11-12-7
+    g.add_edge(7, 8);
+    g.add_edge(8, 9);
+    g.add_edge(9, 10);
+    g.add_edge(10, 11);
+    g.add_edge(11, 12);
+    g.add_edge(12, 7);
+
+    // Internal Chords
+    g.add_edge(2, 6);
+    g.add_edge(9, 11);
+
+    // Cross-hemisphere connecting edges for multi-hop alternating patch
+    g.add_edge(1, 7);
+    g.add_edge(3, 8);
+    g.add_edge(4, 12);
+    g.add_edge(5, 10);
+
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+    let hub_reg = HubRegistry::new(&contracted_g);
+    let start = Instant::now();
+
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+    assert!(tour.is_some(), "Graph with two macro-hemispheres must be solved via BoundaryAlternatingPatcher/CEGAR");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 12);
+
+    // Verify validity of Hamiltonian cycle on g
+    let mut seen = std::collections::HashSet::new();
+    for &v in &t {
+        assert!(seen.insert(v), "Duplicate vertex {} in tour", v);
+    }
+    for i in 0..t.len() {
+        let u = t[i];
+        let v = t[(i + 1) % t.len()];
+        assert!(
+            g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v)),
+            "Edge ({}, {}) must exist in graph",
+            u,
+            v
+        );
+    }
+}
+
+

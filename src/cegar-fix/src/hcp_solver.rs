@@ -27,6 +27,7 @@ use crate::cut_selector::{CutSelector, CutSelectorOptions};
 use crate::solver_reseeder::{SolverReseeder, ReseederOptions};
 use crate::hemisphere_splicer::HemisphereSplicer;
 use crate::static_cycle_cutter::StaticCycleCutter;
+use crate::boundary_alternating_patcher::BoundaryAlternatingPatcher;
 
 
 /// Pre-emptively forbids 3-cycles (triangles) and 4-cycles in the initial CNF encoding in O(|E| * Delta).
@@ -635,6 +636,33 @@ fn cegar(
                     sol_cycles
                 };
 
+                // Attempt Multi-Hop Boundary Alternating Patcher for 2..=4 macro-components
+                let sol_cycles = if sol_cycles.len() >= 2 && sol_cycles.len() <= 4 {
+                    if let Some(patched) = BoundaryAlternatingPatcher::try_patch_macro_hemispheres(&sol_cycles, &g, contractor, 4) {
+                        println!("BoundaryAlternatingPatcher: patched macro-hemispheres from {} to {} cycles", sol_cycles.len(), patched.len());
+                        if patched.len() == 1 && patched[0].len() == g.adjacency_list.len() {
+                            println!("number of subcycles found = 1 (via boundary alternating patcher)");
+                            let flat: Vec<i32> = patched.into_iter().flatten().collect();
+                            let final_tour = contractor.uncontract_cycle(&flat);
+                            let line = final_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                            let time = now - previous_time;
+                            let add_block_clauses_time = now - previous_time - sat_solving_time;
+                            println!("number of added block clauses = {}", clause_count);
+                            println!("add block clauses time = {:?}", add_block_clauses_time);
+                            println!("increment time = {:?}", time);
+                            println!();
+                            println!("solution: ");
+                            println!("{}\n", line);
+                            println!("s SATISFIABLE");
+                            return (count, clause_count, Some(final_tour));
+                        }
+                        patched
+                    } else {
+                        sol_cycles
+                    }
+                } else {
+                    sol_cycles
+                };
 
                 // 2-opt / 3-opt solution constructor
                 let (block_clauses, _active_cycles) = if opt == 0 {
