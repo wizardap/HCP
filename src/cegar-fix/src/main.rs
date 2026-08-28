@@ -37,6 +37,7 @@ pub mod macro_mtz_encoder;
 pub mod cut_selector;
 pub mod solver_reseeder;
 pub mod hemisphere_splicer;
+pub mod static_cycle_cutter;
 
 
 use contraction::Degree2Contractor;
