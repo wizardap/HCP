@@ -99,12 +99,10 @@ impl BackboneFreezer {
         if candidate_count <= effective_max_edges {
             candidate_edges
         } else {
-            let stride = candidate_count / effective_max_edges;
             let mut assumptions = Vec::with_capacity(effective_max_edges);
-            let mut idx = 0;
-            while idx < candidate_count && assumptions.len() < effective_max_edges {
+            for i in 0..effective_max_edges {
+                let idx = (i * candidate_count) / effective_max_edges;
                 assumptions.push(candidate_edges[idx]);
-                idx += stride;
             }
             assumptions
         }

@@ -145,19 +145,22 @@ fn test_bypasses_6_cycle_in_6_vertex_graph() {
 #[test]
 fn test_6_cycle_cap() {
     let mut g = Graph::new();
-    // Complete graph K_10 has 12,600 6-cycles (25,200 directional cuts)
-    // plus 240 3-cycle cuts and 1260 4-cycle cuts.
-    // 6-cycle cuts must be capped at 4,000.
-    for i in 1..=10 {
-        for j in (i + 1)..=10 {
-            g.add_edge(i, j);
-        }
+    // Create 2,100 disjoint chordless 6-cycles to test 4,000 clause cap
+    // 2,100 * 2 directional clauses = 4,200 clauses, capped at 4,000
+    for k in 0..2100 {
+        let base = 1 + k * 6;
+        let (a, b, c, d, e, f) = (base, base + 1, base + 2, base + 3, base + 4, base + 5);
+        g.add_edge(a, b);
+        g.add_edge(b, c);
+        g.add_edge(c, d);
+        g.add_edge(d, e);
+        g.add_edge(e, f);
+        g.add_edge(f, a);
     }
 
     let mut encoder = Encoder::new();
     let _cnf = encoder.encode(&g, 0, 0, 0, 0, 0, 0);
 
     let cuts = StaticCycleCutter::generate_static_small_cycle_cuts(&g, &encoder);
-    // 240 (3-cycles) + 1260 (4-cycles) + 4000 (6-cycles capped) = 5500
-    assert_eq!(cuts.len(), 5500, "Expected 5500 total clauses with 4000 capped 6-cycle clauses");
+    assert_eq!(cuts.len(), 4000, "Expected 4000 capped 6-cycle clauses");
 }

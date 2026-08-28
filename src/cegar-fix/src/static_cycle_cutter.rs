@@ -168,7 +168,17 @@ impl StaticCycleCutter {
                                     for &u4 in &u3_nbrs {
                                         if u4 == u2 || u4 == u6 || u4 == u5 { continue; }
                                         if u5_set.contains(&u4) {
-                                            // Found 6-cycle: u1 - u2 - u3 - u4 - u5 - u6 - u1
+                                            // Ensure cycle is strictly induced (no chords)
+                                            let u1_set = match adj_sets.get(&u1) { Some(s) => s, None => continue };
+                                            if u1_set.contains(&u3) || u1_set.contains(&u4) || u1_set.contains(&u5) { continue; }
+                                            let u2_set = match adj_sets.get(&u2) { Some(s) => s, None => continue };
+                                            if u2_set.contains(&u4) || u2_set.contains(&u5) || u2_set.contains(&u6) { continue; }
+                                            let u3_set = match adj_sets.get(&u3) { Some(s) => s, None => continue };
+                                            if u3_set.contains(&u5) || u3_set.contains(&u6) { continue; }
+                                            let u4_set = match adj_sets.get(&u4) { Some(s) => s, None => continue };
+                                            if u4_set.contains(&u6) { continue; }
+
+                                            // Found strictly induced 6-cycle: u1 - u2 - u3 - u4 - u5 - u6 - u1
                                             // Direction 1: u1 -> u2 -> u3 -> u4 -> u5 -> u6 -> u1
                                             if let (
                                                 Some(&l_12),
