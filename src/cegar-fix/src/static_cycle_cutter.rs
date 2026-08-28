@@ -114,6 +114,114 @@ impl StaticCycleCutter {
             }
         }
 
+        // 3. Find all 6-cycles (hexagons)
+        if total_v > 6 {
+            let mut six_cycle_clauses = 0;
+            const MAX_6_CYCLE_CLAUSES: usize = 4000;
+
+            'outer_6: for &u1 in &vertices {
+                if let Some(u1_nbrs) = g.adjacency_list.get(&u1) {
+                    let mut sorted_nbrs: Vec<i32> = u1_nbrs.iter().copied().filter(|&x| x > u1).collect();
+                    sorted_nbrs.sort_unstable();
+                    sorted_nbrs.dedup();
+
+                    for i in 0..sorted_nbrs.len() {
+                        let u2 = sorted_nbrs[i];
+                        let u2_nbrs = if let Some(nbrs) = g.adjacency_list.get(&u2) {
+                            let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u2).collect();
+                            s.sort_unstable();
+                            s.dedup();
+                            s
+                        } else {
+                            Vec::new()
+                        };
+
+                        for j in (i + 1)..sorted_nbrs.len() {
+                            let u6 = sorted_nbrs[j]; // u2 < u6
+                            let u6_nbrs = if let Some(nbrs) = g.adjacency_list.get(&u6) {
+                                let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u6).collect();
+                                s.sort_unstable();
+                                s.dedup();
+                                s
+                            } else {
+                                Vec::new()
+                            };
+
+                            for &u3 in &u2_nbrs {
+                                if u3 == u6 { continue; }
+                                let u3_nbrs = if let Some(nbrs) = g.adjacency_list.get(&u3) {
+                                    let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u3).collect();
+                                    s.sort_unstable();
+                                    s.dedup();
+                                    s
+                                } else {
+                                    Vec::new()
+                                };
+
+                                for &u5 in &u6_nbrs {
+                                    if u5 == u2 || u5 == u3 { continue; }
+                                    let u5_set = match adj_sets.get(&u5) {
+                                        Some(s) => s,
+                                        None => continue,
+                                    };
+
+                                    for &u4 in &u3_nbrs {
+                                        if u4 == u2 || u4 == u6 || u4 == u5 { continue; }
+                                        if u5_set.contains(&u4) {
+                                            // Found 6-cycle: u1 - u2 - u3 - u4 - u5 - u6 - u1
+                                            // Direction 1: u1 -> u2 -> u3 -> u4 -> u5 -> u6 -> u1
+                                            if let (
+                                                Some(&l_12),
+                                                Some(&l_23),
+                                                Some(&l_34),
+                                                Some(&l_45),
+                                                Some(&l_56),
+                                                Some(&l_61),
+                                            ) = (
+                                                encoder.graph_lit_map.get(&(u1, u2)),
+                                                encoder.graph_lit_map.get(&(u2, u3)),
+                                                encoder.graph_lit_map.get(&(u3, u4)),
+                                                encoder.graph_lit_map.get(&(u4, u5)),
+                                                encoder.graph_lit_map.get(&(u5, u6)),
+                                                encoder.graph_lit_map.get(&(u6, u1)),
+                                            ) {
+                                                cnf.add_clause(clause!(!l_12, !l_23, !l_34, !l_45, !l_56, !l_61));
+                                                six_cycle_clauses += 1;
+                                            }
+
+                                            // Direction 2: u1 -> u6 -> u5 -> u4 -> u3 -> u2 -> u1
+                                            if let (
+                                                Some(&l_16),
+                                                Some(&l_65),
+                                                Some(&l_54),
+                                                Some(&l_43),
+                                                Some(&l_32),
+                                                Some(&l_21),
+                                            ) = (
+                                                encoder.graph_lit_map.get(&(u1, u6)),
+                                                encoder.graph_lit_map.get(&(u6, u5)),
+                                                encoder.graph_lit_map.get(&(u5, u4)),
+                                                encoder.graph_lit_map.get(&(u4, u3)),
+                                                encoder.graph_lit_map.get(&(u3, u2)),
+                                                encoder.graph_lit_map.get(&(u2, u1)),
+                                            ) {
+                                                cnf.add_clause(clause!(!l_16, !l_65, !l_54, !l_43, !l_32, !l_21));
+                                                six_cycle_clauses += 1;
+                                            }
+
+                                            if six_cycle_clauses >= MAX_6_CYCLE_CLAUSES {
+                                                break 'outer_6;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         cnf
     }
 }
