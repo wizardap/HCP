@@ -137,4 +137,35 @@ fn test_cegar_adaptive_backbone_freezing_integration() {
     assert_eq!(t.len(), 20);
 }
 
+#[test]
+fn test_cegar_solver_reseeder_integration() {
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use std::time::Instant;
 
+    let mut g = Graph::new();
+    // 30-node cycle with cross-connections
+    for i in 1..30 {
+        g.add_edge(i, i + 1);
+    }
+    g.add_edge(30, 1);
+    g.add_edge(1, 15);
+    g.add_edge(15, 30);
+    g.add_edge(5, 20);
+    g.add_edge(10, 25);
+
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+    let hub_reg = HubRegistry::new(&contracted_g);
+    let start = Instant::now();
+
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+    assert!(tour.is_some(), "Graph must be solved with CEGAR and solver reseeder wired");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 30);
+}

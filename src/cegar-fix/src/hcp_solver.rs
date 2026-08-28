@@ -24,6 +24,7 @@ use crate::backbone_freezer::BackboneFreezer;
 use crate::snark_bridge::SnarkBridgeEngine;
 use crate::gadget_parity::GadgetInterfaceParityEngine;
 use crate::cut_selector::{CutSelector, CutSelectorOptions};
+use crate::solver_reseeder::{SolverReseeder, ReseederOptions};
 
 
 /// Pre-emptively forbids 3-cycles (triangles) and 4-cycles in the initial CNF encoding in O(|E| * Delta).
@@ -298,15 +299,16 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
     }
     // println!("encodhing clauses number = {}",cnf.len());
     println!();
-    //　ソルバーにcnfを入れる
-    if cnf_normalize == 1{
+    let base_cnf = if cnf_normalize == 1{
         let normalized_cnf = cnf.normalize();
         println!("encodhing clauses number = {}",normalized_cnf.len());
-        let _ = solver.add_cnf(normalized_cnf);
+        let _ = solver.add_cnf(normalized_cnf.clone());
+        normalized_cnf
     }else{
         println!("encodhing clauses number = {}",cnf.len());
-        let _ = solver.add_cnf(cnf);
-    }
+        let _ = solver.add_cnf(cnf.clone());
+        cnf
+    };
     // cegar関数により、解を求め、increment数と追加したblock節の合計を返す
     let (increment, block, tour) = cegar(
         &mut encoder,
@@ -326,6 +328,8 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
         instant.elapsed(),
         current_cnf,
         output_folder,
+        base_cnf,
+        cadical_config,
     );
     println!("overall incremented number = {}", increment);
     println!("overall number of added block clauses = {}", block);
@@ -343,7 +347,7 @@ fn print_tour(tour: &[i32], contractor: &Degree2Contractor) {
 
 fn cegar(
     encoder: &mut Encoder,
-    mut solver: rustsat_cadical::CaDiCaL<'_, '_>,
+    mut solver: rustsat_cadical::CaDiCaL<'static, 'static>,
     mut count: i32,
     mut clause_count: i32,
     g: Graph,
@@ -359,6 +363,8 @@ fn cegar(
     mut previous_time: Duration,
     mut previous_cnf: Cnf,
     output_folder: &str,
+    base_cnf: Cnf,
+    cadical_config: i32,
 ) -> (i32, i32, Option<Vec<i32>>) {
     // Attempt Modular Macro-Decomposition when dense hubs are detected
     if hub_registry.hub_vertices.len() >= 5 {
@@ -390,6 +396,7 @@ fn cegar(
     }
 
     let mut assumptions: Vec<Lit> = Vec::new();
+    let mut accumulated_cut_cnfs: Vec<Cnf> = Vec::new();
 
     loop {
         if instant.elapsed().as_secs_f64() >= timeout_secs {
@@ -657,11 +664,17 @@ fn cegar(
                                     // 2. Infeasible port pruning clauses & boundary cut parity clauses
                                     for cl in gadget_res.pruning_clauses {
                                         clause_count += 1;
-                                        let _ = solver.add_clause(cl);
+                                        let _ = solver.add_clause(cl.clone());
+                                        let mut g_cnf = Cnf::new();
+                                        g_cnf.add_clause(cl);
+                                        accumulated_cut_cnfs.push(g_cnf);
                                     }
                                     for cl in gadget_res.cut_parity_clauses {
                                         clause_count += 1;
-                                        let _ = solver.add_clause(cl);
+                                        let _ = solver.add_clause(cl.clone());
+                                        let mut g_cnf = Cnf::new();
+                                        g_cnf.add_clause(cl);
+                                        accumulated_cut_cnfs.push(g_cnf);
                                     }
                                 }
                             }
@@ -687,10 +700,12 @@ fn cegar(
                 if cnf_normalize == 1 {
                     let normalized_cnf = cnf.normalize();
                     clause_count += normalized_cnf.len() as i32;
-                    let _ = solver.add_cnf(normalized_cnf);
+                    let _ = solver.add_cnf(normalized_cnf.clone());
+                    accumulated_cut_cnfs.push(normalized_cnf);
                 } else {
                     clause_count += cnf.len() as i32;
-                    let _ = solver.add_cnf(cnf);
+                    let _ = solver.add_cnf(cnf.clone());
+                    accumulated_cut_cnfs.push(cnf);
                 }
 
                 let total_v = g.adjacency_list.len();
@@ -710,6 +725,13 @@ fn cegar(
                 println!("number of added block clauses = {}", clause_count);
                 println!("add block clauses time = {:?}", add_block_clauses_time);
                 println!("increment time = {:?}", time);
+
+                let reseeder_opts = ReseederOptions::default();
+                if SolverReseeder::should_reseed(sat_solving_time.as_secs_f64(), count as usize, &reseeder_opts) {
+                    println!("SolverReseeder: refreshing CaDiCaL instance (round {}, last SAT time {:.2}s, accumulated cuts: {})",
+                        count, sat_solving_time.as_secs_f64(), accumulated_cut_cnfs.len());
+                    solver = SolverReseeder::reseed_solver(&base_cnf, &accumulated_cut_cnfs, cadical_config);
+                }
             }
         } else {
             println!("s UNSATISFIABLE");

@@ -31,7 +31,7 @@ impl SolverReseeder {
             return false;
         }
         last_sat_time_secs >= options.max_sat_time_threshold_secs
-            || (current_round % options.periodic_interval_rounds == 0)
+            || (options.periodic_interval_rounds > 0 && current_round % options.periodic_interval_rounds == 0)
     }
 
     pub fn reseed_solver(
