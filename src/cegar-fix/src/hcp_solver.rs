@@ -25,6 +25,7 @@ use crate::snark_bridge::SnarkBridgeEngine;
 use crate::gadget_parity::GadgetInterfaceParityEngine;
 use crate::cut_selector::{CutSelector, CutSelectorOptions};
 use crate::solver_reseeder::{SolverReseeder, ReseederOptions};
+use crate::hemisphere_splicer::HemisphereSplicer;
 
 
 /// Pre-emptively forbids 3-cycles (triangles) and 4-cycles in the initial CNF encoding in O(|E| * Delta).
@@ -594,6 +595,34 @@ fn cegar(
                         return (count, clause_count, Some(final_tour));
                     }
                     absorbed
+                } else {
+                    sol_cycles
+                };
+
+                // Attempt Hemisphere Splicing for 2..=4 macro-components
+                let sol_cycles = if sol_cycles.len() >= 2 && sol_cycles.len() <= 4 {
+                    if let Some(spliced) = HemisphereSplicer::try_direct_splice_all(&sol_cycles, &g, contractor) {
+                        println!("HemisphereSplicer: directly spliced macro-components from {} to {} cycles", sol_cycles.len(), spliced.len());
+                        if spliced.len() == 1 && spliced[0].len() == g.adjacency_list.len() {
+                            println!("number of subcycles found = 1 (via direct hemisphere splicer)");
+                            let flat: Vec<i32> = spliced.into_iter().flatten().collect();
+                            let final_tour = contractor.uncontract_cycle(&flat);
+                            let line = final_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                            let time = now - previous_time;
+                            let add_block_clauses_time = now - previous_time - sat_solving_time;
+                            println!("number of added block clauses = {}", clause_count);
+                            println!("add block clauses time = {:?}", add_block_clauses_time);
+                            println!("increment time = {:?}", time);
+                            println!();
+                            println!("solution: ");
+                            println!("{}\n", line);
+                            println!("s SATISFIABLE");
+                            return (count, clause_count, Some(final_tour));
+                        }
+                        spliced
+                    } else {
+                        sol_cycles
+                    }
                 } else {
                     sol_cycles
                 };
@@ -1291,10 +1320,19 @@ fn get_blocking_clauses(
     _balanced: i32,
 ) -> Vec<Clause> {
     let options = CutSelectorOptions::default();
-    let (clauses, selected) = CutSelector::select_and_generate_cuts(cycles, g, encoder, &options);
+    let (mut clauses, selected) = CutSelector::select_and_generate_cuts(cycles, g, encoder, &options);
     if !selected.is_empty() {
         println!("CutSelector: selected {}/{} subcycles (generated {} budgeted clauses)", selected.len(), cycles.len(), clauses.len());
     }
+
+    if cycles.len() >= 2 && cycles.len() <= 4 {
+        let hemi_cuts = HemisphereSplicer::generate_hemisphere_crossing_cuts(cycles, g, encoder);
+        if !hemi_cuts.is_empty() {
+            println!("HemisphereSplicer: generated {} bi-partition crossing cut clauses", hemi_cuts.len());
+            clauses.extend(hemi_cuts);
+        }
+    }
+
     clauses
 }
 

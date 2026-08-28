@@ -169,3 +169,79 @@ fn test_cegar_solver_reseeder_integration() {
     let t = tour.unwrap();
     assert_eq!(t.len(), 30);
 }
+
+#[test]
+fn test_cegar_hemisphere_splicer_integration() {
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use std::time::Instant;
+
+    let mut g = Graph::new();
+    // Two 10-node components with chords (all degree >= 3)
+    // Component 1: 1..=10
+    for i in 1..10 {
+        g.add_edge(i, i + 1);
+    }
+    g.add_edge(10, 1);
+    g.add_edge(1, 4);
+    g.add_edge(2, 5);
+    g.add_edge(3, 6);
+    g.add_edge(4, 7);
+    g.add_edge(5, 8);
+    g.add_edge(6, 9);
+    g.add_edge(7, 10);
+    g.add_edge(8, 1);
+    g.add_edge(9, 2);
+    g.add_edge(10, 3);
+
+    // Component 2: 11..=20
+    for i in 11..20 {
+        g.add_edge(i, i + 1);
+    }
+    g.add_edge(20, 11);
+    g.add_edge(11, 14);
+    g.add_edge(12, 15);
+    g.add_edge(13, 16);
+    g.add_edge(14, 17);
+    g.add_edge(15, 18);
+    g.add_edge(16, 19);
+    g.add_edge(17, 20);
+    g.add_edge(18, 11);
+    g.add_edge(19, 12);
+    g.add_edge(20, 13);
+
+    // Cross-hemisphere connecting edges for 2-opt splice
+    g.add_edge(1, 11);
+    g.add_edge(2, 12);
+
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+    let hub_reg = HubRegistry::new(&contracted_g);
+    let start = Instant::now();
+
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+    assert!(tour.is_some(), "Graph with two hemispheres must be solved via HemisphereSplicer/CEGAR");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 20);
+
+    // Verify validity of Hamiltonian cycle on g
+    let mut seen = std::collections::HashSet::new();
+    for &v in &t {
+        assert!(seen.insert(v), "Duplicate vertex {} in tour", v);
+    }
+    for i in 0..t.len() {
+        let u = t[i];
+        let v = t[(i + 1) % t.len()];
+        assert!(
+            g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v)),
+            "Edge ({}, {}) must exist in graph",
+            u,
+            v
+        );
+    }
+}
