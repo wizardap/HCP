@@ -821,3 +821,67 @@ fn test_cegar_giant_cycle_stitcher_integration() {
     }
 }
 
+#[test]
+fn test_cegar_extended_static_cycle_cutter_integration() {
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use cegar_fix::static_cycle_cutter::StaticCycleCutter;
+    use cegar_fix::encoder::Encoder;
+    use std::time::Instant;
+
+    let mut g = Graph::new();
+    // 32-vertex 16-rung ladder graph (inner 16-cycle and outer 16-cycle)
+    // Inner ring: 1..=16
+    for i in 1..=16 {
+        let nxt = if i == 16 { 1 } else { i + 1 };
+        g.add_edge(i, nxt);
+    }
+    // Outer ring: 17..=32
+    for i in 17..=32 {
+        let nxt = if i == 32 { 17 } else { i + 1 };
+        g.add_edge(i, nxt);
+    }
+    // 16 rungs connecting inner to outer ring
+    for i in 1..=16 {
+        g.add_edge(i, i + 16);
+    }
+
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+    let hub_reg = HubRegistry::new(&contracted_g);
+
+    // Verify static cuts include extended 16-cycles
+    let mut encoder = Encoder::new();
+    let _ = encoder.encode(&contracted_g, 0, 0, 0, 0, 0, 0);
+    let static_cuts = StaticCycleCutter::generate_static_small_cycle_cuts(&contracted_g, &encoder);
+    let has_16_cuts = static_cuts.iter().any(|c| c.len() == 16);
+    assert!(has_16_cuts, "Static cuts must include 16-cycle cuts for 32-vertex ladder");
+
+    let start = Instant::now();
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+    assert!(tour.is_some(), "Graph must be solved with CEGAR and extended static cuts wired");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 32);
+
+    let mut seen = std::collections::HashSet::new();
+    for &v in &t {
+        assert!(seen.insert(v), "Duplicate vertex {} in tour", v);
+    }
+    for i in 0..t.len() {
+        let u = t[i];
+        let v = t[(i + 1) % t.len()];
+        assert!(
+            g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v)),
+            "Edge ({}, {}) must exist in graph",
+            u,
+            v
+        );
+    }
+}
+
+

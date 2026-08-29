@@ -276,10 +276,10 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
         }
     }
 
-    // Static Substructure Cycle Cutter: inject 3-cycle and 4-cycle subtour elimination clauses
+    // Static Substructure Cycle Cutter: inject small (3..=8) and extended (9..=16) subtour elimination clauses
     let static_cuts = StaticCycleCutter::generate_static_small_cycle_cuts(&g, &encoder);
     if !static_cuts.is_empty() {
-        println!("StaticCycleCutter: injected {} static small-cycle elimination clauses at Round 0", static_cuts.len());
+        println!("StaticCycleCutter: injected {} static cycle elimination clauses at Round 0", static_cuts.len());
         cnf.extend(static_cuts);
     }
 
