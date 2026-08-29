@@ -48,3 +48,4 @@ pub mod interface_port_synchronizer;
 pub mod inverse_3sat_synthesizer;
 pub mod hub_hierarchical_decomposer;
 pub mod multi_opt_sat_splicer;
+pub mod empirical_backbone_cutter;
