@@ -9,6 +9,8 @@ pub struct CutSelectorOptions {
     pub base_max_cuts: usize,           // Default: 40
     pub high_volume_max_cuts: usize,    // Default: 100
     pub tiny_cycle_boundary_len: usize, // Default: 8
+    pub high_volume_cycle_len: usize,   // Default: 16
+    pub high_volume_threshold: usize,   // Default: 30
 }
 
 impl Default for CutSelectorOptions {
@@ -18,6 +20,8 @@ impl Default for CutSelectorOptions {
             base_max_cuts: 40,
             high_volume_max_cuts: 100,
             tiny_cycle_boundary_len: 8,
+            high_volume_cycle_len: 16,
+            high_volume_threshold: 30,
         }
     }
 }
@@ -41,11 +45,11 @@ impl CutSelector {
             .collect();
 
         // 2. Dynamic Capacity Calculation:
-        // Count candidates with len <= 16.
-        // If candidate count > 30, effective_max_cuts = options.high_volume_max_cuts (100).
-        // Otherwise, effective_max_cuts = options.base_max_cuts (40).
-        let short_candidate_count = candidates.iter().filter(|c| c.len() <= 16).count();
-        let effective_max_cuts = if short_candidate_count > 30 {
+        // Count candidates with len <= options.high_volume_cycle_len.
+        // If candidate count > options.high_volume_threshold, effective_max_cuts = options.high_volume_max_cuts.
+        // Otherwise, effective_max_cuts = options.base_max_cuts.
+        let short_candidate_count = candidates.iter().filter(|c| c.len() <= options.high_volume_cycle_len).count();
+        let effective_max_cuts = if short_candidate_count > options.high_volume_threshold {
             options.high_volume_max_cuts
         } else {
             options.base_max_cuts

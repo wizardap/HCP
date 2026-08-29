@@ -164,3 +164,27 @@ fn test_6_cycle_cap() {
     let cuts = StaticCycleCutter::generate_static_small_cycle_cuts(&g, &encoder);
     assert_eq!(cuts.len(), 4000, "Expected 4000 capped 6-cycle clauses");
 }
+
+#[test]
+fn test_detects_7_and_8_cycles() {
+    let mut g = Graph::new();
+    // 7-cycle (1..7) and 8-cycle (10..17) in a 20-vertex graph
+    for i in 1..=7 {
+        let nxt = if i == 7 { 1 } else { i + 1 };
+        g.add_edge(i, nxt);
+    }
+    for i in 10..=17 {
+        let nxt = if i == 17 { 10 } else { i + 1 };
+        g.add_edge(i, nxt);
+    }
+    // Extra vertices to ensure total_v > 8
+    g.add_edge(18, 19);
+    g.add_edge(19, 20);
+
+    let mut encoder = Encoder::new();
+    let _cnf = encoder.encode(&g, 0, 0, 0, 0, 0, 0);
+
+    let cuts = StaticCycleCutter::generate_static_small_cycle_cuts(&g, &encoder);
+    // 1 7-cycle * 2 directional cuts + 1 8-cycle * 2 directional cuts = 4 cuts
+    assert_eq!(cuts.len(), 4, "Expected 2 directional cuts for 7-cycle and 2 for 8-cycle");
+}
