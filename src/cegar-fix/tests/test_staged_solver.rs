@@ -1005,5 +1005,93 @@ fn test_cegar_multi_swap_stitcher_integration() {
     }
 }
 
+#[test]
+fn test_cegar_global_supernode_mtz_integration() {
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use cegar_fix::metagraph_router::MetagraphRouter;
+    use std::collections::HashSet;
+    use std::time::Instant;
+
+    let mut g = Graph::new();
+    // 64-vertex 8-module cycle-of-ladders graph (N=64 >= 50, K=8 in [4, 24])
+    // 8 ladder gadget modules, each containing 8 vertices (base = m * 8, vertices base+1..=base+8)
+    for m in 0..8 {
+        let base = m * 8;
+        // Top rail: base+1..base+4
+        for i in 1..4 {
+            g.add_edge(base + i, base + i + 1);
+        }
+        // Bottom rail: base+5..base+8
+        for i in 5..8 {
+            g.add_edge(base + i, base + i + 1);
+        }
+        // Rungs
+        for i in 1..=4 {
+            g.add_edge(base + i, base + i + 4);
+        }
+        // Internal diagonals to ensure strong components and degree >= 4
+        g.add_edge(base + 1, base + 6);
+        g.add_edge(base + 2, base + 5);
+        g.add_edge(base + 2, base + 7);
+        g.add_edge(base + 3, base + 6);
+        g.add_edge(base + 3, base + 8);
+        g.add_edge(base + 4, base + 7);
+    }
+
+    // Inter-module ring connections connecting the 8 modules into a cycle-of-ladders
+    for m in 0..8 {
+        let base = m * 8;
+        let next_base = ((m + 1) % 8) * 8;
+        // Top rail bridge
+        g.add_edge(base + 4, next_base + 1);
+        // Bottom rail bridge
+        g.add_edge(base + 8, next_base + 5);
+    }
+
+    // Verify MetagraphRouter detects 8 modules on G
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+    assert_eq!(contracted_g.adjacency_list.len(), 64, "Contracted graph must retain all 64 vertices");
+
+    let modules = MetagraphRouter::detect_gadget_modules_with_size(&contracted_g, 25);
+    assert_eq!(modules.len(), 8, "Expected 8 supernode modules in cycle-of-ladders");
+
+    let hub_reg = HubRegistry::new(&contracted_g);
+    let start = Instant::now();
+
+    // Solve via CEGAR pipeline with GlobalSupernodeMTZ enabled at Round 0
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+
+    assert!(tour.is_some(), "64-vertex 8-module cycle-of-ladders must be solved via GlobalSupernodeMTZ and CEGAR");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 64, "Tour length must equal 64");
+
+    // Verify distinct vertex visitation
+    let mut seen = HashSet::new();
+    for &v in &t {
+        assert!(seen.insert(v), "Duplicate vertex {} in tour", v);
+    }
+    assert_eq!(seen.len(), 64, "Tour must visit all 64 distinct vertices");
+
+    // Verify validity of all consecutive edges
+    for i in 0..t.len() {
+        let u = t[i];
+        let v = t[(i + 1) % t.len()];
+        assert!(
+            g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v)),
+            "Edge ({}, {}) must exist in original graph",
+            u,
+            v
+        );
+    }
+}
+
+
 
 
