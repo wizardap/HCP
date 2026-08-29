@@ -283,8 +283,16 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
         cnf.extend(static_cuts);
     }
 
-    // Dual-Channel Metagraph Router: available as an experimental module (disabled by default)
-    // To preserve 100% solver completeness on heuristic cluster partitions.
+    // Global Supernode MTZ Potential Encoding
+    if g.adjacency_list.len() >= 50 {
+        let target_k = 16;
+        let target_size = (g.adjacency_list.len() / target_k).max(25);
+        let modules = MetagraphRouter::detect_gadget_modules_with_size(&g, target_size);
+        if modules.len() >= 4 && modules.len() <= 24 {
+            println!("GlobalSupernodeMTZ: generated {} supernodes (target size {}), injecting global MTZ order encoding", modules.len(), target_size);
+            MetagraphRouter::encode_supernode_mtz(&modules, &g, &mut encoder, &mut cnf);
+        }
+    }
 
     let current_cnf = if output_folder != "default" {
         //フォルダーの作成

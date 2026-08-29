@@ -152,7 +152,6 @@ impl MetagraphRouter {
             }
         }
 
-
         // Subdivide components larger than max_size using BFS
         let mut raw_clusters: Vec<Vec<i32>> = Vec::new();
 
@@ -203,6 +202,49 @@ impl MetagraphRouter {
                         raw_clusters.push(cluster);
                     }
                 }
+            }
+        }
+
+        // Iteratively merge degree <= 1 leaf clusters in metagraph to guarantee 2-connectivity/soundness
+        let mut degree_merge_loop = 0;
+        while raw_clusters.len() > 2 && degree_merge_loop < 10000 {
+            degree_merge_loop += 1;
+            let mut v_to_c: HashMap<i32, usize> = HashMap::new();
+            for (c_idx, cl) in raw_clusters.iter().enumerate() {
+                for &v in cl {
+                    v_to_c.insert(v, c_idx);
+                }
+            }
+
+            let mut leaf_to_merge = None;
+            for (src_idx, cl) in raw_clusters.iter().enumerate() {
+                let mut neighbor_clusters: HashSet<usize> = HashSet::new();
+                for &u in cl {
+                    if let Some(neighbors) = g.adjacency_list.get(&u) {
+                        for &v in neighbors {
+                            if let Some(&other_c) = v_to_c.get(&v) {
+                                if other_c != src_idx {
+                                    neighbor_clusters.insert(other_c);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if neighbor_clusters.len() == 1 {
+                    let tgt_idx = *neighbor_clusters.iter().next().unwrap();
+                    leaf_to_merge = Some((src_idx, tgt_idx));
+                    break;
+                }
+            }
+
+            if let Some((src_idx, tgt_idx)) = leaf_to_merge {
+                let src_nodes = raw_clusters.remove(src_idx);
+                let actual_tgt = if tgt_idx > src_idx { tgt_idx - 1 } else { tgt_idx };
+                raw_clusters[actual_tgt].extend(src_nodes);
+                raw_clusters[actual_tgt].sort_unstable();
+            } else {
+                break;
             }
         }
 
@@ -263,6 +305,49 @@ impl MetagraphRouter {
             }
 
             if !merged_in_pass {
+                break;
+            }
+        }
+
+        // Second pass: clean up any degree <= 1 leaf clusters created after size merging
+        let mut degree_merge_loop2 = 0;
+        while raw_clusters.len() > 2 && degree_merge_loop2 < 10000 {
+            degree_merge_loop2 += 1;
+            let mut v_to_c: HashMap<i32, usize> = HashMap::new();
+            for (c_idx, cl) in raw_clusters.iter().enumerate() {
+                for &v in cl {
+                    v_to_c.insert(v, c_idx);
+                }
+            }
+
+            let mut leaf_to_merge = None;
+            for (src_idx, cl) in raw_clusters.iter().enumerate() {
+                let mut neighbor_clusters: HashSet<usize> = HashSet::new();
+                for &u in cl {
+                    if let Some(neighbors) = g.adjacency_list.get(&u) {
+                        for &v in neighbors {
+                            if let Some(&other_c) = v_to_c.get(&v) {
+                                if other_c != src_idx {
+                                    neighbor_clusters.insert(other_c);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if neighbor_clusters.len() == 1 {
+                    let tgt_idx = *neighbor_clusters.iter().next().unwrap();
+                    leaf_to_merge = Some((src_idx, tgt_idx));
+                    break;
+                }
+            }
+
+            if let Some((src_idx, tgt_idx)) = leaf_to_merge {
+                let src_nodes = raw_clusters.remove(src_idx);
+                let actual_tgt = if tgt_idx > src_idx { tgt_idx - 1 } else { tgt_idx };
+                raw_clusters[actual_tgt].extend(src_nodes);
+                raw_clusters[actual_tgt].sort_unstable();
+            } else {
                 break;
             }
         }
@@ -344,11 +429,11 @@ impl MetagraphRouter {
         // 3. Root fixing for module 0: u_0 = 0 => !O_{0, 1}
         cnf.add_clause(clause![!order_vars[0][0]]);
 
-        // Build vertex to module mapping
+        // Build vertex to module index mapping
         let mut vertex_to_module: HashMap<i32, usize> = HashMap::new();
-        for module in modules {
+        for (idx, module) in modules.iter().enumerate() {
             for &v in &module.vertices {
-                vertex_to_module.insert(v, module.id);
+                vertex_to_module.insert(v, idx);
             }
         }
 
@@ -357,8 +442,7 @@ impl MetagraphRouter {
         let mut module_out_lits: HashMap<usize, Vec<Lit>> = HashMap::new();
         let mut module_in_lits: HashMap<usize, Vec<Lit>> = HashMap::new();
 
-        for module in modules {
-            let i = module.id;
+        for (i, module) in modules.iter().enumerate() {
             for &(u, v) in &module.boundary_edges {
                 if let Some(&j) = vertex_to_module.get(&v) {
                     if i != j {
@@ -374,33 +458,34 @@ impl MetagraphRouter {
 
         // 5. Allocate X_ij meta-edge indicator variables and apply MTZ implications
         for (&(i, j), lits) in &module_pair_edges {
+            if j == 0 {
+                continue;
+            }
+
             let x_ij = encoder.instance.new_lit();
             // For each underlying boundary edge: !l_uv \/ X_ij
             for &l_uv in lits {
                 cnf.add_clause(clause![!l_uv, x_ij]);
             }
 
-            if j != 0 {
-                // !X_ij \/ O_{j, 1}
-                cnf.add_clause(clause![!x_ij, order_vars[j][0]]);
+            // !X_ij \/ O_{j, 1}
+            cnf.add_clause(clause![!x_ij, order_vars[j][0]]);
 
-                // For 1 <= t < K - 1: !X_ij \/ !O_{i, t} \/ O_{j, t+1}
-                for t_idx in 0..(k - 2) {
-                    cnf.add_clause(clause![
-                        !x_ij,
-                        !order_vars[i][t_idx],
-                        order_vars[j][t_idx + 1]
-                    ]);
-                }
-
-                // !X_ij \/ !O_{i, K-1}
-                cnf.add_clause(clause![!x_ij, !order_vars[i][k - 2]]);
+            // For 1 <= t < K - 1: !X_ij \/ !O_{i, t} \/ O_{j, t+1}
+            for t_idx in 0..(k - 2) {
+                cnf.add_clause(clause![
+                    !x_ij,
+                    !order_vars[i][t_idx],
+                    order_vars[j][t_idx + 1]
+                ]);
             }
+
+            // !X_ij \/ !O_{i, K-1}
+            cnf.add_clause(clause![!x_ij, !order_vars[i][k - 2]]);
         }
 
         // 6. Boundary cut constraints: at least 1 outgoing boundary edge and at least 1 incoming boundary edge
-        for module in modules {
-            let i = module.id;
+        for i in 0..k {
             if let Some(mut out_lits) = module_out_lits.remove(&i) {
                 out_lits.sort_unstable();
                 out_lits.dedup();
@@ -619,28 +704,30 @@ impl MetagraphRouter {
 
         // 5. Allocate X_ij meta-edge indicator variables and apply MTZ implications
         for (&(i, j), lits) in &channel_pair_edges {
+            if j == 0 {
+                continue;
+            }
+
             let x_ij = encoder.instance.new_lit();
             // For each underlying boundary edge: !l_uv \/ X_ij
             for &l_uv in lits {
                 cnf.add_clause(clause![!l_uv, x_ij]);
             }
 
-            if j != 0 {
-                // !X_ij \/ O_{j, 1}
-                cnf.add_clause(clause![!x_ij, order_vars[j][0]]);
+            // !X_ij \/ O_{j, 1}
+            cnf.add_clause(clause![!x_ij, order_vars[j][0]]);
 
-                // For 1 <= t < K - 1: !X_ij \/ !O_{i, t} \/ O_{j, t+1}
-                for t_idx in 0..(k - 2) {
-                    cnf.add_clause(clause![
-                        !x_ij,
-                        !order_vars[i][t_idx],
-                        order_vars[j][t_idx + 1]
-                    ]);
-                }
-
-                // !X_ij \/ !O_{i, K-1}
-                cnf.add_clause(clause![!x_ij, !order_vars[i][k - 2]]);
+            // For 1 <= t < K - 1: !X_ij \/ !O_{i, t} \/ O_{j, t+1}
+            for t_idx in 0..(k - 2) {
+                cnf.add_clause(clause![
+                    !x_ij,
+                    !order_vars[i][t_idx],
+                    order_vars[j][t_idx + 1]
+                ]);
             }
+
+            // !X_ij \/ !O_{i, K-1}
+            cnf.add_clause(clause![!x_ij, !order_vars[i][k - 2]]);
         }
 
         // 6. Channel boundary cut constraints: at least 1 outgoing boundary edge and at least 1 incoming boundary edge
