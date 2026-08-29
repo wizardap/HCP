@@ -1,5 +1,9 @@
 use std::collections::{HashMap, HashSet};
 use crate::graph::Graph;
+use rustsat::instances::Cnf;
+use rustsat::solvers::{Solve, SolverResult};
+use rustsat::types::{Clause, Lit};
+use rustsat_cadical::CaDiCaL;
 
 #[inline]
 fn min_max(u: i32, v: i32) -> (i32, i32) {
@@ -13,7 +17,7 @@ fn min_max(u: i32, v: i32) -> (i32, i32) {
 pub struct MacroCycleStitcher;
 
 impl MacroCycleStitcher {
-    /// Attempts exact multi-cycle alternating patch merging on current 2-factor cycles.
+    /// Attempts exact multi-cycle alternating patch merging on current 2-factor cycles using a lightweight SAT subproblem.
     /// Returns Some(merged_cycles) if cycle count strictly decreased, or None.
     pub fn stitch_cycles(
         cycles: &[Vec<i32>],
@@ -57,6 +61,8 @@ impl MacroCycleStitcher {
 
         // Collect candidate cross edges between distinct cycles
         let mut cross_edges: Vec<(i32, i32)> = Vec::new();
+        let mut cycle_cross_lits: HashMap<usize, Vec<Lit>> = HashMap::new();
+
         for (&u, &c_u) in &vertex_to_cycle {
             if let Some(nbrs) = g.adjacency_list.get(&u) {
                 for &v in nbrs {
@@ -78,146 +84,167 @@ impl MacroCycleStitcher {
             return None;
         }
 
-        // Search for alternating cycles of size m in 2..=max_swaps
-        for target_m in 2..=max_swaps {
-            for &(u, v) in &cross_edges {
-                // Try starting in both directions: u -> v and v -> u
-                for &(w0, w1) in &[(u, v), (v, u)] {
-                    let edge_y1 = min_max(w0, w1);
-                    let mut path = vec![w0, w1];
-                    let mut visited_verts = HashSet::new();
-                    visited_verts.insert(w0);
-                    visited_verts.insert(w1);
+        // Collect candidate removable cycle edges (non-protected)
+        let mut removable_cycle_edges: Vec<(i32, i32)> = Vec::new();
+        for &e in &f_edges {
+            if !canonical_protected.contains(&e) {
+                removable_cycle_edges.push(e);
+            }
+        }
 
-                    let mut used_y_edges = HashSet::new();
-                    used_y_edges.insert(edge_y1);
-                    let mut used_x_edges = HashSet::new();
+        // Map removable cycle edges and cross edges to boolean variables
+        let mut y_map: HashMap<(i32, i32), Lit> = HashMap::new();
+        let mut z_map: HashMap<(i32, i32), Lit> = HashMap::new();
+        let mut var_idx: u32 = 0;
 
-                    if let Some(merged) = Self::dfs_alternating(
-                        &mut path,
-                        &mut visited_verts,
-                        &mut used_y_edges,
-                        &mut used_x_edges,
-                        target_m,
-                        g,
-                        cycles,
-                        &vertex_to_cycle,
-                        &f_neighbors,
-                        &f_edges,
-                        &canonical_protected,
-                    ) {
-                        return Some(merged);
+        for &e in &removable_cycle_edges {
+            y_map.insert(e, Lit::positive(var_idx));
+            var_idx += 1;
+        }
+
+        for &e in &cross_edges {
+            let lit = Lit::positive(var_idx);
+            z_map.insert(e, lit);
+            var_idx += 1;
+
+            let cu = vertex_to_cycle[&e.0];
+            let cv = vertex_to_cycle[&e.1];
+            cycle_cross_lits.entry(cu).or_default().push(lit);
+            cycle_cross_lits.entry(cv).or_default().push(lit);
+        }
+
+        // Build incident edge mappings per vertex
+        let mut v_cycle_edges: HashMap<i32, Vec<((i32, i32), Lit)>> = HashMap::new();
+        let mut v_cross_edges: HashMap<i32, Vec<((i32, i32), Lit)>> = HashMap::new();
+
+        for (&e, &lit) in &y_map {
+            v_cycle_edges.entry(e.0).or_default().push((e, lit));
+            v_cycle_edges.entry(e.1).or_default().push((e, lit));
+        }
+
+        for (&e, &lit) in &z_map {
+            v_cross_edges.entry(e.0).or_default().push((e, lit));
+            v_cross_edges.entry(e.1).or_default().push((e, lit));
+        }
+
+        // Construct SAT CNF for 2-factor alternating symmetric difference
+        let mut base_cnf = Cnf::new();
+
+        // 1. Vertex Parity: sum(z) == sum(y) for each vertex
+        // For vertices with no cross edges, all incident removable cycle edges must NOT be removed
+        for (&u, c_edges) in &v_cycle_edges {
+            let x_edges = v_cross_edges.get(&u).cloned().unwrap_or_default();
+            if x_edges.is_empty() {
+                for &(_, y_lit) in c_edges {
+                    base_cnf.add_clause(Clause::from_iter([!y_lit]));
+                }
+            } else {
+                // At most 1 cross-edge added per vertex
+                for i in 0..x_edges.len() {
+                    for j in (i + 1)..x_edges.len() {
+                        base_cnf.add_clause(Clause::from_iter([!x_edges[i].1, !x_edges[j].1]));
                     }
+                }
+                // At most 1 cycle-edge removed per vertex
+                for i in 0..c_edges.len() {
+                    for j in (i + 1)..c_edges.len() {
+                        base_cnf.add_clause(Clause::from_iter([!c_edges[i].1, !c_edges[j].1]));
+                    }
+                }
+                // If any cross-edge is added, at least one cycle-edge must be removed: !z_e \/ \/ y_e
+                for &(_, z_lit) in &x_edges {
+                    let mut cl = vec![!z_lit];
+                    for &(_, y_lit) in c_edges {
+                        cl.push(y_lit);
+                    }
+                    base_cnf.add_clause(Clause::from_iter(cl));
+                }
+                // If any cycle-edge is removed, at least one cross-edge must be added: !y_e \/ \/ z_e
+                for &(_, y_lit) in c_edges {
+                    let mut cl = vec![!y_lit];
+                    for &(_, z_lit) in &x_edges {
+                        cl.push(z_lit);
+                    }
+                    base_cnf.add_clause(Clause::from_iter(cl));
                 }
             }
         }
 
-        None
-    }
-
-    fn dfs_alternating(
-        path: &mut Vec<i32>,
-        visited_verts: &mut HashSet<i32>,
-        used_y_edges: &mut HashSet<(i32, i32)>,
-        used_x_edges: &mut HashSet<(i32, i32)>,
-        target_m: usize,
-        g: &Graph,
-        cycles: &[Vec<i32>],
-        vertex_to_cycle: &HashMap<i32, usize>,
-        f_neighbors: &HashMap<i32, [i32; 2]>,
-        f_edges: &HashSet<(i32, i32)>,
-        canonical_protected: &HashSet<(i32, i32)>,
-    ) -> Option<Vec<Vec<i32>>> {
-        let current_y_count = used_y_edges.len();
-        let w0 = path[0];
-        let curr = *path.last().unwrap();
-
-        let f_nbrs = match f_neighbors.get(&curr) {
-            Some(nbrs) => *nbrs,
-            None => return None,
-        };
-
-        for &next_x in &f_nbrs {
-            let edge_x = min_max(curr, next_x);
-            if canonical_protected.contains(&edge_x) {
-                continue;
-            }
-            if used_x_edges.contains(&edge_x) || used_y_edges.contains(&edge_x) {
-                continue;
-            }
-
-            // Case 1: Can we close the cycle back to w0?
-            if next_x == w0 {
-                if current_y_count == target_m {
-                    used_x_edges.insert(edge_x);
-                    if let Some(new_cycles) = Self::evaluate_and_reconstruct_cycles(
-                        cycles,
-                        vertex_to_cycle,
-                        f_neighbors,
-                        used_x_edges,
-                        used_y_edges,
-                    ) {
-                        if new_cycles.len() < cycles.len() {
-                            used_x_edges.remove(&edge_x);
-                            return Some(new_cycles);
-                        }
-                    }
-                    used_x_edges.remove(&edge_x);
+        // For vertices with only cross-edges and no removable cycle edges: cannot add cross-edges
+        for (&u, x_edges) in &v_cross_edges {
+            if !v_cycle_edges.contains_key(&u) {
+                for &(_, z_lit) in x_edges {
+                    base_cnf.add_clause(Clause::from_iter([!z_lit]));
                 }
-                continue;
             }
+        }
 
-            // Case 2: Extend search if current_y_count < target_m
-            if current_y_count < target_m && !visited_verts.contains(&next_x) {
-                visited_verts.insert(next_x);
-                used_x_edges.insert(edge_x);
-                path.push(next_x);
+        // 2. Solve SAT subproblem per cycle neighborhood
+        for c_idx in 0..cycles.len() {
+            let active_lits = match cycle_cross_lits.get(&c_idx) {
+                Some(lits) if !lits.is_empty() => lits.clone(),
+                _ => continue,
+            };
 
-                if let Some(nbrs_in_g) = g.adjacency_list.get(&next_x) {
-                    for &next_y in nbrs_in_g {
-                        if !vertex_to_cycle.contains_key(&next_y) {
-                            continue;
-                        }
-                        let edge_y = min_max(next_x, next_y);
-                        if f_edges.contains(&edge_y) {
-                            continue;
-                        }
-                        if used_y_edges.contains(&edge_y) || used_x_edges.contains(&edge_y) {
-                            continue;
-                        }
-                        if visited_verts.contains(&next_y) {
-                            continue;
-                        }
+            let mut cnf = base_cnf.clone();
+            // Require at least one cross-edge incident to cycle c_idx
+            cnf.add_clause(Clause::from_iter(active_lits));
 
-                        visited_verts.insert(next_y);
-                        used_y_edges.insert(edge_y);
-                        path.push(next_y);
+            let mut solver = CaDiCaL::default();
+            if solver.add_cnf_ref(&cnf).is_ok() {
+                let mut attempts = 0;
+                while attempts < 15 {
+                    attempts += 1;
+                    match solver.solve() {
+                        Ok(SolverResult::Sat) => {
+                            if let Ok(sol) = solver.full_solution() {
+                                let model_set: HashSet<Lit> = sol.into_iter().collect();
+                                let mut used_x_edges = HashSet::new();
+                                let mut used_y_edges = HashSet::new();
 
-                        if let Some(merged) = Self::dfs_alternating(
-                            path,
-                            visited_verts,
-                            used_y_edges,
-                            used_x_edges,
-                            target_m,
-                            g,
-                            cycles,
-                            vertex_to_cycle,
-                            f_neighbors,
-                            f_edges,
-                            canonical_protected,
-                        ) {
-                            return Some(merged);
+                                for (&e, &lit) in &y_map {
+                                    if model_set.contains(&lit) {
+                                        used_x_edges.insert(e);
+                                    }
+                                }
+                                for (&e, &lit) in &z_map {
+                                    if model_set.contains(&lit) {
+                                        used_y_edges.insert(e);
+                                    }
+                                }
+
+                                if used_y_edges.len() >= 2 && used_y_edges.len() <= max_swaps && used_x_edges.len() == used_y_edges.len() {
+                                    if let Some(new_cycles) = Self::evaluate_and_reconstruct_cycles(
+                                        cycles,
+                                        &vertex_to_cycle,
+                                        &f_neighbors,
+                                        &used_x_edges,
+                                        &used_y_edges,
+                                    ) {
+                                        if new_cycles.len() < cycles.len() {
+                                            return Some(new_cycles);
+                                        }
+                                    }
+                                }
+
+                                // Block this specific assignment to explore other symmetric difference combinations
+                                let mut block_clause = Vec::new();
+                                for &e in &used_y_edges {
+                                    if let Some(&lit) = z_map.get(&e) {
+                                        block_clause.push(!lit);
+                                    }
+                                }
+                                if block_clause.is_empty() {
+                                    break;
+                                }
+                                let _ = solver.add_clause(Clause::from_iter(block_clause));
+                            } else {
+                                break;
+                            }
                         }
-
-                        path.pop();
-                        used_y_edges.remove(&edge_y);
-                        visited_verts.remove(&next_y);
+                        _ => break,
                     }
                 }
-
-                path.pop();
-                used_x_edges.remove(&edge_x);
-                visited_verts.remove(&next_x);
             }
         }
 
@@ -246,59 +273,60 @@ impl MacroCycleStitcher {
         }
 
         for &(u, v) in used_y_edges {
-            if let Some(u_list) = adj.get_mut(&u) {
-                u_list.push(v);
-            } else {
-                return None;
+            if let Some(u_nbrs) = adj.get_mut(&u) {
+                u_nbrs.push(v);
             }
-            if let Some(v_list) = adj.get_mut(&v) {
-                v_list.push(u);
-            } else {
-                return None;
+            if let Some(v_nbrs) = adj.get_mut(&v) {
+                v_nbrs.push(u);
             }
         }
 
-        // Verify 2-regularity for all vertices
-        for nbrs in adj.values() {
+        // Check 2-regularity for all vertices
+        for (&u, nbrs) in &adj {
             if nbrs.len() != 2 {
                 return None;
             }
+            if nbrs[0] == nbrs[1] || nbrs[0] == u || nbrs[1] == u {
+                return None;
+            }
         }
 
-        // Extract connected cycles
-        let mut visited = HashSet::with_capacity(total_v);
+        // Traverse cycles
+        let mut visited: HashSet<i32> = HashSet::with_capacity(total_v);
         let mut new_cycles = Vec::new();
 
-        for cycle in cycles {
-            for &start in cycle {
-                if !visited.contains(&start) {
-                    let mut current_cycle = Vec::new();
-                    let mut curr = start;
-                    let mut prev: Option<i32> = None;
+        for &start_v in vertex_to_cycle.keys() {
+            if !visited.contains(&start_v) {
+                let mut current_cycle = Vec::new();
+                let mut curr = start_v;
+                let mut prev: Option<i32> = None;
 
-                    while !visited.contains(&curr) {
-                        visited.insert(curr);
-                        current_cycle.push(curr);
-                        let nbrs = &adj[&curr];
-                        let next = match prev {
-                            Some(p) => {
-                                if nbrs[0] == p {
-                                    nbrs[1]
-                                } else {
-                                    nbrs[0]
-                                }
-                            }
-                            None => nbrs[0],
-                        };
-                        prev = Some(curr);
-                        curr = next;
+                loop {
+                    visited.insert(curr);
+                    current_cycle.push(curr);
+
+                    let nbrs = &adj[&curr];
+                    let next = if Some(nbrs[0]) == prev {
+                        nbrs[1]
+                    } else {
+                        nbrs[0]
+                    };
+
+                    if next == start_v {
+                        break;
                     }
-
-                    if curr != start || current_cycle.len() < 3 {
+                    if visited.contains(&next) {
                         return None;
                     }
-                    new_cycles.push(current_cycle);
+
+                    prev = Some(curr);
+                    curr = next;
                 }
+
+                if current_cycle.len() < 3 {
+                    return None;
+                }
+                new_cycles.push(current_cycle);
             }
         }
 
