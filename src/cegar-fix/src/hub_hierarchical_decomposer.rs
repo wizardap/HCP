@@ -483,27 +483,18 @@ impl HubHierarchicalDecomposer {
         }
 
         // Try extracting modules with standard min_hub_degree = 10, or fall back to lower degrees
-        let candidate_min_degrees = [10, 8, 5, 4, 3];
+        let candidate_min_degrees = [10, 8, 6, 5];
         for &min_deg in &candidate_min_degrees {
             let modules = Self::extract_hub_modules(g, min_deg);
-            if modules.len() >= 2 && modules.len() <= 100 {
-                // Check if modules partition all vertices
+            if modules.len() >= 2 && modules.len() <= 100 && modules.len() < n {
+                // Check if modules partition all vertices and each module is non-trivial
                 let total_mod_verts: usize = modules.iter().map(|m| m.vertices.len()).sum();
-                if total_mod_verts == n {
+                if total_mod_verts == n && modules.iter().all(|m| m.vertices.len() >= 2) {
                     if let Some(tour) = Self::solve_macro_and_expand(g, &modules) {
                         if TourVerifier::verify_raw_tour(&tour, g).is_ok() {
                             return Some(tour);
                         }
                     }
-                }
-            }
-        }
-
-        // If hierarchical decomposition did not apply, try direct MTZ for small to medium graphs
-        if n <= 100 {
-            if let Some(tour) = Self::solve_direct_mtz(g) {
-                if TourVerifier::verify_raw_tour(&tour, g).is_ok() {
-                    return Some(tour);
                 }
             }
         }

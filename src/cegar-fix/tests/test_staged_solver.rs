@@ -1389,3 +1389,110 @@ fn test_cegar_inverse_3sat_synthesizer_integration() {
     }
 }
 
+#[test]
+fn test_cegar_hub_hierarchical_decomposer_integration() {
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use cegar_fix::tour_verifier::TourVerifier;
+    use std::collections::HashSet;
+    use std::time::Instant;
+
+    let mut g = Graph::new();
+
+    // 3 hub clusters with degree-2 chains
+    // Module 0: Hub 1 (deg 6), Satellites 2..=7, degree-2 chains 101 and 102
+    for v in 2..=7 {
+        g.add_edge(1, v);
+    }
+    // Subdivided chain 2 - 101 - 3
+    g.add_edge(2, 101);
+    g.add_edge(101, 3);
+    // Intermediate edges and chords
+    g.add_edge(3, 4);
+    g.add_edge(2, 4);
+    // Subdivided chain 5 - 102 - 6
+    g.add_edge(5, 102);
+    g.add_edge(102, 6);
+    g.add_edge(6, 7);
+    g.add_edge(5, 7);
+
+    // Module 1: Hub 11 (deg 6), Satellites 12..=17, degree-2 chains 103 and 104
+    for v in 12..=17 {
+        g.add_edge(11, v);
+    }
+    // Subdivided chain 12 - 103 - 13
+    g.add_edge(12, 103);
+    g.add_edge(103, 13);
+    g.add_edge(13, 14);
+    g.add_edge(12, 14);
+    // Subdivided chain 15 - 104 - 16
+    g.add_edge(15, 104);
+    g.add_edge(104, 16);
+    g.add_edge(16, 17);
+    g.add_edge(15, 17);
+
+    // Module 2: Hub 21 (deg 6), Satellites 22..=27, degree-2 chains 105 and 106
+    for v in 22..=27 {
+        g.add_edge(21, v);
+    }
+    // Subdivided chain 22 - 105 - 23
+    g.add_edge(22, 105);
+    g.add_edge(105, 23);
+    g.add_edge(23, 24);
+    g.add_edge(22, 24);
+    // Subdivided chain 25 - 106 - 26
+    g.add_edge(25, 106);
+    g.add_edge(106, 26);
+    g.add_edge(26, 27);
+    g.add_edge(25, 27);
+
+    // Inter-module ring connections
+    g.add_edge(7, 12);
+    g.add_edge(17, 22);
+    g.add_edge(27, 2);
+
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+    assert_eq!(contractor.original_vertices_count, 27, "Original graph must have 27 vertices");
+    assert_eq!(contracted_g.adjacency_list.len(), 21, "Contracted graph must have 21 vertices");
+
+    let hub_reg = HubRegistry::new(&contracted_g);
+    let start = Instant::now();
+
+    // Solve via CEGAR pipeline with HubHierarchicalDecomposer fast track wired at Round 0
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+
+    assert!(tour.is_some(), "27-vertex multi-hub graph must be solved via HubHierarchicalDecomposer and expanded via Degree2Contractor");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 27, "Tour length must equal 27");
+
+    // Verify distinct vertex visitation
+    let mut seen = HashSet::new();
+    for &v in &t {
+        assert!(seen.insert(v), "Duplicate vertex {} in tour", v);
+    }
+    assert_eq!(seen.len(), 27, "Tour must visit all 27 distinct vertices");
+
+    // Verify tour validity with TourVerifier
+    let verify_res = TourVerifier::verify_raw_tour(&t, &g);
+    assert!(verify_res.is_ok(), "Tour verification failed: {:?}", verify_res.err());
+
+    // Verify validity of all consecutive edges
+    for i in 0..t.len() {
+        let u = t[i];
+        let v = t[(i + 1) % t.len()];
+        assert!(
+            g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v)),
+            "Edge ({}, {}) must exist in original graph",
+            u,
+            v
+        );
+    }
+}
+
+

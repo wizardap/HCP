@@ -34,6 +34,7 @@ use crate::parallel_sat_portfolio::{ParallelSatPortfolio, PortfolioResult};
 use crate::giant_cycle_stitcher::GiantCycleStitcher;
 use crate::interface_port_synchronizer::InterfacePortSynchronizer;
 use crate::inverse_3sat_synthesizer::Inverse3SatSynthesizer;
+use crate::hub_hierarchical_decomposer::HubHierarchicalDecomposer;
 
 
 /// Pre-emptively forbids 3-cycles (triangles) and 4-cycles in the initial CNF encoding in O(|E| * Delta).
@@ -257,6 +258,12 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
     if let Some(synthesized_tour) = Inverse3SatSynthesizer::try_solve_via_inverse_3sat(&g) {
         println!("Inverse3SatSynthesizer: successfully de-reduced graph to 3-SAT and synthesized valid Hamiltonian tour!");
         return Some(contractor.expand_tour(&synthesized_tour));
+    }
+
+    // Fast Track: Hub-Centric Hierarchical Decomposition
+    if let Some(hierarchical_tour) = HubHierarchicalDecomposer::try_solve_hierarchical(&g) {
+        println!("HubHierarchicalDecomposer: successfully solved graph via 2-tier hub hierarchy!");
+        return Some(contractor.expand_tour(&hierarchical_tour));
     }
 
     let mut encoder = Encoder::new();
