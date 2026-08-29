@@ -344,3 +344,61 @@ fn test_performance_on_large_graph() {
     println!("Generated {} cuts in {:?}", cuts.len(), elapsed);
     assert!(elapsed.as_millis() < 250, "Static cut generation took {:?}, exceeding 250ms limit", elapsed);
 }
+
+#[test]
+fn test_benchmark_graph479_static_cuts() {
+    use cegar_fix::file_operations::input_to_graph;
+    use cegar_fix::contraction::Degree2Contractor;
+    use std::path::Path;
+    use std::time::Instant;
+
+    let path = "/home/ubuntu/HCP/FHCPCS-col/graph479.col";
+    if Path::new(path).exists() {
+        let mut g = input_to_graph(path);
+        g.prune_degree2_triangles();
+        let (contracted_g, _) = Degree2Contractor::contract(&g);
+        let mut encoder = Encoder::new();
+        let _cnf = encoder.encode(&contracted_g, 1, 0, 0, 0, 0, 0);
+
+        let start = Instant::now();
+        let cuts = StaticCycleCutter::generate_static_small_cycle_cuts(&contracted_g, &encoder);
+        let elapsed = start.elapsed();
+
+        println!("graph479 contracted (|V|={}): Generated {} static cuts in {:?}", contracted_g.adjacency_list.len(), cuts.len(), elapsed);
+        for len in 3..=16 {
+            let count_len = cuts.iter().filter(|c| c.len() == len).count();
+            if count_len > 0 {
+                println!("  length {}: {} cuts", len, count_len);
+            }
+        }
+    }
+}
+
+#[test]
+fn test_benchmark_graph668_static_cuts() {
+    use cegar_fix::file_operations::input_to_graph;
+    use cegar_fix::contraction::Degree2Contractor;
+    use std::path::Path;
+    use std::time::Instant;
+
+    let path = "/home/ubuntu/HCP/FHCPCS-col/graph668.col";
+    if Path::new(path).exists() {
+        let mut g = input_to_graph(path);
+        g.prune_degree2_triangles();
+        let (contracted_g, _) = Degree2Contractor::contract(&g);
+        let mut encoder = Encoder::new();
+        let _cnf = encoder.encode(&contracted_g, 1, 0, 0, 0, 0, 0);
+
+        let start = Instant::now();
+        let cuts = StaticCycleCutter::generate_static_small_cycle_cuts(&contracted_g, &encoder);
+        let elapsed = start.elapsed();
+
+        println!("graph668 contracted (|V|={}): Generated {} static cuts in {:?}", contracted_g.adjacency_list.len(), cuts.len(), elapsed);
+        for len in 3..=16 {
+            let count_len = cuts.iter().filter(|c| c.len() == len).count();
+            if count_len > 0 {
+                println!("  length {}: {} cuts", len, count_len);
+            }
+        }
+    }
+}

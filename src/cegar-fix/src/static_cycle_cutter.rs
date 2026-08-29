@@ -522,7 +522,6 @@ impl StaticCycleCutter {
                 }
             }
         }
-
         // 6. Generic static chordless cycle detection for lengths 9..=16
         if total_v > 9 {
             let n = vertices.len();
@@ -564,6 +563,9 @@ impl StaticCycleCutter {
                 total_extended_clauses: 0,
                 in_path: vec![false; n],
                 path: [0usize; 17],
+                dist: vec![255u8; n],
+                visited_nodes: Vec::with_capacity(n),
+                root_steps: 0,
             };
 
             finder.run();
@@ -575,6 +577,7 @@ impl StaticCycleCutter {
 
 const MAX_EXTENDED_CYCLE_CLAUSES: usize = 15000;
 const MAX_CLAUSES_PER_LENGTH: usize = 2000;
+const MAX_STEPS_PER_ROOT: usize = 5000;
 
 struct ExtendedCycleFinder<'a> {
     adj_bits: &'a [u64],
@@ -588,6 +591,9 @@ struct ExtendedCycleFinder<'a> {
     total_extended_clauses: usize,
     in_path: Vec<bool>,
     path: [usize; 17],
+    dist: Vec<u8>,
+    visited_nodes: Vec<usize>,
+    root_steps: usize,
 }
 
 impl<'a> ExtendedCycleFinder<'a> {
@@ -601,8 +607,30 @@ impl<'a> ExtendedCycleFinder<'a> {
             if self.total_extended_clauses >= MAX_EXTENDED_CYCLE_CLAUSES {
                 break;
             }
+
+            // Compute BFS distances from u1_idx in the subgraph {v >= u1_idx} up to depth 8
+            self.visited_nodes.clear();
+            self.dist[u1_idx] = 0;
+            self.visited_nodes.push(u1_idx);
+            let mut head = 0;
+            while head < self.visited_nodes.len() {
+                let curr = self.visited_nodes[head];
+                head += 1;
+                let d = self.dist[curr];
+                if d >= 8 {
+                    continue;
+                }
+                for &nxt in &self.adj_list[curr] {
+                    if nxt > u1_idx && self.dist[nxt] == 255 {
+                        self.dist[nxt] = d + 1;
+                        self.visited_nodes.push(nxt);
+                    }
+                }
+            }
+
             self.path[0] = u1_idx;
             self.in_path[u1_idx] = true;
+            self.root_steps = 0;
 
             let nbrs = &self.adj_list[u1_idx];
             for &u2_idx in nbrs {
@@ -615,28 +643,43 @@ impl<'a> ExtendedCycleFinder<'a> {
                 self.dfs(2);
 
                 self.in_path[u2_idx] = false;
-                if self.total_extended_clauses >= MAX_EXTENDED_CYCLE_CLAUSES {
+                if self.total_extended_clauses >= MAX_EXTENDED_CYCLE_CLAUSES
+                    || self.root_steps >= MAX_STEPS_PER_ROOT
+                {
                     break;
                 }
             }
 
             self.in_path[u1_idx] = false;
+            for &v in &self.visited_nodes {
+                self.dist[v] = 255;
+            }
         }
     }
 
     fn dfs(&mut self, depth: usize) {
-        if self.total_extended_clauses >= MAX_EXTENDED_CYCLE_CLAUSES {
+        if self.total_extended_clauses >= MAX_EXTENDED_CYCLE_CLAUSES
+            || self.root_steps >= MAX_STEPS_PER_ROOT
+        {
             return;
         }
+        self.root_steps += 1;
+
         let u_prev = self.path[depth - 1];
         let u1_idx = self.path[0];
         let u2_idx = self.path[1];
+        let max_rem_dist = (16 - depth) as u8;
 
         for &v in &self.adj_list[u_prev] {
             if v <= u1_idx {
                 continue;
             }
             if self.in_path[v] {
+                continue;
+            }
+
+            let d = self.dist[v];
+            if d == 255 || d > max_rem_dist {
                 continue;
             }
 
@@ -675,7 +718,9 @@ impl<'a> ExtendedCycleFinder<'a> {
                     self.in_path[v] = true;
                     self.dfs(depth + 1);
                     self.in_path[v] = false;
-                    if self.total_extended_clauses >= MAX_EXTENDED_CYCLE_CLAUSES {
+                    if self.total_extended_clauses >= MAX_EXTENDED_CYCLE_CLAUSES
+                        || self.root_steps >= MAX_STEPS_PER_ROOT
+                    {
                         return;
                     }
                 }
