@@ -147,14 +147,11 @@ impl InterfacePortSynchronizer {
 
     /// Encodes interface port synchronization and channeling clauses for each gadget module.
     /// - Allocates a boolean variable x_k for gadget k.
-    /// - Channels internal edges:
-    ///   - e in T_k \ F_k: (!x_k \/ e) and (x_k \/ !e)
-    ///   - e in F_k \ T_k: (x_k \/ e) and (!x_k \/ !e)
-    ///   - e in T_k \cap F_k: (e)
-    ///   - e \notin T_k \cup F_k: (!e)
-    /// - Port flow conservation:
-    ///   - At port A_k: exactly one external incoming edge active, 0 external outgoing edges.
-    ///   - At port B_k: exactly one external outgoing edge active, 0 external incoming edges.
+    /// - Channels internal undirected edges:
+    ///   - e in T_k \ F_k: (!x_k \/ l_uv \/ l_vu) and (x_k \/ !l_uv) and (x_k \/ !l_vu)
+    ///   - e in F_k \ T_k: (x_k \/ l_uv \/ l_vu) and (!x_k \/ !l_uv) and (!x_k \/ !l_vu)
+    ///   - e in T_k \cap F_k: (l_uv \/ l_vu)
+    ///   - e \notin T_k \cup F_k: (!l_uv) and (!l_vu)
     pub fn encode_interface_port_synchronization(
         dual_paths: &[GadgetDualPath],
         encoder: &mut Encoder,
@@ -162,70 +159,79 @@ impl InterfacePortSynchronizer {
     ) {
         for dual in dual_paths {
             let mod_set: HashSet<i32> = dual.vertices.iter().copied().collect();
-            let a_k = dual.ports[0];
-            let b_k = dual.ports[1];
 
             // 1. Allocate boolean choice literal x_k for this gadget
             let x_k = encoder.instance.new_lit();
 
-            let true_set: HashSet<(i32, i32)> = dual.true_path_edges.iter().copied().collect();
-            let false_set: HashSet<(i32, i32)> = dual.false_path_edges.iter().copied().collect();
+            let true_set: HashSet<(i32, i32)> = dual
+                .true_path_edges
+                .iter()
+                .map(|&(u, v)| if u < v { (u, v) } else { (v, u) })
+                .collect();
+            let false_set: HashSet<(i32, i32)> = dual
+                .false_path_edges
+                .iter()
+                .map(|&(u, v)| if u < v { (u, v) } else { (v, u) })
+                .collect();
 
-            // 2. Channeling clauses for all internal directed edges in G[M_k]
-            let mut ext_in_a = Vec::new();
-            let mut ext_out_b = Vec::new();
-
-            for (&(u, v), &lit) in &encoder.graph_lit_map {
-                let u_in_mod = mod_set.contains(&u);
-                let v_in_mod = mod_set.contains(&v);
-
-                if u_in_mod && v_in_mod {
-                    let in_t = true_set.contains(&(u, v));
-                    let in_f = false_set.contains(&(u, v));
-
-                    if in_t && !in_f {
-                        // e in T \ F: (!x_k \/ e) and (x_k \/ !e)
-                        cnf.add_clause(clause![!x_k, lit]);
-                        cnf.add_clause(clause![x_k, !lit]);
-                    } else if in_f && !in_t {
-                        // e in F \ T: (x_k \/ e) and (!x_k \/ !e)
-                        cnf.add_clause(clause![x_k, lit]);
-                        cnf.add_clause(clause![!x_k, !lit]);
-                    } else if in_t && in_f {
-                        // e in T \cap F: unit clause (e) (shared backbone edge)
-                        cnf.add_clause(clause![lit]);
-                    } else {
-                        // e \notin T \cup F: unit clause (!e) (forbidden non-path edge)
-                        cnf.add_clause(clause![!lit]);
+            // 2. Identify all unique undirected internal edges in G[M_k]
+            let mut internal_undirected_edges: HashSet<(i32, i32)> = HashSet::new();
+            for &u in &dual.vertices {
+                if let Some(neighbors) = encoder.graph_lit_map.keys().filter(|(a, _)| *a == u).map(|(_, b)| *b).collect::<Vec<_>>().into() {
+                    for v in neighbors {
+                        if mod_set.contains(&v) && u < v {
+                            internal_undirected_edges.insert((u, v));
+                        }
                     }
-                } else if !u_in_mod && v == a_k {
-                    // External incoming edge to A_k
-                    ext_in_a.push(lit);
-                } else if u == a_k && !v_in_mod {
-                    // External outgoing edge from A_k: forbid
-                    cnf.add_clause(clause![!lit]);
-                } else if u == b_k && !v_in_mod {
-                    // External outgoing edge from B_k
-                    ext_out_b.push(lit);
-                } else if !u_in_mod && v == b_k {
-                    // External incoming edge to B_k: forbid
-                    cnf.add_clause(clause![!lit]);
                 }
             }
 
-            // 3. Port flow clauses:
-            // At port A_k, exactly one external incoming edge is active
-            if !ext_in_a.is_empty() {
-                ext_in_a.sort_unstable();
-                ext_in_a.dedup();
-                cnf.add_clause(Clause::from_iter(ext_in_a));
-            }
+            // 3. Channeling clauses for all undirected internal edges
+            for (u, v) in internal_undirected_edges {
+                let l_uv = encoder.graph_lit_map.get(&(u, v)).copied();
+                let l_vu = encoder.graph_lit_map.get(&(v, u)).copied();
 
-            // At port B_k, exactly one external outgoing edge is active
-            if !ext_out_b.is_empty() {
-                ext_out_b.sort_unstable();
-                ext_out_b.dedup();
-                cnf.add_clause(Clause::from_iter(ext_out_b));
+                let in_t = true_set.contains(&(u, v));
+                let in_f = false_set.contains(&(u, v));
+
+                match (l_uv, l_vu) {
+                    (Some(fwd), Some(rev)) => {
+                        if in_t && !in_f {
+                            // x_k => (fwd \/ rev)
+                            cnf.add_clause(clause![!x_k, fwd, rev]);
+                            // !x_k => (!fwd /\ !rev)
+                            cnf.add_clause(clause![x_k, !fwd]);
+                            cnf.add_clause(clause![x_k, !rev]);
+                        } else if in_f && !in_t {
+                            // !x_k => (fwd \/ rev)
+                            cnf.add_clause(clause![x_k, fwd, rev]);
+                            // x_k => (!fwd /\ !rev)
+                            cnf.add_clause(clause![!x_k, !fwd]);
+                            cnf.add_clause(clause![!x_k, !rev]);
+                        } else if in_t && in_f {
+                            // Shared backbone edge: must be used in one direction
+                            cnf.add_clause(clause![fwd, rev]);
+                        } else {
+                            // Forbidden non-path edge: neither direction can be used
+                            cnf.add_clause(clause![!fwd]);
+                            cnf.add_clause(clause![!rev]);
+                        }
+                    }
+                    (Some(lit), None) | (None, Some(lit)) => {
+                        if in_t && !in_f {
+                            cnf.add_clause(clause![!x_k, lit]);
+                            cnf.add_clause(clause![x_k, !lit]);
+                        } else if in_f && !in_t {
+                            cnf.add_clause(clause![x_k, lit]);
+                            cnf.add_clause(clause![!x_k, !lit]);
+                        } else if in_t && in_f {
+                            cnf.add_clause(clause![lit]);
+                        } else {
+                            cnf.add_clause(clause![!lit]);
+                        }
+                    }
+                    (None, None) => {}
+                }
             }
         }
     }
