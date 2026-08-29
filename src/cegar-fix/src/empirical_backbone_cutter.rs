@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use rustsat::types::Lit;
 
 pub trait LitMap {
@@ -20,7 +20,7 @@ impl LitMap for BTreeMap<(i32, i32), Lit> {
 #[derive(Debug, Clone, Default)]
 pub struct EmpiricalBackboneTracker {
     pub history_window: usize,
-    pub edge_history: Vec<HashSet<(i32, i32)>>,
+    pub edge_history: VecDeque<HashSet<(i32, i32)>>,
     pub total_rounds_recorded: usize,
 }
 
@@ -28,7 +28,7 @@ impl EmpiricalBackboneTracker {
     pub fn new(window_size: usize) -> Self {
         Self {
             history_window: if window_size == 0 { 10 } else { window_size },
-            edge_history: Vec::new(),
+            edge_history: VecDeque::new(),
             total_rounds_recorded: 0,
         }
     }
@@ -51,12 +51,12 @@ impl EmpiricalBackboneTracker {
             }
         }
 
-        self.edge_history.push(round_edges);
+        self.edge_history.push_back(round_edges);
         self.total_rounds_recorded += 1;
 
         let max_window = if self.history_window == 0 { 10 } else { self.history_window };
         while self.edge_history.len() > max_window {
-            self.edge_history.remove(0);
+            self.edge_history.pop_front();
         }
     }
 

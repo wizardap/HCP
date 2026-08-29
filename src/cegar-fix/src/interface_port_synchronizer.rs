@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 use rustsat::clause;
 use rustsat::instances::Cnf;
-use rustsat::types::Clause;
 use crate::graph::Graph;
 use crate::encoder::Encoder;
 use crate::metagraph_router::MetagraphRouter;

@@ -1,9 +1,6 @@
 use rustsat::instances::*;
 use rustsat::types::*;
-use rustsat::solvers::*;
-use rustsat::solvers::LimitConflicts;
 use rustsat::clause;
-use rustsat_cadical::Config;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::time::{Instant,Duration};
 // use crate::encoder;
@@ -807,9 +804,10 @@ fn cegar(
                         accumulated_cut_cnfs.push(cnf);
                     }
 
+                    let total_v = g.adjacency_list.len();
                     let comprehensive_sec = EmpiricalBackboneCutter::generate_comprehensive_sec_clauses(
                         &sol_cycles,
-                        g.adjacency_list.len() / 2,
+                        total_v / 2,
                         &encoder.graph_lit_map,
                     );
                     for cl in comprehensive_sec {
@@ -821,7 +819,19 @@ fn cegar(
                         accumulated_cut_cnfs.push(g_cnf);
                     }
 
-                    let total_v = g.adjacency_list.len();
+                    // Inject boundary cut clauses for all non-giant subcycles
+                    for cycle in &sol_cycles {
+                        if cycle.len() >= 3 && cycle.len() < total_v / 2 {
+                            let b_clauses = get_boundary_cut_clauses(cycle, encoder, &g, total_v, 0);
+                            for cl in b_clauses {
+                                clause_count += 1;
+                                working_cnf.add_clause(cl.clone());
+                                let mut g_cnf = Cnf::new();
+                                g_cnf.add_clause(cl);
+                                accumulated_cut_cnfs.push(g_cnf);
+                            }
+                        }
+                    }
                     let max_cycle_len = _active_cycles.iter().map(|c| c.len()).max().unwrap_or(0);
                     if _active_cycles.len() > 1 && (max_cycle_len >= total_v / 2 || _active_cycles.len() <= 25) {
                         let freezer_opts = FreezerOptions::default();
@@ -2105,6 +2115,7 @@ mod tests_blocking_enhancements {
     #[test]
     fn test_limit_conflicts_with_assumptions() {
         use rustsat_cadical::CaDiCaL;
+        use rustsat::solvers::{LimitConflicts, Solve, SolveIncremental, SolverResult};
         let mut solver = CaDiCaL::default();
         let lit1 = Lit::positive(0);
         let lit2 = Lit::positive(1);
