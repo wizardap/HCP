@@ -281,14 +281,8 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
         cnf.extend(static_cuts);
     }
 
-    // Dual-Channel Metagraph Router: detect 2-channel sub-gadgets and inject Dual-Channel MTZ constraints
-    let channels = MetagraphRouter::detect_dual_channels(&g);
-    if channels.len() >= 3 && channels.len() <= 200 {
-        let pre_clauses = cnf.len();
-        MetagraphRouter::encode_dual_channel_mtz(&channels, &mut encoder, &mut cnf);
-        let mtz_clauses = cnf.len() - pre_clauses;
-        println!("DualChannelRouter: detected {} channel modules, injected {} dual-channel MTZ clauses at Round 0", channels.len(), mtz_clauses);
-    }
+    // Dual-Channel Metagraph Router: available as an experimental module (disabled by default)
+    // To preserve 100% solver completeness on heuristic cluster partitions.
 
     let current_cnf = if output_folder != "default" {
         //フォルダーの作成
