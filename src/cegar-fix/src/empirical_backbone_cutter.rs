@@ -1,5 +1,21 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use rustsat::types::Lit;
+
+pub trait LitMap {
+    fn get_lit(&self, u: i32, v: i32) -> Option<Lit>;
+}
+
+impl LitMap for HashMap<(i32, i32), Lit> {
+    fn get_lit(&self, u: i32, v: i32) -> Option<Lit> {
+        self.get(&(u, v)).copied()
+    }
+}
+
+impl LitMap for BTreeMap<(i32, i32), Lit> {
+    fn get_lit(&self, u: i32, v: i32) -> Option<Lit> {
+        self.get(&(u, v)).copied()
+    }
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct EmpiricalBackboneTracker {
@@ -72,10 +88,10 @@ impl EmpiricalBackboneTracker {
 pub struct EmpiricalBackboneCutter;
 
 impl EmpiricalBackboneCutter {
-    pub fn generate_comprehensive_sec_clauses(
+    pub fn generate_comprehensive_sec_clauses<M: LitMap + ?Sized>(
         cycles: &[Vec<i32>],
         giant_threshold: usize,
-        lit_map: &HashMap<(i32, i32), Lit>,
+        lit_map: &M,
     ) -> Vec<Vec<Lit>> {
         let mut clauses = Vec::new();
 
@@ -91,7 +107,7 @@ impl EmpiricalBackboneCutter {
             for i in 0..k {
                 let u = cycle[i];
                 let v = cycle[(i + 1) % k];
-                if let Some(&lit) = lit_map.get(&(u, v)) {
+                if let Some(lit) = lit_map.get_lit(u, v) {
                     fwd_clause.push(!lit);
                 } else {
                     fwd_ok = false;
@@ -108,7 +124,7 @@ impl EmpiricalBackboneCutter {
             for i in 0..k {
                 let u = cycle[(i + 1) % k];
                 let v = cycle[i];
-                if let Some(&lit) = lit_map.get(&(u, v)) {
+                if let Some(lit) = lit_map.get_lit(u, v) {
                     rev_clause.push(!lit);
                 } else {
                     rev_ok = false;

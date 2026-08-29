@@ -35,6 +35,7 @@ use crate::giant_cycle_stitcher::GiantCycleStitcher;
 use crate::interface_port_synchronizer::InterfacePortSynchronizer;
 use crate::inverse_3sat_synthesizer::Inverse3SatSynthesizer;
 use crate::hub_hierarchical_decomposer::HubHierarchicalDecomposer;
+use crate::empirical_backbone_cutter::{EmpiricalBackboneCutter, EmpiricalBackboneTracker};
 
 
 /// Pre-emptively forbids 3-cycles (triangles) and 4-cycles in the initial CNF encoding in O(|E| * Delta).
@@ -428,6 +429,7 @@ fn cegar(
     let mut assumptions: Vec<Lit> = Vec::new();
     let mut accumulated_cut_cnfs: Vec<Cnf> = Vec::new();
     let reseeder_opts = ReseederOptions::default();
+    let mut backbone_tracker = EmpiricalBackboneTracker::new(10);
 
     loop {
         if instant.elapsed().as_secs_f64() >= timeout_secs {
@@ -452,6 +454,7 @@ fn cegar(
                 let sol_arcs = get_solution_arcs_from_lits(&model_lits, &encoder.graph_lit_map);
                 // 閉路
                 let sol_cycles = get_solution_cycles(sol_arcs);
+                backbone_tracker.record_solution_edges(&sol_cycles);
 
                 // 閉路が一つであれば、ハミルトン閉路なので解を出力
                 if sol_cycles.len() == 1 {
@@ -804,6 +807,20 @@ fn cegar(
                         accumulated_cut_cnfs.push(cnf);
                     }
 
+                    let comprehensive_sec = EmpiricalBackboneCutter::generate_comprehensive_sec_clauses(
+                        &sol_cycles,
+                        g.adjacency_list.len() / 2,
+                        &encoder.graph_lit_map,
+                    );
+                    for cl in comprehensive_sec {
+                        clause_count += 1;
+                        let clause = Clause::from_iter(cl);
+                        working_cnf.add_clause(clause.clone());
+                        let mut g_cnf = Cnf::new();
+                        g_cnf.add_clause(clause);
+                        accumulated_cut_cnfs.push(g_cnf);
+                    }
+
                     let total_v = g.adjacency_list.len();
                     let max_cycle_len = _active_cycles.iter().map(|c| c.len()).max().unwrap_or(0);
                     if _active_cycles.len() > 1 && (max_cycle_len >= total_v / 2 || _active_cycles.len() <= 25) {
@@ -818,6 +835,34 @@ fn cegar(
                         );
                         if !assumptions.is_empty() {
                             println!("BackboneFreezer: locked {} internal backbone edges (giant cycle len {})", assumptions.len(), max_cycle_len);
+                        }
+
+                        // Augment assumptions with high-frequency empirical edges (f(e) >= 0.85) when count >= 3 and giant cycle exists
+                        if count >= 3 && max_cycle_len >= total_v / 2 {
+                            let frequent_edges = backbone_tracker.get_frequent_backbone_edges(0.85);
+                            let mut added_empirical = 0;
+                            let mut assumption_set: HashSet<Lit> = assumptions.iter().copied().collect();
+
+                            if let Some(giant_cycle) = _active_cycles.iter().find(|c| c.len() == max_cycle_len) {
+                                let n_g = giant_cycle.len();
+                                for i in 0..n_g {
+                                    let u = giant_cycle[i];
+                                    let v = giant_cycle[(i + 1) % n_g];
+                                    let min_v = u.min(v);
+                                    let max_v = u.max(v);
+                                    if frequent_edges.contains(&(min_v, max_v)) {
+                                        if let Some(&lit) = encoder.graph_lit_map.get(&(u, v)) {
+                                            if assumption_set.insert(lit) {
+                                                assumptions.push(lit);
+                                                added_empirical += 1;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if added_empirical > 0 {
+                                println!("EmpiricalBackboneTracker: augmented {} empirical backbone assumptions (freq >= 0.85)", added_empirical);
+                            }
                         }
                     } else {
                         assumptions.clear();

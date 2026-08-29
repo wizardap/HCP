@@ -1606,5 +1606,92 @@ fn test_cegar_multi_opt_sat_splicer_integration() {
     }
 }
 
+#[test]
+fn test_cegar_empirical_backbone_cutter_integration() {
+    use cegar_fix::empirical_backbone_cutter::{EmpiricalBackboneTracker, EmpiricalBackboneCutter};
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use cegar_fix::tour_verifier::TourVerifier;
+    use cegar_fix::encoder::Encoder;
+    use std::collections::HashSet;
+    use std::time::Instant;
+
+    // 1. Direct validation of EmpiricalBackboneCutter & EmpiricalBackboneTracker
+    let mut tracker = EmpiricalBackboneTracker::new(5);
+    let cycle1 = vec![1, 2, 3, 4];
+    let cycle2 = vec![5, 6, 7, 8];
+    tracker.record_solution_edges(&[cycle1.clone(), cycle2.clone()]);
+    assert_eq!(tracker.total_rounds_recorded, 1);
+    let freq_edges = tracker.get_frequent_backbone_edges(1.0);
+    assert_eq!(freq_edges.len(), 8);
+
+    // 2. Build graph with multiple sub-cycle chords requiring CEGAR & SEC cutting
+    let mut g = Graph::new();
+    // 32-node ring with chords inducing subcycles
+    for i in 1..32 {
+        g.add_edge(i, i + 1);
+    }
+    g.add_edge(32, 1);
+
+    // Internal chords creating multiple competing 4-cycles and 8-cycles
+    g.add_edge(1, 8);
+    g.add_edge(8, 16);
+    g.add_edge(16, 24);
+    g.add_edge(24, 32);
+    g.add_edge(4, 12);
+    g.add_edge(12, 20);
+    g.add_edge(20, 28);
+    g.add_edge(28, 4);
+
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+    let hub_reg = HubRegistry::new(&contracted_g);
+
+    // Verify comprehensive SEC clauses generation on encoder
+    let mut encoder = Encoder::new();
+    let _ = encoder.encode(&contracted_g, 0, 0, 0, 0, 0, 0);
+    let sec_clauses = EmpiricalBackboneCutter::generate_comprehensive_sec_clauses(
+        &[vec![4, 12, 20, 28]],
+        5,
+        &encoder.graph_lit_map,
+    );
+    assert_eq!(sec_clauses.len(), 2, "Comprehensive SEC clauses (forward + reverse) should be generated for 4-cycle");
+
+    // 3. Full CEGAR end-to-end solve with EmpiricalBackboneTracker and SEC Cutter wired
+    let start = Instant::now();
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+
+    assert!(tour.is_some(), "Graph must be solved with EmpiricalBackboneCutter wired into CEGAR loop");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 32, "Tour length must equal 32 vertices");
+
+    // 4. Verify valid Hamiltonian tour on g
+    let mut seen = HashSet::new();
+    for &v in &t {
+        assert!(seen.insert(v), "Duplicate vertex {} in tour", v);
+    }
+    assert_eq!(seen.len(), 32, "Tour must visit all 32 distinct vertices");
+
+    let verify_res = TourVerifier::verify_raw_tour(&t, &g);
+    assert!(verify_res.is_ok(), "Tour verification failed: {:?}", verify_res.err());
+
+    for i in 0..t.len() {
+        let u = t[i];
+        let v = t[(i + 1) % t.len()];
+        assert!(
+            g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v)),
+            "Edge ({}, {}) must exist in original graph",
+            u,
+            v
+        );
+    }
+}
+
+
 
 
