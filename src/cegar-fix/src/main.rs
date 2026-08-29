@@ -46,6 +46,7 @@ pub mod giant_cycle_stitcher;
 pub mod transitive_macro_splicer;
 pub mod interface_port_synchronizer;
 pub mod inverse_3sat_synthesizer;
+pub mod hub_hierarchical_decomposer;
 
 
 use contraction::Degree2Contractor;
