@@ -41,6 +41,7 @@ pub mod static_cycle_cutter;
 pub mod boundary_alternating_patcher;
 pub mod metagraph_router;
 pub mod parallel_sat_portfolio;
+pub mod macro_cycle_stitcher;
 
 
 use contraction::Degree2Contractor;
