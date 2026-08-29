@@ -884,4 +884,126 @@ fn test_cegar_extended_static_cycle_cutter_integration() {
     }
 }
 
+#[test]
+fn test_cegar_multi_swap_stitcher_integration() {
+    use cegar_fix::giant_cycle_stitcher::GiantCycleStitcher;
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use std::collections::HashSet;
+    use std::time::Instant;
+
+    let mut g = Graph::new();
+    // 1. Giant ring: 60 vertices (1..=60)
+    let giant_cycle: Vec<i32> = (1..=60).collect();
+    for i in 1..=60 {
+        let nxt = if i == 60 { 1 } else { i + 1 };
+        g.add_edge(i, nxt);
+    }
+    // Giant ring chords to maintain vertex degrees >= 3
+    for i in 1..=30 {
+        g.add_edge(i, i + 30);
+    }
+
+    // 2. Three 8-vertex satellite rings:
+    // Satellite 1: 61..=68
+    let sat1: Vec<i32> = (61..=68).collect();
+    for i in 61..=68 {
+        let nxt = if i == 68 { 61 } else { i + 1 };
+        g.add_edge(i, nxt);
+    }
+    for i in 61..=64 {
+        g.add_edge(i, i + 4);
+    }
+
+    // Satellite 2: 69..=76
+    let sat2: Vec<i32> = (69..=76).collect();
+    for i in 69..=76 {
+        let nxt = if i == 76 { 69 } else { i + 1 };
+        g.add_edge(i, nxt);
+    }
+    for i in 69..=72 {
+        g.add_edge(i, i + 4);
+    }
+
+    // Satellite 3: 77..=84
+    let sat3: Vec<i32> = (77..=84).collect();
+    for i in 77..=84 {
+        let nxt = if i == 84 { 77 } else { i + 1 };
+        g.add_edge(i, nxt);
+    }
+    for i in 77..=80 {
+        g.add_edge(i, i + 4);
+    }
+
+    // 3. Cross-edges enabling simultaneous multi-swap absorption into giant ring:
+    // Satellite 1 connected at (10, 11) <-> (61, 62)
+    g.add_edge(10, 61);
+    g.add_edge(11, 62);
+
+    // Satellite 2 connected at (30, 31) <-> (69, 70)
+    g.add_edge(30, 69);
+    g.add_edge(31, 70);
+
+    // Satellite 3 connected at (50, 51) <-> (77, 78)
+    g.add_edge(50, 77);
+    g.add_edge(51, 78);
+
+    // Step A: Direct unit test of GiantCycleStitcher multi-swap simultaneous absorption
+    let protected = HashSet::new();
+    let initial_cycles = vec![giant_cycle.clone(), sat1.clone(), sat2.clone(), sat3.clone()];
+    let stitched = GiantCycleStitcher::repair_until_fixed_point(&initial_cycles, &g, &protected);
+    assert_eq!(stitched.len(), 1, "GiantCycleStitcher must stitch 60-vertex giant ring and 3 satellite rings into 1 cycle");
+    assert_eq!(stitched[0].len(), 84, "Stitched tour must contain all 84 vertices");
+
+    let mut direct_seen = HashSet::new();
+    for &v in &stitched[0] {
+        assert!(direct_seen.insert(v), "Duplicate vertex {} in direct stitched tour", v);
+    }
+    for i in 0..stitched[0].len() {
+        let u = stitched[0][i];
+        let v = stitched[0][(i + 1) % stitched[0].len()];
+        assert!(
+            g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v)),
+            "Direct stitched edge ({}, {}) must exist in graph",
+            u,
+            v
+        );
+    }
+
+    // Step B: Full CEGAR end-to-end solve via solve_hamilton
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+    let hub_reg = HubRegistry::new(&contracted_g);
+    let start = Instant::now();
+
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+    assert!(tour.is_some(), "Graph with 60-vertex giant ring and three 8-vertex satellites must be solved via multi-swap CEGAR stitcher");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 84, "Tour length must equal total vertices (60 + 8 * 3 = 84)");
+
+    // Verify uniqueness and validity of Hamiltonian cycle
+    let mut seen = HashSet::new();
+    for &v in &t {
+        assert!(seen.insert(v), "Duplicate vertex {} in tour", v);
+    }
+    assert_eq!(seen.len(), 84, "Tour must visit all 84 distinct vertices");
+
+    for i in 0..t.len() {
+        let u = t[i];
+        let v = t[(i + 1) % t.len()];
+        assert!(
+            g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v)),
+            "Edge ({}, {}) must exist in original graph",
+            u,
+            v
+        );
+    }
+}
+
+
 
