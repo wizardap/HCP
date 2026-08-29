@@ -32,6 +32,7 @@ use crate::boundary_alternating_patcher::BoundaryAlternatingPatcher;
 use crate::metagraph_router::MetagraphRouter;
 use crate::parallel_sat_portfolio::{ParallelSatPortfolio, PortfolioResult};
 use crate::giant_cycle_stitcher::GiantCycleStitcher;
+use crate::interface_port_synchronizer::InterfacePortSynchronizer;
 
 
 /// Pre-emptively forbids 3-cycles (triangles) and 4-cycles in the initial CNF encoding in O(|E| * Delta).
@@ -292,6 +293,13 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
             println!("GlobalSupernodeMTZ: generated {} supernodes (target size {}), injecting global MTZ order encoding", modules.len(), target_size);
             MetagraphRouter::encode_supernode_mtz(&modules, &g, &mut encoder, &mut cnf);
         }
+    }
+
+    // Interface Port Truth Assignment & Flow Synchronizer
+    let dual_paths = InterfacePortSynchronizer::extract_gadget_dual_paths(&g, 32);
+    if dual_paths.len() >= 4 {
+        println!("InterfacePortSynchronizer: detected {} gadget modules with dual T/F paths, injecting flow synchronization clauses", dual_paths.len());
+        InterfacePortSynchronizer::encode_interface_port_synchronization(&dual_paths, &mut encoder, &mut cnf);
     }
 
     let current_cnf = if output_folder != "default" {

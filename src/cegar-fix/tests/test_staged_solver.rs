@@ -1202,3 +1202,94 @@ fn test_cegar_transitive_macro_splicer_integration() {
         );
     }
 }
+
+#[test]
+fn test_cegar_interface_port_synchronizer_integration() {
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use cegar_fix::interface_port_synchronizer::InterfacePortSynchronizer;
+    use std::collections::HashSet;
+    use std::time::Instant;
+
+    let mut g = Graph::new();
+
+    // 4 ladder gadget modules arranged in a ring (8 vertices each, 32 vertices total)
+    // Module 0: 1..=8
+    // Module 1: 9..=16
+    // Module 2: 17..=24
+    // Module 3: 25..=32
+    for m in 0..4 {
+        let base = m * 8;
+        // Top rail
+        for i in 1..4 {
+            g.add_edge(base + i, base + i + 1);
+        }
+        // Bottom rail
+        for i in 5..8 {
+            g.add_edge(base + i, base + i + 1);
+        }
+        // Rungs
+        for i in 1..=4 {
+            g.add_edge(base + i, base + i + 4);
+        }
+        // Diagonals inside 2x2 blocks
+        g.add_edge(base + 1, base + 6);
+        g.add_edge(base + 2, base + 5);
+        g.add_edge(base + 2, base + 7);
+        g.add_edge(base + 3, base + 6);
+        g.add_edge(base + 3, base + 8);
+        g.add_edge(base + 4, base + 7);
+    }
+
+    // Inter-module ring connections connecting the 4 modules:
+    // b_0 (4) -> a_1 (9)
+    // b_1 (12) -> a_2 (17)
+    // b_2 (20) -> a_3 (25)
+    // b_3 (28) -> a_0 (1)
+    for m in 0..4 {
+        let base = m * 8;
+        let next_base = ((m + 1) % 4) * 8;
+        g.add_edge(base + 4, next_base + 1);
+    }
+
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+    assert_eq!(contracted_g.adjacency_list.len(), 32, "Contracted graph must retain all 32 vertices");
+
+    let dual_paths = InterfacePortSynchronizer::extract_gadget_dual_paths(&contracted_g, 32);
+    assert_eq!(dual_paths.len(), 4, "Expected 4 gadget modules with dual T/F paths");
+
+    let hub_reg = HubRegistry::new(&contracted_g);
+    let start = Instant::now();
+
+    // Solve via CEGAR pipeline with InterfacePortSynchronizer wired at Round 0
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+
+    assert!(tour.is_some(), "32-vertex 4-gadget ring graph must be solved via InterfacePortSynchronizer and CEGAR");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 32, "Tour length must equal 32");
+
+    // Verify distinct vertex visitation
+    let mut seen = HashSet::new();
+    for &v in &t {
+        assert!(seen.insert(v), "Duplicate vertex {} in tour", v);
+    }
+    assert_eq!(seen.len(), 32, "Tour must visit all 32 distinct vertices");
+
+    // Verify validity of all consecutive edges
+    for i in 0..t.len() {
+        let u = t[i];
+        let v = t[(i + 1) % t.len()];
+        assert!(
+            g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v)),
+            "Edge ({}, {}) must exist in original graph",
+            u,
+            v
+        );
+    }
+}
