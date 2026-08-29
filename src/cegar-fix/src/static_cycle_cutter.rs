@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use rustsat::instances::Cnf;
 use rustsat::clause;
+use rustsat::types::Clause;
 use crate::graph::Graph;
 use crate::encoder::Encoder;
 
@@ -522,6 +523,212 @@ impl StaticCycleCutter {
             }
         }
 
+        // 6. Generic static chordless cycle detection for lengths 9..=16
+        if total_v > 9 {
+            let n = vertices.len();
+            let mut v_to_idx: HashMap<i32, usize> = HashMap::with_capacity(n);
+            for (i, &v) in vertices.iter().enumerate() {
+                v_to_idx.insert(v, i);
+            }
+
+            let num_words = (n + 63) / 64;
+            let mut adj_bits = vec![0u64; n * num_words];
+            let mut indexed_adj: Vec<Vec<usize>> = vec![Vec::new(); n];
+
+            for (&u, nbrs) in &g.adjacency_list {
+                if let Some(&u_idx) = v_to_idx.get(&u) {
+                    let mut list = Vec::with_capacity(nbrs.len());
+                    for &v in nbrs {
+                        if let Some(&v_idx) = v_to_idx.get(&v) {
+                            if v_idx != u_idx {
+                                adj_bits[u_idx * num_words + (v_idx / 64)] |= 1u64 << (v_idx % 64);
+                                list.push(v_idx);
+                            }
+                        }
+                    }
+                    list.sort_unstable();
+                    list.dedup();
+                    indexed_adj[u_idx] = list;
+                }
+            }
+
+            let mut finder = ExtendedCycleFinder {
+                adj_bits: &adj_bits,
+                num_words,
+                adj_list: &indexed_adj,
+                vertices: &vertices,
+                encoder,
+                cnf: &mut cnf,
+                total_v,
+                clauses_by_len: [0usize; 17],
+                total_extended_clauses: 0,
+                in_path: vec![false; n],
+                path: [0usize; 17],
+            };
+
+            finder.run();
+        }
+
         cnf
+    }
+}
+
+const MAX_EXTENDED_CYCLE_CLAUSES: usize = 15000;
+const MAX_CLAUSES_PER_LENGTH: usize = 2000;
+
+struct ExtendedCycleFinder<'a> {
+    adj_bits: &'a [u64],
+    num_words: usize,
+    adj_list: &'a [Vec<usize>],
+    vertices: &'a [i32],
+    encoder: &'a Encoder,
+    cnf: &'a mut Cnf,
+    total_v: usize,
+    clauses_by_len: [usize; 17],
+    total_extended_clauses: usize,
+    in_path: Vec<bool>,
+    path: [usize; 17],
+}
+
+impl<'a> ExtendedCycleFinder<'a> {
+    #[inline(always)]
+    fn is_adjacent(&self, u: usize, v: usize) -> bool {
+        (self.adj_bits[u * self.num_words + (v >> 6)] & (1u64 << (v & 63))) != 0
+    }
+
+    fn run(&mut self) {
+        for u1_idx in 0..self.vertices.len() {
+            if self.total_extended_clauses >= MAX_EXTENDED_CYCLE_CLAUSES {
+                break;
+            }
+            self.path[0] = u1_idx;
+            self.in_path[u1_idx] = true;
+
+            let nbrs = &self.adj_list[u1_idx];
+            for &u2_idx in nbrs {
+                if u2_idx <= u1_idx {
+                    continue;
+                }
+                self.path[1] = u2_idx;
+                self.in_path[u2_idx] = true;
+
+                self.dfs(2);
+
+                self.in_path[u2_idx] = false;
+                if self.total_extended_clauses >= MAX_EXTENDED_CYCLE_CLAUSES {
+                    break;
+                }
+            }
+
+            self.in_path[u1_idx] = false;
+        }
+    }
+
+    fn dfs(&mut self, depth: usize) {
+        if self.total_extended_clauses >= MAX_EXTENDED_CYCLE_CLAUSES {
+            return;
+        }
+        let u_prev = self.path[depth - 1];
+        let u1_idx = self.path[0];
+        let u2_idx = self.path[1];
+
+        for &v in &self.adj_list[u_prev] {
+            if v <= u1_idx {
+                continue;
+            }
+            if self.in_path[v] {
+                continue;
+            }
+
+            // Check if v has chords to any intermediate path vertices path[1..depth-1]
+            let mut has_chord = false;
+            for j in 1..(depth - 1) {
+                if self.is_adjacent(v, self.path[j]) {
+                    has_chord = true;
+                    break;
+                }
+            }
+            if has_chord {
+                continue;
+            }
+
+            let adj_to_u1 = self.is_adjacent(v, u1_idx);
+            if adj_to_u1 {
+                // Closes a cycle: u1 -> path[1] -> ... -> path[depth-1] -> v -> u1
+                let cycle_len = depth + 1;
+                if (9..=16).contains(&cycle_len)
+                    && v > u2_idx
+                    && self.total_v > cycle_len
+                    && self.clauses_by_len[cycle_len] < MAX_CLAUSES_PER_LENGTH
+                    && self.total_extended_clauses < MAX_EXTENDED_CYCLE_CLAUSES
+                {
+                    self.path[depth] = v;
+                    self.emit_cycle(cycle_len);
+                }
+                // Stop exploring along this branch: any longer cycle would have chord (v, u1)
+                continue;
+            } else {
+                // v is NOT adjacent to u1.
+                // If depth + 1 < 16, continue extending.
+                if depth + 1 < 16 {
+                    self.path[depth] = v;
+                    self.in_path[v] = true;
+                    self.dfs(depth + 1);
+                    self.in_path[v] = false;
+                    if self.total_extended_clauses >= MAX_EXTENDED_CYCLE_CLAUSES {
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    fn emit_cycle(&mut self, cycle_len: usize) {
+        let mut cycle = Vec::with_capacity(cycle_len);
+        for i in 0..cycle_len {
+            cycle.push(self.vertices[self.path[i]]);
+        }
+
+        // Direction 1: 0 -> 1 -> ... -> L-1 -> 0
+        let mut fwd_lits = Vec::with_capacity(cycle_len);
+        let mut fwd_ok = true;
+        for i in 0..cycle_len {
+            let u = cycle[i];
+            let v = cycle[(i + 1) % cycle_len];
+            if let Some(&lit) = self.encoder.graph_lit_map.get(&(u, v)) {
+                fwd_lits.push(!lit);
+            } else {
+                fwd_ok = false;
+                break;
+            }
+        }
+
+        // Direction 2: 0 -> L-1 -> L-2 -> ... -> 1 -> 0
+        let mut rev_lits = Vec::with_capacity(cycle_len);
+        let mut rev_ok = true;
+        for i in 0..cycle_len {
+            let u = cycle[i];
+            let v = cycle[(i + cycle_len - 1) % cycle_len];
+            if let Some(&lit) = self.encoder.graph_lit_map.get(&(u, v)) {
+                rev_lits.push(!lit);
+            } else {
+                rev_ok = false;
+                break;
+            }
+        }
+
+        if fwd_ok {
+            self.cnf.add_clause(Clause::from_iter(fwd_lits));
+            self.clauses_by_len[cycle_len] += 1;
+            self.total_extended_clauses += 1;
+        }
+        if rev_ok
+            && self.clauses_by_len[cycle_len] < MAX_CLAUSES_PER_LENGTH
+            && self.total_extended_clauses < MAX_EXTENDED_CYCLE_CLAUSES
+        {
+            self.cnf.add_clause(Clause::from_iter(rev_lits));
+            self.clauses_by_len[cycle_len] += 1;
+            self.total_extended_clauses += 1;
+        }
     }
 }
