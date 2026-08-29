@@ -365,9 +365,7 @@ impl MetagraphRouter {
                         if let Some(&l_uv) = encoder.graph_lit_map.get(&(u, v)) {
                             module_pair_edges.entry((i, j)).or_default().push(l_uv);
                             module_out_lits.entry(i).or_default().push(l_uv);
-                        }
-                        if let Some(&l_vu) = encoder.graph_lit_map.get(&(v, u)) {
-                            module_in_lits.entry(j).or_default().push(l_vu);
+                            module_in_lits.entry(j).or_default().push(l_uv);
                         }
                     }
                 }
@@ -610,15 +608,11 @@ impl MetagraphRouter {
         for (i, channel) in channels.iter().enumerate() {
             for &(u, v) in &channel.boundary_edges {
                 if let Some(&j) = vertex_to_channel_idx.get(&v) {
-                    if i != j {
                         if let Some(&l_uv) = encoder.graph_lit_map.get(&(u, v)) {
                             channel_pair_edges.entry((i, j)).or_default().push(l_uv);
                             channel_out_lits.entry(i).or_default().push(l_uv);
+                            channel_in_lits.entry(j).or_default().push(l_uv);
                         }
-                        if let Some(&l_vu) = encoder.graph_lit_map.get(&(v, u)) {
-                            channel_in_lits.entry(j).or_default().push(l_vu);
-                        }
-                    }
                 }
             }
         }
