@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use crate::graph::Graph;
 use crate::macro_cycle_stitcher::MacroCycleStitcher;
 use crate::transitive_macro_splicer::TransitiveMacroSplicer;
+use crate::multi_opt_sat_splicer::MultiOptSatSplicer;
 use rustsat::instances::Cnf;
 use rustsat::solvers::{Solve, SolverResult};
 use rustsat::types::{Clause, Lit};
@@ -922,6 +923,16 @@ impl GiantCycleStitcher {
             let spliced = TransitiveMacroSplicer::splice_transitive_macro_graph(&current_cycles, g, protected_edges);
             if spliced.len() < current_cycles.len() {
                 current_cycles = spliced;
+                if current_cycles.len() <= 1 {
+                    break;
+                }
+                continue;
+            }
+
+            // 7. Multi-Opt SAT Splicing: exact 2-opt + 3-opt triangle spanning forest
+            let multi_opt_spliced = MultiOptSatSplicer::splice_multi_opt_cycles(&current_cycles, g, protected_edges);
+            if multi_opt_spliced.len() < current_cycles.len() {
+                current_cycles = multi_opt_spliced;
                 if current_cycles.len() <= 1 {
                     break;
                 }

@@ -1495,4 +1495,116 @@ fn test_cegar_hub_hierarchical_decomposer_integration() {
     }
 }
 
+#[test]
+fn test_cegar_multi_opt_sat_splicer_integration() {
+    use cegar_fix::multi_opt_sat_splicer::MultiOptSatSplicer;
+    use cegar_fix::giant_cycle_stitcher::GiantCycleStitcher;
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use cegar_fix::tour_verifier::TourVerifier;
+    use std::collections::HashSet;
+    use std::time::Instant;
+
+    let mut g = Graph::new();
+
+    // 3 cycle gadgets C0, C1, C2 arranged in a 3-opt triangle configuration
+    // with degree-2 subdivision vertices (101, 102, 103)
+
+    // C0: vertices 1, 2, 3, 4 with subdivision node 101 between 4 and 1
+    g.add_edge(1, 2);
+    g.add_edge(2, 3);
+    g.add_edge(3, 4);
+    g.add_edge(4, 101);
+    g.add_edge(101, 1);
+    // Internal chords in C0 to ensure all non-subdivided vertices have degree >= 3
+    g.add_edge(1, 3);
+    g.add_edge(2, 4);
+
+    // C1: vertices 5, 6, 7, 8 with subdivision node 102 between 8 and 5
+    g.add_edge(5, 6);
+    g.add_edge(6, 7);
+    g.add_edge(7, 8);
+    g.add_edge(8, 102);
+    g.add_edge(102, 5);
+    // Internal chords in C1
+    g.add_edge(5, 7);
+    g.add_edge(6, 8);
+
+    // C2: vertices 9, 10, 11, 12 with subdivision node 103 between 12 and 9
+    g.add_edge(9, 10);
+    g.add_edge(10, 11);
+    g.add_edge(11, 12);
+    g.add_edge(12, 103);
+    g.add_edge(103, 9);
+    // Internal chords in C2
+    g.add_edge(9, 11);
+    g.add_edge(10, 12);
+
+    // 3-opt triangle cross-edges (exactly 1 cross-edge per cycle pair, no 2-opt bridges possible):
+    // C0 <-> C1: (1, 6)
+    // C1 <-> C2: (5, 10)
+    // C2 <-> C0: (9, 2)
+    g.add_edge(1, 6);
+    g.add_edge(5, 10);
+    g.add_edge(9, 2);
+
+    // Step 1: Verify Degree-2 contraction
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+    assert_eq!(contractor.original_vertices_count, 15, "Original graph must have 15 vertices");
+    assert_eq!(contracted_g.adjacency_list.len(), 12, "Contracted graph must have 12 vertices");
+
+    // Step 2: Direct test of MultiOptSatSplicer and GiantCycleStitcher on contracted cycles
+    let c0 = vec![1, 2, 3, 4];
+    let c1 = vec![5, 6, 7, 8];
+    let c2 = vec![9, 10, 11, 12];
+    let initial_cycles = vec![c0, c1, c2];
+    let protected = HashSet::new();
+
+    let multi_opt_spliced = MultiOptSatSplicer::splice_multi_opt_cycles(&initial_cycles, &contracted_g, &protected);
+    assert_eq!(multi_opt_spliced.len(), 1, "MultiOptSatSplicer must splice 3-cycle triangle into 1 cycle");
+    assert_eq!(multi_opt_spliced[0].len(), 12, "Spliced cycle must cover all 12 contracted vertices");
+
+    let stitcher_repaired = GiantCycleStitcher::repair_until_fixed_point(&initial_cycles, &contracted_g, &protected);
+    assert_eq!(stitcher_repaired.len(), 1, "GiantCycleStitcher repair_until_fixed_point must splice 3-cycle triangle into 1 cycle");
+    assert_eq!(stitcher_repaired[0].len(), 12, "Repaired cycle must cover all 12 contracted vertices");
+
+    // Step 3: Full CEGAR end-to-end solve via solve_hamilton
+    let hub_reg = HubRegistry::new(&contracted_g);
+    let start = Instant::now();
+
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+
+    assert!(tour.is_some(), "Graph with 3-cycle triangle configuration must be solved via CEGAR with MultiOptSatSplicer");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 15, "Final uncontracted tour length must equal 15");
+
+    // Step 4: Verify distinct vertex visitation and edge validity on original graph
+    let mut seen = HashSet::new();
+    for &v in &t {
+        assert!(seen.insert(v), "Duplicate vertex {} in tour", v);
+    }
+    assert_eq!(seen.len(), 15, "Tour must visit all 15 distinct vertices");
+
+    let verify_res = TourVerifier::verify_raw_tour(&t, &g);
+    assert!(verify_res.is_ok(), "Tour verification failed: {:?}", verify_res.err());
+
+    for i in 0..t.len() {
+        let u = t[i];
+        let v = t[(i + 1) % t.len()];
+        assert!(
+            g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v)),
+            "Edge ({}, {}) must exist in original graph",
+            u,
+            v
+        );
+    }
+}
+
+
 
