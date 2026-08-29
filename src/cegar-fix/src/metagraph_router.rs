@@ -1,0 +1,309 @@
+use std::collections::{HashMap, HashSet, VecDeque};
+use crate::graph::Graph;
+use crate::encoder::Encoder;
+use rustsat::clause;
+use rustsat::instances::Cnf;
+use rustsat::types::{Clause, Lit};
+
+#[derive(Debug, Clone)]
+pub struct GadgetModule {
+    pub id: usize,
+    pub vertices: Vec<i32>,
+    pub boundary_edges: Vec<(i32, i32)>, // directed edges (u, v) with u in this module, v in another module
+}
+
+pub struct MetagraphRouter;
+
+impl MetagraphRouter {
+    /// Partitions the graph into gadget modules (connected clusters of vertices).
+    pub fn detect_gadget_modules(g: &Graph) -> Vec<GadgetModule> {
+        Self::detect_gadget_modules_with_size(g, 25)
+    }
+
+    /// Partitions the graph into gadget modules with a specified maximum module size.
+    pub fn detect_gadget_modules_with_size(g: &Graph, max_module_size: usize) -> Vec<GadgetModule> {
+        let mut vertices: Vec<i32> = g.adjacency_list.keys().copied().collect();
+        if vertices.is_empty() {
+            return Vec::new();
+        }
+        vertices.sort_unstable();
+
+        let max_size = max_module_size.max(1);
+
+        // Precompute neighbor sets for fast intersection
+        let mut neighbor_sets: HashMap<i32, HashSet<i32>> = HashMap::new();
+        for &u in &vertices {
+            if let Some(neighbors) = g.adjacency_list.get(&u) {
+                neighbor_sets.insert(u, neighbors.iter().copied().collect());
+            }
+        }
+
+        // Count shared neighbors on edges
+        let mut strong_adj: HashMap<i32, Vec<i32>> = HashMap::new();
+        let mut has_any_strong_edge = false;
+
+        for &u in &vertices {
+            if let Some(u_set) = neighbor_sets.get(&u) {
+                if let Some(neighbors) = g.adjacency_list.get(&u) {
+                    for &v in neighbors {
+                        if u < v {
+                            if let Some(v_set) = neighbor_sets.get(&v) {
+                                let common_count = u_set.intersection(v_set).count();
+                                if common_count > 0 {
+                                    has_any_strong_edge = true;
+                                    strong_adj.entry(u).or_default().push(v);
+                                    strong_adj.entry(v).or_default().push(u);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut initial_components: Vec<Vec<i32>> = Vec::new();
+
+        if has_any_strong_edge {
+            let mut visited = HashSet::new();
+            for &v in &vertices {
+                if visited.contains(&v) {
+                    continue;
+                }
+
+                let mut comp = Vec::new();
+                let mut queue = VecDeque::new();
+                visited.insert(v);
+                queue.push_back(v);
+
+                while let Some(curr) = queue.pop_front() {
+                    comp.push(curr);
+                    if let Some(neighbors) = strong_adj.get(&curr) {
+                        for &next in neighbors {
+                            if !visited.contains(&next) {
+                                visited.insert(next);
+                                queue.push_back(next);
+                            }
+                        }
+                    }
+                }
+                comp.sort_unstable();
+                initial_components.push(comp);
+            }
+        } else {
+            // No strong edges (triangle-free graph) -> use full graph connected components
+            let mut visited = HashSet::new();
+            for &v in &vertices {
+                if visited.contains(&v) {
+                    continue;
+                }
+
+                let mut comp = Vec::new();
+                let mut queue = VecDeque::new();
+                visited.insert(v);
+                queue.push_back(v);
+
+                while let Some(curr) = queue.pop_front() {
+                    comp.push(curr);
+                    if let Some(neighbors) = g.adjacency_list.get(&curr) {
+                        for &next in neighbors {
+                            if !visited.contains(&next) {
+                                visited.insert(next);
+                                queue.push_back(next);
+                            }
+                        }
+                    }
+                }
+                comp.sort_unstable();
+                initial_components.push(comp);
+            }
+        }
+
+        // Subdivide components larger than max_size using BFS
+        let mut raw_clusters: Vec<Vec<i32>> = Vec::new();
+
+        for comp in initial_components {
+            if comp.len() <= max_size {
+                raw_clusters.push(comp);
+            } else {
+                let mut remaining: HashSet<i32> = comp.iter().copied().collect();
+                let sorted_comp = comp;
+
+                for &start_v in &sorted_comp {
+                    if !remaining.contains(&start_v) {
+                        continue;
+                    }
+
+                    let mut cluster = Vec::new();
+                    let mut queue = VecDeque::new();
+                    let mut in_queue = HashSet::new();
+
+                    queue.push_back(start_v);
+                    in_queue.insert(start_v);
+
+                    while let Some(curr) = queue.pop_front() {
+                        if !remaining.contains(&curr) {
+                            continue;
+                        }
+                        remaining.remove(&curr);
+                        cluster.push(curr);
+
+                        if cluster.len() >= max_size {
+                            break;
+                        }
+
+                        if let Some(neighbors) = g.adjacency_list.get(&curr) {
+                            let mut sorted_neighbors = neighbors.clone();
+                            sorted_neighbors.sort_unstable();
+                            for &next_v in &sorted_neighbors {
+                                if remaining.contains(&next_v) && !in_queue.contains(&next_v) {
+                                    in_queue.insert(next_v);
+                                    queue.push_back(next_v);
+                                }
+                            }
+                        }
+                    }
+
+                    cluster.sort_unstable();
+                    if !cluster.is_empty() {
+                        raw_clusters.push(cluster);
+                    }
+                }
+            }
+        }
+
+        // Sort clusters deterministically by smallest vertex ID
+        raw_clusters.sort_by(|a, b| {
+            let min_a = a.first().copied().unwrap_or(i32::MAX);
+            let min_b = b.first().copied().unwrap_or(i32::MAX);
+            min_a.cmp(&min_b)
+        });
+
+        // Build vertex to module ID map
+        let mut vertex_to_module: HashMap<i32, usize> = HashMap::new();
+        for (mod_id, cluster) in raw_clusters.iter().enumerate() {
+            for &v in cluster {
+                vertex_to_module.insert(v, mod_id);
+            }
+        }
+
+        // Compute boundary edges for each module
+        let mut modules: Vec<GadgetModule> = Vec::with_capacity(raw_clusters.len());
+        for (mod_id, cluster) in raw_clusters.into_iter().enumerate() {
+            let mut boundary_edges = Vec::new();
+            for &u in &cluster {
+                if let Some(neighbors) = g.adjacency_list.get(&u) {
+                    for &v in neighbors {
+                        if let Some(&other_mod) = vertex_to_module.get(&v) {
+                            if other_mod != mod_id {
+                                boundary_edges.push((u, v));
+                            }
+                        }
+                    }
+                }
+            }
+            boundary_edges.sort_unstable();
+            boundary_edges.dedup();
+
+            modules.push(GadgetModule {
+                id: mod_id,
+                vertices: cluster,
+                boundary_edges,
+            });
+        }
+
+        modules
+    }
+
+    /// Encodes MTZ unary order constraints across all supernodes into cnf.
+    pub fn encode_supernode_mtz(
+        modules: &[GadgetModule],
+        _g: &Graph,
+        encoder: &mut Encoder,
+        cnf: &mut Cnf,
+    ) {
+        let k = modules.len();
+        if k <= 2 {
+            return;
+        }
+
+        // 1. Unary Order Variables for each module i in 0..k and step t in 1..k (k - 1 variables per module)
+        let mut order_vars: Vec<Vec<Lit>> = Vec::with_capacity(k);
+        for _ in 0..k {
+            let mut o_i = Vec::with_capacity(k - 1);
+            for _ in 1..k {
+                let lit = encoder.instance.new_lit();
+                o_i.push(lit);
+            }
+            order_vars.push(o_i);
+        }
+
+        // 2. Order monotonicity: !O_{i, t} \/ O_{i, t-1} for all 2 <= t < k
+        // In 0-based indexing: for t in 1..(k - 1): !order_vars[i][t] \/ order_vars[i][t - 1]
+        for i in 0..k {
+            for t in 1..(k - 1) {
+                cnf.add_clause(clause![!order_vars[i][t], order_vars[i][t - 1]]);
+            }
+        }
+
+        // 3. Root fixing for module 0: u_0 = 0 => !O_{0, 1}
+        cnf.add_clause(clause![!order_vars[0][0]]);
+
+        // Build vertex to module mapping
+        let mut vertex_to_module: HashMap<i32, usize> = HashMap::new();
+        for module in modules {
+            for &v in &module.vertices {
+                vertex_to_module.insert(v, module.id);
+            }
+        }
+
+        // 4. MTZ implication clauses on directed boundary edges between module i and module j (i != j)
+        for module in modules {
+            let i = module.id;
+            let mut out_lits = Vec::new();
+            let mut in_lits = Vec::new();
+
+            for &(u, v) in &module.boundary_edges {
+                if let Some(&j) = vertex_to_module.get(&v) {
+                    if i == j {
+                        continue;
+                    }
+                    if let Some(&l_uv) = encoder.graph_lit_map.get(&(u, v)) {
+                        out_lits.push(l_uv);
+
+                        if j != 0 {
+                            // !l_uv \/ O_{j, 1}
+                            cnf.add_clause(clause![!l_uv, order_vars[j][0]]);
+
+                            // For 1 <= t < K - 1: !l_uv \/ !O_{i, t} \/ O_{j, t+1}
+                            for t_idx in 0..(k - 2) {
+                                cnf.add_clause(clause![
+                                    !l_uv,
+                                    !order_vars[i][t_idx],
+                                    order_vars[j][t_idx + 1]
+                                ]);
+                            }
+
+                            // !l_uv \/ !O_{i, K-1}
+                            cnf.add_clause(clause![!l_uv, !order_vars[i][k - 2]]);
+                        }
+                    }
+                    if let Some(&l_vu) = encoder.graph_lit_map.get(&(v, u)) {
+                        in_lits.push(l_vu);
+                    }
+                }
+            }
+
+            // Boundary cut constraints: at least 1 outgoing boundary edge and at least 1 incoming boundary edge
+            if !out_lits.is_empty() {
+                out_lits.sort_unstable();
+                out_lits.dedup();
+                cnf.add_clause(Clause::from_iter(out_lits));
+            }
+            if !in_lits.is_empty() {
+                in_lits.sort_unstable();
+                in_lits.dedup();
+                cnf.add_clause(Clause::from_iter(in_lits));
+            }
+        }
+    }
+}
