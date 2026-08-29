@@ -236,3 +236,106 @@ fn test_fallback_small_giant_cycle() {
     let expected: Vec<i32> = (1..=14).collect();
     verify_valid_cycle(&res[0], &g, &expected);
 }
+
+#[test]
+fn test_absorb_cluster_into_giant_simultaneous_multi_swap() {
+    let mut g = Graph::new();
+    // Giant cycle: 70 vertices (1..=70 >= 50)
+    for i in 1..=70 {
+        g.add_edge(i, if i == 70 { 1 } else { i + 1 });
+    }
+
+    // Small cycle 1: 3 vertices (71..=73)
+    g.add_edge(71, 72);
+    g.add_edge(72, 73);
+    g.add_edge(73, 71);
+    g.add_edge(10, 71);
+    g.add_edge(11, 72);
+
+    // Small cycle 2: 3 vertices (74..=76)
+    g.add_edge(74, 75);
+    g.add_edge(75, 76);
+    g.add_edge(76, 74);
+    g.add_edge(25, 74);
+    g.add_edge(26, 75);
+
+    // Small cycle 3: 4 vertices (77..=80)
+    g.add_edge(77, 78);
+    g.add_edge(78, 79);
+    g.add_edge(79, 80);
+    g.add_edge(80, 77);
+    g.add_edge(40, 77);
+    g.add_edge(41, 78);
+
+    // Small cycle 4: 4 vertices (81..=84)
+    g.add_edge(81, 82);
+    g.add_edge(82, 83);
+    g.add_edge(83, 84);
+    g.add_edge(84, 81);
+    g.add_edge(55, 81);
+    g.add_edge(56, 82);
+
+    let cycles = vec![
+        (1..=70).collect::<Vec<i32>>(),
+        vec![71, 72, 73],
+        vec![74, 75, 76],
+        vec![77, 78, 79, 80],
+        vec![81, 82, 83, 84],
+    ];
+    let protected = HashSet::new();
+
+    // 1. Direct absorb_cluster_into_giant with max_swaps = 16
+    let result = GiantCycleStitcher::absorb_cluster_into_giant(&cycles, &g, &protected, 16);
+    assert_eq!(result.len(), 1, "Expected all 4 subcycles to be absorbed simultaneously into giant cycle");
+    let expected: Vec<i32> = (1..=84).collect();
+    verify_valid_cycle(&result[0], &g, &expected);
+
+    // 2. repair_until_fixed_point
+    let fixed_result = GiantCycleStitcher::repair_until_fixed_point(&cycles, &g, &protected);
+    assert_eq!(fixed_result.len(), 1);
+    verify_valid_cycle(&fixed_result[0], &g, &expected);
+}
+
+#[test]
+fn test_absorb_cluster_into_giant_with_max_swaps_32() {
+    let mut g = Graph::new();
+    // Giant cycle: 100 vertices (1..=100 >= 50)
+    for i in 1..=100 {
+        g.add_edge(i, if i == 100 { 1 } else { i + 1 });
+    }
+
+    // 6 small cycles connected at different points along the giant cycle
+    let offsets = [
+        (10, 11, vec![101, 102, 103]),
+        (25, 26, vec![104, 105, 106, 107]),
+        (40, 41, vec![108, 109, 110]),
+        (55, 56, vec![111, 112, 113, 114]),
+        (70, 71, vec![115, 116, 117]),
+        (85, 86, vec![118, 119, 120, 121]),
+    ];
+
+    let mut cycles = vec![(1..=100).collect::<Vec<i32>>()];
+
+    for (g_u, g_v, sub) in &offsets {
+        let n = sub.len();
+        for i in 0..n {
+            g.add_edge(sub[i], sub[(i + 1) % n]);
+        }
+        g.add_edge(*g_u, sub[0]);
+        g.add_edge(*g_v, sub[1]);
+        cycles.push(sub.clone());
+    }
+
+    let protected = HashSet::new();
+
+    // Simultaneous multi-swap with max_swaps = 32
+    let result = GiantCycleStitcher::absorb_cluster_into_giant(&cycles, &g, &protected, 32);
+    assert_eq!(result.len(), 1, "Expected all 6 subcycles to be absorbed simultaneously with max_swaps=32");
+    let expected: Vec<i32> = (1..=121).collect();
+    verify_valid_cycle(&result[0], &g, &expected);
+
+    let fixed_result = GiantCycleStitcher::repair_until_fixed_point(&cycles, &g, &protected);
+    assert_eq!(fixed_result.len(), 1);
+    verify_valid_cycle(&fixed_result[0], &g, &expected);
+}
+

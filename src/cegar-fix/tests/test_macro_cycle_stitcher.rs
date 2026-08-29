@@ -180,3 +180,58 @@ fn test_already_single_cycle() {
     assert_eq!(fixed.len(), 1);
     assert_eq!(fixed[0], vec![1, 2, 3]);
 }
+
+#[test]
+fn test_macro_cycle_stitcher_multi_swap_giant_cycle() {
+    let mut g = Graph::new();
+    // Giant cycle: 60 vertices (1..=60 >= 50)
+    for i in 1..=60 {
+        g.add_edge(i, if i == 60 { 1 } else { i + 1 });
+    }
+
+    // Small cycle 1: 3 vertices (61..=63)
+    g.add_edge(61, 62);
+    g.add_edge(62, 63);
+    g.add_edge(63, 61);
+    // Connect to giant at (10, 11)
+    g.add_edge(10, 61);
+    g.add_edge(11, 62);
+
+    // Small cycle 2: 4 vertices (64..=67)
+    g.add_edge(64, 65);
+    g.add_edge(65, 66);
+    g.add_edge(66, 67);
+    g.add_edge(67, 64);
+    // Connect to giant at (30, 31)
+    g.add_edge(30, 64);
+    g.add_edge(31, 65);
+
+    // Small cycle 3: 5 vertices (68..=72)
+    for i in 68..=72 {
+        g.add_edge(i, if i == 72 { 68 } else { i + 1 });
+    }
+    // Connect to giant at (50, 51)
+    g.add_edge(50, 68);
+    g.add_edge(51, 69);
+
+    let cycles = vec![
+        (1..=60).collect::<Vec<i32>>(),
+        vec![61, 62, 63],
+        vec![64, 65, 66, 67],
+        (68..=72).collect::<Vec<i32>>(),
+    ];
+    let protected = HashSet::new();
+
+    // Simultaneous multi-swap with max_swaps = 16
+    let res = MacroCycleStitcher::stitch_cycles(&cycles, &g, &protected, 16);
+    assert!(res.is_some(), "MacroCycleStitcher should merge multi-swap giant cycle without AMO restriction");
+    let merged = res.unwrap();
+    assert_eq!(merged.len(), 1, "Expected all 3 subcycles to be merged with giant cycle");
+    let expected: Vec<i32> = (1..=72).collect();
+    verify_valid_cycle(&merged[0], &g, &expected);
+
+    let fixed = MacroCycleStitcher::stitch_until_fixed_point(&cycles, &g, &protected);
+    assert_eq!(fixed.len(), 1);
+    verify_valid_cycle(&fixed[0], &g, &expected);
+}
+

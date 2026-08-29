@@ -128,56 +128,17 @@ impl MacroCycleStitcher {
         }
 
         // Construct SAT CNF for 2-factor alternating symmetric difference
-        let mut base_cnf = Cnf::new();
-
-        // 1. Vertex Parity: sum(z) == sum(y) for each vertex
-        // For vertices with no cross edges, all incident removable cycle edges must NOT be removed
-        for (&u, c_edges) in &v_cycle_edges {
-            let x_edges = v_cross_edges.get(&u).cloned().unwrap_or_default();
-            if x_edges.is_empty() {
-                for &(_, y_lit) in c_edges {
-                    base_cnf.add_clause(Clause::from_iter([!y_lit]));
-                }
-            } else {
-                // At most 1 cross-edge added per vertex
-                for i in 0..x_edges.len() {
-                    for j in (i + 1)..x_edges.len() {
-                        base_cnf.add_clause(Clause::from_iter([!x_edges[i].1, !x_edges[j].1]));
-                    }
-                }
-                // At most 1 cycle-edge removed per vertex
-                for i in 0..c_edges.len() {
-                    for j in (i + 1)..c_edges.len() {
-                        base_cnf.add_clause(Clause::from_iter([!c_edges[i].1, !c_edges[j].1]));
-                    }
-                }
-                // If any cross-edge is added, at least one cycle-edge must be removed: !z_e \/ \/ y_e
-                for &(_, z_lit) in &x_edges {
-                    let mut cl = vec![!z_lit];
-                    for &(_, y_lit) in c_edges {
-                        cl.push(y_lit);
-                    }
-                    base_cnf.add_clause(Clause::from_iter(cl));
-                }
-                // If any cycle-edge is removed, at least one cross-edge must be added: !y_e \/ \/ z_e
-                for &(_, y_lit) in c_edges {
-                    let mut cl = vec![!y_lit];
-                    for &(_, z_lit) in &x_edges {
-                        cl.push(z_lit);
-                    }
-                    base_cnf.add_clause(Clause::from_iter(cl));
-                }
+        let mut cycle_removable_lits: HashMap<usize, Vec<Lit>> = HashMap::new();
+        for &e in &removable_cycle_edges {
+            let lit = y_map[&e];
+            let cu = vertex_to_cycle[&e.0];
+            let cv = vertex_to_cycle[&e.1];
+            if cu == cv {
+                cycle_removable_lits.entry(cu).or_default().push(lit);
             }
         }
 
-        // For vertices with only cross-edges and no removable cycle edges: cannot add cross-edges
-        for (&u, x_edges) in &v_cross_edges {
-            if !v_cycle_edges.contains_key(&u) {
-                for &(_, z_lit) in x_edges {
-                    base_cnf.add_clause(Clause::from_iter([!z_lit]));
-                }
-            }
-        }
+        let base_cnf = Self::build_base_cnf(cycles, &v_cycle_edges, &v_cross_edges, &cycle_removable_lits);
 
         // 2. Solve SAT subproblem per cycle neighborhood
         for c_idx in 0..cycles.len() {
@@ -249,6 +210,83 @@ impl MacroCycleStitcher {
         }
 
         None
+    }
+
+    /// Builds base SAT CNF for 2-factor alternating symmetric difference.
+    /// Only enforces At-Most-One (AMO) cycle edge removal on small cycles (|C| < 50).
+    /// For giant cycles (|C| >= 50), degree parity (sum y == sum z) guarantees 2-regularity while allowing multi-swap.
+    pub fn build_base_cnf(
+        cycles: &[Vec<i32>],
+        v_cycle_edges: &HashMap<i32, Vec<((i32, i32), Lit)>>,
+        v_cross_edges: &HashMap<i32, Vec<((i32, i32), Lit)>>,
+        cycle_removable_lits: &HashMap<usize, Vec<Lit>>,
+    ) -> Cnf {
+        let mut base_cnf = Cnf::new();
+
+        // 1. Vertex Parity: sum(z) == sum(y) for each vertex
+        // For vertices with no cross edges, all incident removable cycle edges must NOT be removed
+        for (&u, c_edges) in v_cycle_edges {
+            let x_edges = v_cross_edges.get(&u).cloned().unwrap_or_default();
+            if x_edges.is_empty() {
+                for &(_, y_lit) in c_edges {
+                    base_cnf.add_clause(Clause::from_iter([!y_lit]));
+                }
+            } else {
+                // At most 1 cross-edge added per vertex
+                for i in 0..x_edges.len() {
+                    for j in (i + 1)..x_edges.len() {
+                        base_cnf.add_clause(Clause::from_iter([!x_edges[i].1, !x_edges[j].1]));
+                    }
+                }
+                // At most 1 cycle-edge removed per vertex
+                for i in 0..c_edges.len() {
+                    for j in (i + 1)..c_edges.len() {
+                        base_cnf.add_clause(Clause::from_iter([!c_edges[i].1, !c_edges[j].1]));
+                    }
+                }
+                // If any cross-edge is added, at least one cycle-edge must be removed: !z_e \/ \/ y_e
+                for &(_, z_lit) in &x_edges {
+                    let mut cl = vec![!z_lit];
+                    for &(_, y_lit) in c_edges {
+                        cl.push(y_lit);
+                    }
+                    base_cnf.add_clause(Clause::from_iter(cl));
+                }
+                // If any cycle-edge is removed, at least one cross-edge must be added: !y_e \/ \/ z_e
+                for &(_, y_lit) in c_edges {
+                    let mut cl = vec![!y_lit];
+                    for &(_, z_lit) in &x_edges {
+                        cl.push(z_lit);
+                    }
+                    base_cnf.add_clause(Clause::from_iter(cl));
+                }
+            }
+        }
+
+        // For vertices with only cross-edges and no removable cycle edges: cannot add cross-edges
+        for (&u, x_edges) in v_cross_edges {
+            if !v_cycle_edges.contains_key(&u) {
+                for &(_, z_lit) in x_edges {
+                    base_cnf.add_clause(Clause::from_iter([!z_lit]));
+                }
+            }
+        }
+
+        // 2. Cycle AMO: only for small cycles (|C| < 50).
+        // For giant cycles (|C| >= 50), do NOT add AMO, allowing multiple simultaneous swaps.
+        for (c_idx, cycle) in cycles.iter().enumerate() {
+            if cycle.len() < 50 {
+                if let Some(c_y_lits) = cycle_removable_lits.get(&c_idx) {
+                    for i in 0..c_y_lits.len() {
+                        for j in (i + 1)..c_y_lits.len() {
+                            base_cnf.add_clause(Clause::from_iter([!c_y_lits[i], !c_y_lits[j]]));
+                        }
+                    }
+                }
+            }
+        }
+
+        base_cnf
     }
 
     fn evaluate_and_reconstruct_cycles(
@@ -361,6 +399,10 @@ impl MacroCycleStitcher {
             if let Some(next_cycles) = Self::stitch_cycles(&current_cycles, g, protected_edges, 4) {
                 current_cycles = next_cycles;
             } else if let Some(next_cycles) = Self::stitch_cycles(&current_cycles, g, protected_edges, 6) {
+                current_cycles = next_cycles;
+            } else if let Some(next_cycles) = Self::stitch_cycles(&current_cycles, g, protected_edges, 16) {
+                current_cycles = next_cycles;
+            } else if let Some(next_cycles) = Self::stitch_cycles(&current_cycles, g, protected_edges, 32) {
                 current_cycles = next_cycles;
             } else {
                 break;
