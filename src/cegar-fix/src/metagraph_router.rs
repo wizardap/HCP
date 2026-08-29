@@ -17,7 +17,13 @@ pub struct MetagraphRouter;
 impl MetagraphRouter {
     /// Partitions the graph into gadget modules (connected clusters of vertices).
     pub fn detect_gadget_modules(g: &Graph) -> Vec<GadgetModule> {
-        Self::detect_gadget_modules_with_size(g, 25)
+        let n = g.adjacency_list.len();
+        let target_size = if n > 100 {
+            (n / 40).clamp(25, 80)
+        } else {
+            25
+        };
+        Self::detect_gadget_modules_with_size(g, target_size)
     }
 
     /// Partitions the graph into gadget modules with a specified maximum module size.
@@ -40,7 +46,7 @@ impl MetagraphRouter {
 
         // Count shared neighbors on edges
         let mut strong_adj: HashMap<i32, Vec<i32>> = HashMap::new();
-        let mut has_any_strong_edge = false;
+        let mut strong_edge_count = 0;
 
         for &u in &vertices {
             if let Some(u_set) = neighbor_sets.get(&u) {
@@ -50,7 +56,7 @@ impl MetagraphRouter {
                             if let Some(v_set) = neighbor_sets.get(&v) {
                                 let common_count = u_set.intersection(v_set).count();
                                 if common_count > 0 {
-                                    has_any_strong_edge = true;
+                                    strong_edge_count += 1;
                                     strong_adj.entry(u).or_default().push(v);
                                     strong_adj.entry(v).or_default().push(u);
                                 }
@@ -61,9 +67,13 @@ impl MetagraphRouter {
             }
         }
 
+        // Determine if strong edges cover most vertices
+        let strong_covered_vertices = strong_adj.len();
+        let use_strong = strong_edge_count > 0 && strong_covered_vertices >= (vertices.len() * 3) / 4;
+
         let mut initial_components: Vec<Vec<i32>> = Vec::new();
 
-        if has_any_strong_edge {
+        if use_strong {
             let mut visited = HashSet::new();
             for &v in &vertices {
                 if visited.contains(&v) {
@@ -90,33 +100,49 @@ impl MetagraphRouter {
                 initial_components.push(comp);
             }
         } else {
-            // No strong edges (triangle-free graph) -> use full graph connected components
-            let mut visited = HashSet::new();
-            for &v in &vertices {
-                if visited.contains(&v) {
+            // BFS partitioning directly on G into chunks of size max_size
+            let mut unassigned: HashSet<i32> = vertices.iter().copied().collect();
+            for &start_v in &vertices {
+                if !unassigned.contains(&start_v) {
                     continue;
                 }
 
                 let mut comp = Vec::new();
                 let mut queue = VecDeque::new();
-                visited.insert(v);
-                queue.push_back(v);
+                let mut in_queue = HashSet::new();
+
+                queue.push_back(start_v);
+                in_queue.insert(start_v);
 
                 while let Some(curr) = queue.pop_front() {
+                    if !unassigned.contains(&curr) {
+                        continue;
+                    }
+                    unassigned.remove(&curr);
                     comp.push(curr);
+
+                    if comp.len() >= max_size {
+                        break;
+                    }
+
                     if let Some(neighbors) = g.adjacency_list.get(&curr) {
-                        for &next in neighbors {
-                            if !visited.contains(&next) {
-                                visited.insert(next);
+                        let mut sorted_neighbors = neighbors.clone();
+                        sorted_neighbors.sort_unstable();
+                        for &next in &sorted_neighbors {
+                            if unassigned.contains(&next) && !in_queue.contains(&next) {
+                                in_queue.insert(next);
                                 queue.push_back(next);
                             }
                         }
                     }
                 }
                 comp.sort_unstable();
-                initial_components.push(comp);
+                if !comp.is_empty() {
+                    initial_components.push(comp);
+                }
             }
         }
+
 
         // Subdivide components larger than max_size using BFS
         let mut raw_clusters: Vec<Vec<i32>> = Vec::new();
@@ -170,6 +196,70 @@ impl MetagraphRouter {
                 }
             }
         }
+
+        // Merge clusters until total cluster count <= target_max_clusters
+        let target_max_clusters = 40;
+        let mut loop_count = 0;
+        while raw_clusters.len() > target_max_clusters && loop_count < 10000 {
+            loop_count += 1;
+            let mut merged_in_pass = false;
+
+            // Rebuild vertex to cluster map
+            let mut v_to_c: HashMap<i32, usize> = HashMap::new();
+            for (c_idx, cl) in raw_clusters.iter().enumerate() {
+                for &v in cl {
+                    v_to_c.insert(v, c_idx);
+                }
+            }
+
+            // Find the smallest cluster that has an adjacent neighbor cluster
+            let mut candidate_order: Vec<usize> = (0..raw_clusters.len()).collect();
+            candidate_order.sort_by_key(|&idx| raw_clusters[idx].len());
+
+            for src_idx in candidate_order {
+                let mut neighbor_cluster_edges: HashMap<usize, usize> = HashMap::new();
+                for &u in &raw_clusters[src_idx] {
+                    if let Some(neighbors) = g.adjacency_list.get(&u) {
+                        for &v in neighbors {
+                            if let Some(&other_c) = v_to_c.get(&v) {
+                                if other_c != src_idx {
+                                    *neighbor_cluster_edges.entry(other_c).or_insert(0) += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let mut best_target = None;
+                let mut best_score = 0;
+                let mut best_target_size = usize::MAX;
+
+                for (&other_c, &edge_count) in &neighbor_cluster_edges {
+                    let target_size = raw_clusters[other_c].len();
+                    if edge_count > best_score || (edge_count == best_score && target_size < best_target_size) {
+                        best_score = edge_count;
+                        best_target_size = target_size;
+                        best_target = Some(other_c);
+                    }
+                }
+
+                if let Some(tgt_idx) = best_target {
+                    let src_nodes = raw_clusters.remove(src_idx);
+                    let actual_tgt = if tgt_idx > src_idx { tgt_idx - 1 } else { tgt_idx };
+                    raw_clusters[actual_tgt].extend(src_nodes);
+                    raw_clusters[actual_tgt].sort_unstable();
+                    merged_in_pass = true;
+                    break;
+                }
+            }
+
+            if !merged_in_pass {
+                break;
+            }
+        }
+
+
+
 
         // Sort clusters deterministically by smallest vertex ID
         raw_clusters.sort_by(|a, b| {

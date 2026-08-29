@@ -300,3 +300,27 @@ fn test_encode_supernode_mtz_four_modules_subcycles() {
         assert_eq!(res, SolverResult::Sat, "Valid 12-cycle traversing all 4 modules must be SAT");
     }
 }
+
+#[test]
+fn test_graph479_metagraph() {
+    use cegar_fix::file_operations::input_to_graph;
+    use cegar_fix::contraction::Degree2Contractor;
+    use std::path::Path;
+
+    let path = "/home/ubuntu/HCP/FHCPCS-col/graph479.col";
+    if Path::new(path).exists() {
+        let mut g = input_to_graph(path);
+        g.prune_degree2_triangles();
+        let (contracted_g, _) = Degree2Contractor::contract(&g);
+        let mods = MetagraphRouter::detect_gadget_modules(&contracted_g);
+        assert!(!mods.is_empty(), "Modules should be detected");
+        let total_verts: usize = mods.iter().map(|m| m.vertices.len()).sum();
+        assert_eq!(total_verts, contracted_g.adjacency_list.len(), "Modules must partition all vertices");
+    }
+}
+
+
+
+
+
+
