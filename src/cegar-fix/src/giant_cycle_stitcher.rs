@@ -68,6 +68,14 @@ impl GiantCycleStitcher {
         let mut made_progress = true;
         while made_progress && !remaining_cycles.is_empty() {
             made_progress = false;
+            let giant_set: HashSet<i32> = current_giant.iter().copied().collect();
+            remaining_cycles.sort_by_cached_key(|c| {
+                let cross_count = c.iter().map(|&u| {
+                    g.adjacency_list.get(&u).map_or(0, |nbrs| nbrs.iter().filter(|v| giant_set.contains(v)).count())
+                }).sum::<usize>();
+                std::cmp::Reverse(cross_count)
+            });
+
             let mut next_remaining = Vec::new();
 
             for subcycle in remaining_cycles {
