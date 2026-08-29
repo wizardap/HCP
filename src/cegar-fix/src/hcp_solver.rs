@@ -30,6 +30,7 @@ use crate::hemisphere_splicer::HemisphereSplicer;
 use crate::static_cycle_cutter::StaticCycleCutter;
 use crate::boundary_alternating_patcher::BoundaryAlternatingPatcher;
 use crate::metagraph_router::MetagraphRouter;
+use crate::parallel_sat_portfolio::{ParallelSatPortfolio, PortfolioResult};
 
 
 /// Pre-emptively forbids 3-cycles (triangles) and 4-cycles in the initial CNF encoding in O(|E| * Delta).
@@ -298,36 +299,18 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
 
     // 標準入力で -s の後の数字により、minisat,kissat,cadicalを選択する
     println!("encodhing time = {:?}",instant.elapsed()-now);
-    // let mut solver: Box<MySolver> =
-    // if s == 0 {
-    //     Box::new(MySolver::Minisat(rustsat_minisat::core::Minisat::default()))
-    // } else if s == 1 {
-    //     Box::new(MySolver::Kissat(rustsat_kissat::Kissat::default())) 
-    // } else if s == 2 {
-    //     Box::new(MySolver::CaDiCaL(rustsat_cadical::CaDiCaL::default()))
-    // } else {
-    //     panic!("out of number for solver\nminisat: -s 0\nkissat: -s 1\ncadical: -s 2");
-    // };
-    let mut solver = rustsat_cadical::CaDiCaL::default();
-    if cadical_config == 1{
-        _ = solver.set_configuration(Config::Sat);
-    }
-    // println!("encodhing clauses number = {}",cnf.len());
     println!();
     let base_cnf = if cnf_normalize == 1{
         let normalized_cnf = cnf.normalize();
         println!("encodhing clauses number = {}",normalized_cnf.len());
-        let _ = solver.add_cnf(normalized_cnf.clone());
         normalized_cnf
     }else{
         println!("encodhing clauses number = {}",cnf.len());
-        let _ = solver.add_cnf(cnf.clone());
         cnf
     };
     // cegar関数により、解を求め、increment数と追加したblock節の合計を返す
     let (increment, block, tour) = cegar(
         &mut encoder,
-        solver,
         0,
         0,
         g,
@@ -362,7 +345,6 @@ fn print_tour(tour: &[i32], contractor: &Degree2Contractor) {
 
 fn cegar(
     encoder: &mut Encoder,
-    mut solver: rustsat_cadical::CaDiCaL<'static, 'static>,
     mut count: i32,
     mut clause_count: i32,
     g: Graph,
@@ -379,7 +361,7 @@ fn cegar(
     mut previous_cnf: Cnf,
     output_folder: &str,
     base_cnf: Cnf,
-    cadical_config: i32,
+    _cadical_config: i32,
 ) -> (i32, i32, Option<Vec<i32>>) {
     // Attempt Modular Macro-Decomposition when dense hubs are detected
     if hub_registry.hub_vertices.len() >= 5 {
@@ -410,6 +392,7 @@ fn cegar(
         }
     }
 
+    let mut working_cnf = base_cnf.clone();
     let mut assumptions: Vec<Lit> = Vec::new();
     let mut accumulated_cut_cnfs: Vec<Cnf> = Vec::new();
     let reseeder_opts = ReseederOptions::default();
@@ -420,26 +403,8 @@ fn cegar(
             return (count, clause_count, None);
         }
 
-        // SATソルバーで解を求める
-        let (res, _used_assumps) = if !assumptions.is_empty() {
-            let _ = solver.limit_conflicts(Some(5000));
-            let res_assumps = solver.solve_assumps(&assumptions);
-            let _ = solver.limit_conflicts(None);
-            match res_assumps {
-                Ok(SolverResult::Sat) => (SolverResult::Sat, true),
-                Ok(SolverResult::Unsat) | Ok(SolverResult::Interrupted) => {
-                    // Assumptions infeasible or too slow; immediately fall back to unconstrained solving
-                    assumptions.clear();
-                    (solver.solve().unwrap_or(SolverResult::Unsat), false)
-                }
-                Err(_) => {
-                    assumptions.clear();
-                    (solver.solve().unwrap_or(SolverResult::Unsat), false)
-                }
-            }
-        } else {
-            (solver.solve().unwrap_or(SolverResult::Unsat), false)
-        };
+        // SATソルバーで解を求める (3 concurrent CaDiCaL workers across Cores 0, 1, 2)
+        let port_res = ParallelSatPortfolio::solve_portfolio(&working_cnf, &assumptions, 3);
         let now = instant.elapsed();
         let sat_solving_time = now - previous_time;
 
@@ -449,206 +414,32 @@ fn cegar(
         println!("sat solving time = {:?}", sat_solving_time);
 
         // 解がSATならば、ハミルトン閉路になっているかを調べる
-        if res == SolverResult::Sat {
-            // 変数の値割り当て
-            let sol = solver.full_solution().unwrap();
-            // どの辺が選択されたかの解析
-            let sol_arcs = get_solution_arcs(sol, &encoder.graph_lit_map);
-            // 閉路
-            let sol_cycles = get_solution_cycles(sol_arcs);
+        match port_res {
+            PortfolioResult::Sat(model_lits) => {
+                // どの辺が選択されたかの解析
+                let sol_arcs = get_solution_arcs_from_lits(&model_lits, &encoder.graph_lit_map);
+                // 閉路
+                let sol_cycles = get_solution_cycles(sol_arcs);
 
-            // 閉路が一つであれば、ハミルトン閉路なので解を出力
-            if sol_cycles.len() == 1 {
-                let flat: Vec<i32> = sol_cycles.into_iter().flatten().collect();
-                let full_cycle = contractor.uncontract_cycle(&flat);
-                let line = full_cycle.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
-                println!();
-                println!("solution: ");
-                println!("{}\n", line);
-                println!("s SATISFIABLE");
-                return (count, clause_count, Some(full_cycle));
-            } else {
-                println!("number of subcycles found = {}", sol_cycles.len());
-                println!("sat solution cycle lengths map (length:number) = {:?}", map_cycle_lengths(&sol_cycles));
-
-                // Attempt Multi-Subcycle Hub Patching
-                let sol_cycles = if sol_cycles.len() > 1 && !hub_registry.hub_vertices.is_empty() {
-                    let patched = HubPatcher::patch_cycles_via_hubs(&sol_cycles, &g, contractor, hub_registry);
-                    if patched.len() == 1 && patched[0].len() == g.adjacency_list.len() {
-                        println!("number of subcycles found = 1 (via hub patching)");
-                        let flat: Vec<i32> = patched.into_iter().flatten().collect();
-                        let final_tour = contractor.uncontract_cycle(&flat);
-                        let line = final_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
-                        let time = now - previous_time;
-                        let add_block_clauses_time = now - previous_time - sat_solving_time;
-                        println!("number of added block clauses = {}", clause_count);
-                        println!("add block clauses time = {:?}", add_block_clauses_time);
-                        println!("increment time = {:?}", time);
-                        println!();
-                        println!("solution: ");
-                        println!("{}\n", line);
-                        println!("s SATISFIABLE");
-                        return (count, clause_count, Some(final_tour));
-                    }
-                    patched
+                // 閉路が一つであれば、ハミルトン閉路なので解を出力
+                if sol_cycles.len() == 1 {
+                    let flat: Vec<i32> = sol_cycles.into_iter().flatten().collect();
+                    let full_cycle = contractor.uncontract_cycle(&flat);
+                    let line = full_cycle.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                    println!();
+                    println!("solution: ");
+                    println!("{}\n", line);
+                    println!("s SATISFIABLE");
+                    return (count, clause_count, Some(full_cycle));
                 } else {
-                    sol_cycles
-                };
+                    println!("number of subcycles found = {}", sol_cycles.len());
+                    println!("sat solution cycle lengths map (length:number) = {:?}", map_cycle_lengths(&sol_cycles));
 
-                // Attempt Maximum Matching Global Patching on remaining subcycles
-                let sol_cycles = if sol_cycles.len() > 1 {
-                    let patched = MatchingPatcher::patch_cycles_via_matching(&sol_cycles, &g, contractor, hub_registry);
-                    if patched.len() == 1 && patched[0].len() == g.adjacency_list.len() {
-                        println!("number of subcycles found = 1 (via matching patching)");
-                        let flat: Vec<i32> = patched.into_iter().flatten().collect();
-                        let final_tour = contractor.uncontract_cycle(&flat);
-                        let line = final_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
-                        let time = now - previous_time;
-                        let add_block_clauses_time = now - previous_time - sat_solving_time;
-                        println!("number of added block clauses = {}", clause_count);
-                        println!("add block clauses time = {:?}", add_block_clauses_time);
-                        println!("increment time = {:?}", time);
-                        println!();
-                        println!("solution: ");
-                        println!("{}\n", line);
-                        println!("s SATISFIABLE");
-                        return (count, clause_count, Some(final_tour));
-                    }
-                    patched
-                } else {
-                    sol_cycles
-                };
-
-                // Attempt Chained k-Opt / Lin-Kernighan Variable-Depth Patching
-                let sol_cycles = if sol_cycles.len() > 1 {
-                    let patched = ChainedLKSolver::patch_cycles_via_chained_lk(&sol_cycles, &g, contractor, hub_registry, 6);
-                    if patched.len() == 1 && patched[0].len() == g.adjacency_list.len() {
-                        println!("number of subcycles found = 1 (via chained lk patching)");
-                        let flat: Vec<i32> = patched.into_iter().flatten().collect();
-                        let final_tour = contractor.uncontract_cycle(&flat);
-                        let line = final_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
-                        let time = now - previous_time;
-                        let add_block_clauses_time = now - previous_time - sat_solving_time;
-                        println!("number of added block clauses = {}", clause_count);
-                        println!("add block clauses time = {:?}", add_block_clauses_time);
-                        println!("increment time = {:?}", time);
-                        println!();
-                        println!("solution: ");
-                        println!("{}\n", line);
-                        println!("s SATISFIABLE");
-                        return (count, clause_count, Some(final_tour));
-                    }
-                    patched
-                } else {
-                    sol_cycles
-                };
-
-                // Attempt Iterated Local Search (ILS) with Double-Bridge Kicks
-                let sol_cycles = if sol_cycles.len() > 1 {
-                    let patched = IteratedLocalSearchPatcher::solve_via_ils(&sol_cycles, &g, contractor, hub_registry, 200);
-                    if patched.len() == 1 && patched[0].len() == g.adjacency_list.len() {
-                        println!("number of subcycles found = 1 (via ils patching)");
-                        let flat: Vec<i32> = patched.into_iter().flatten().collect();
-                        let final_tour = contractor.uncontract_cycle(&flat);
-                        let line = final_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
-                        let time = now - previous_time;
-                        let add_block_clauses_time = now - previous_time - sat_solving_time;
-                        println!("number of added block clauses = {}", clause_count);
-                        println!("add block clauses time = {:?}", add_block_clauses_time);
-                        println!("increment time = {:?}", time);
-                        println!();
-                        println!("solution: ");
-                        println!("{}\n", line);
-                        println!("s SATISFIABLE");
-                        return (count, clause_count, Some(final_tour));
-                    }
-                    patched
-                } else {
-                    sol_cycles
-                };
-
-                // Attempt Macro-Graph Hierarchical Contraction Solver
-                let sol_cycles = if sol_cycles.len() > 1 {
-                    if let Some(macro_tour) = MacroGraphSolver::solve_via_macro_graph(&sol_cycles, &g, contractor, hub_registry) {
-                        if macro_tour.len() == g.adjacency_list.len() {
-                            println!("number of subcycles found = 1 (via macro-graph solver)");
-                            let final_tour = contractor.uncontract_cycle(&macro_tour);
-                            let line = final_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
-                            let time = now - previous_time;
-                            let add_block_clauses_time = now - previous_time - sat_solving_time;
-                            println!("number of added block clauses = {}", clause_count);
-                            println!("add block clauses time = {:?}", add_block_clauses_time);
-                            println!("increment time = {:?}", time);
-                            println!();
-                            println!("solution: ");
-                            println!("{}\n", line);
-                            println!("s SATISFIABLE");
-                            return (count, clause_count, Some(final_tour));
-                        }
-                    }
-                    sol_cycles
-                } else {
-                    sol_cycles
-                };
-
-                // Attempt Multi-Cycle Alternating Chain Splicer & Absorber
-                let sol_cycles = if sol_cycles.len() > 1 {
-                    let absorbed = CycleChainAbsorber::absorb_all(&sol_cycles, &g, contractor, hub_registry);
-                    if absorbed.len() == 1 && absorbed[0].len() == g.adjacency_list.len() {
-                        println!("number of subcycles found = 1 (via cycle chain absorber)");
-                        let flat: Vec<i32> = absorbed.into_iter().flatten().collect();
-                        let final_tour = contractor.uncontract_cycle(&flat);
-                        let line = final_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
-                        let time = now - previous_time;
-                        let add_block_clauses_time = now - previous_time - sat_solving_time;
-                        println!("number of added block clauses = {}", clause_count);
-                        println!("add block clauses time = {:?}", add_block_clauses_time);
-                        println!("increment time = {:?}", time);
-                        println!();
-                        println!("solution: ");
-                        println!("{}\n", line);
-                        println!("s SATISFIABLE");
-                        return (count, clause_count, Some(final_tour));
-                    }
-                    absorbed
-                } else {
-                    sol_cycles
-                };
-
-                // Attempt Hemisphere Splicing for 2..=4 macro-components
-                let sol_cycles = if sol_cycles.len() >= 2 && sol_cycles.len() <= 4 {
-                    if let Some(spliced) = HemisphereSplicer::try_direct_splice_all(&sol_cycles, &g, contractor) {
-                        println!("HemisphereSplicer: directly spliced macro-components from {} to {} cycles", sol_cycles.len(), spliced.len());
-                        if spliced.len() == 1 && spliced[0].len() == g.adjacency_list.len() {
-                            println!("number of subcycles found = 1 (via direct hemisphere splicer)");
-                            let flat: Vec<i32> = spliced.into_iter().flatten().collect();
-                            let final_tour = contractor.uncontract_cycle(&flat);
-                            let line = final_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
-                            let time = now - previous_time;
-                            let add_block_clauses_time = now - previous_time - sat_solving_time;
-                            println!("number of added block clauses = {}", clause_count);
-                            println!("add block clauses time = {:?}", add_block_clauses_time);
-                            println!("increment time = {:?}", time);
-                            println!();
-                            println!("solution: ");
-                            println!("{}\n", line);
-                            println!("s SATISFIABLE");
-                            return (count, clause_count, Some(final_tour));
-                        }
-                        spliced
-                    } else {
-                        sol_cycles
-                    }
-                } else {
-                    sol_cycles
-                };
-
-                // Attempt Multi-Hop Boundary Alternating Patcher for 2..=4 macro-components
-                let sol_cycles = if sol_cycles.len() >= 2 && sol_cycles.len() <= 4 {
-                    if let Some(patched) = BoundaryAlternatingPatcher::try_patch_macro_hemispheres(&sol_cycles, &g, contractor, 4) {
-                        println!("BoundaryAlternatingPatcher: patched macro-hemispheres from {} to {} cycles", sol_cycles.len(), patched.len());
+                    // Attempt Multi-Subcycle Hub Patching
+                    let sol_cycles = if sol_cycles.len() > 1 && !hub_registry.hub_vertices.is_empty() {
+                        let patched = HubPatcher::patch_cycles_via_hubs(&sol_cycles, &g, contractor, hub_registry);
                         if patched.len() == 1 && patched[0].len() == g.adjacency_list.len() {
-                            println!("number of subcycles found = 1 (via boundary alternating patcher)");
+                            println!("number of subcycles found = 1 (via hub patching)");
                             let flat: Vec<i32> = patched.into_iter().flatten().collect();
                             let final_tour = contractor.uncontract_cycle(&flat);
                             let line = final_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
@@ -666,164 +457,361 @@ fn cegar(
                         patched
                     } else {
                         sol_cycles
-                    }
-                } else {
-                    sol_cycles
-                };
+                    };
 
-                // 2-opt / 3-opt solution constructor
-                let (block_clauses, _active_cycles) = if opt == 0 {
-                    (get_blocking_clauses(&sol_cycles, encoder, &g, block_method, balanced), sol_cycles.clone())
-                } else if opt >= 1 {
-                    let (clauses, cycles) = two_opt(&sol_cycles, encoder, &g, contractor, hub_registry, block_method, balanced, opt, three_opt);
-                    if cycles.len() == 1 && cycles[0].len() == g.adjacency_list.len() {
-                        let flat: Vec<i32> = cycles.into_iter().flatten().collect();
-                        let full_cycle = contractor.uncontract_cycle(&flat);
-                        let line = full_cycle.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
-                        let now = instant.elapsed();
-                        let time = now - previous_time;
-                        let add_block_clauses_time = now - previous_time - sat_solving_time;
-                        println!("number of added block clauses = {}", clause_count);
-                        println!("add block clauses time = {:?}", add_block_clauses_time);
-                        println!("increment time = {:?}", time);
-                        println!();
-                        println!("hamiltonian cycle found by 2-opt/3-opt");
-                        println!("solution: ");
-                        println!("{}\n", line);
-                        println!("s SATISFIABLE");
-                        return (count, clause_count, Some(full_cycle));
-                    }
-                    (clauses, cycles)
-                } else {
-                    panic!("2-opt option \n-t 0:2-opt off\n-t 1,2,3:2-opt on");
-                };
+                    // Attempt Maximum Matching Global Patching on remaining subcycles
+                    let sol_cycles = if sol_cycles.len() > 1 {
+                        let patched = MatchingPatcher::patch_cycles_via_matching(&sol_cycles, &g, contractor, hub_registry);
+                        if patched.len() == 1 && patched[0].len() == g.adjacency_list.len() {
+                            println!("number of subcycles found = 1 (via matching patching)");
+                            let flat: Vec<i32> = patched.into_iter().flatten().collect();
+                            let final_tour = contractor.uncontract_cycle(&flat);
+                            let line = final_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                            let time = now - previous_time;
+                            let add_block_clauses_time = now - previous_time - sat_solving_time;
+                            println!("number of added block clauses = {}", clause_count);
+                            println!("add block clauses time = {:?}", add_block_clauses_time);
+                            println!("increment time = {:?}", time);
+                            println!();
+                            println!("solution: ");
+                            println!("{}\n", line);
+                            println!("s SATISFIABLE");
+                            return (count, clause_count, Some(final_tour));
+                        }
+                        patched
+                    } else {
+                        sol_cycles
+                    };
 
-                // Gadget Interface Parity & Direct Splicing Check
-                if _active_cycles.len() >= 2 {
-                    let total_nodes = g.adjacency_list.len();
-                    let max_cycle_idx = _active_cycles
-                        .iter()
-                        .enumerate()
-                        .max_by_key(|(_, c)| c.len())
-                        .map(|(idx, _)| idx);
+                    // Attempt Chained k-Opt / Lin-Kernighan Variable-Depth Patching
+                    let sol_cycles = if sol_cycles.len() > 1 {
+                        let patched = ChainedLKSolver::patch_cycles_via_chained_lk(&sol_cycles, &g, contractor, hub_registry, 6);
+                        if patched.len() == 1 && patched[0].len() == g.adjacency_list.len() {
+                            println!("number of subcycles found = 1 (via chained lk patching)");
+                            let flat: Vec<i32> = patched.into_iter().flatten().collect();
+                            let final_tour = contractor.uncontract_cycle(&flat);
+                            let line = final_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                            let time = now - previous_time;
+                            let add_block_clauses_time = now - previous_time - sat_solving_time;
+                            println!("number of added block clauses = {}", clause_count);
+                            println!("add block clauses time = {:?}", add_block_clauses_time);
+                            println!("increment time = {:?}", time);
+                            println!();
+                            println!("solution: ");
+                            println!("{}\n", line);
+                            println!("s SATISFIABLE");
+                            return (count, clause_count, Some(final_tour));
+                        }
+                        patched
+                    } else {
+                        sol_cycles
+                    };
 
-                    if let Some(giant_idx) = max_cycle_idx {
-                        let mut giant = _active_cycles[giant_idx].clone();
-                        if giant.len() > total_nodes / 2 {
-                            for (c_idx, subcycle) in _active_cycles.iter().enumerate() {
-                                if c_idx != giant_idx && subcycle.len() <= 32 {
-                                    let gadget_res = GadgetInterfaceParityEngine::analyze_subcycle_gadget(
-                                        subcycle,
-                                        &g,
-                                        Some(&giant),
-                                        encoder,
-                                    );
+                    // Attempt Iterated Local Search (ILS) with Double-Bridge Kicks
+                    let sol_cycles = if sol_cycles.len() > 1 {
+                        let patched = IteratedLocalSearchPatcher::solve_via_ils(&sol_cycles, &g, contractor, hub_registry, 200);
+                        if patched.len() == 1 && patched[0].len() == g.adjacency_list.len() {
+                            println!("number of subcycles found = 1 (via ils patching)");
+                            let flat: Vec<i32> = patched.into_iter().flatten().collect();
+                            let final_tour = contractor.uncontract_cycle(&flat);
+                            let line = final_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                            let time = now - previous_time;
+                            let add_block_clauses_time = now - previous_time - sat_solving_time;
+                            println!("number of added block clauses = {}", clause_count);
+                            println!("add block clauses time = {:?}", add_block_clauses_time);
+                            println!("increment time = {:?}", time);
+                            println!();
+                            println!("solution: ");
+                            println!("{}\n", line);
+                            println!("s SATISFIABLE");
+                            return (count, clause_count, Some(final_tour));
+                        }
+                        patched
+                    } else {
+                        sol_cycles
+                    };
 
-                                    // 1. Direct splice check
-                                    if let Some(spliced) = gadget_res.direct_spliced_tour {
-                                        giant = spliced;
-                                        if giant.len() == total_nodes {
-                                            println!("GadgetInterfaceParity: direct spliced full tour found ({} vertices)", giant.len());
-                                            let full_cycle = contractor.uncontract_cycle(&giant);
-                                            let line = full_cycle.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
-                                            println!();
-                                            println!("solution: ");
-                                            println!("{}\n", line);
-                                            println!("s SATISFIABLE");
-                                            return (count, clause_count, Some(full_cycle));
+                    // Attempt Macro-Graph Hierarchical Contraction Solver
+                    let sol_cycles = if sol_cycles.len() > 1 {
+                        if let Some(macro_tour) = MacroGraphSolver::solve_via_macro_graph(&sol_cycles, &g, contractor, hub_registry) {
+                            if macro_tour.len() == g.adjacency_list.len() {
+                                println!("number of subcycles found = 1 (via macro-graph solver)");
+                                let final_tour = contractor.uncontract_cycle(&macro_tour);
+                                let line = final_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                                let time = now - previous_time;
+                                let add_block_clauses_time = now - previous_time - sat_solving_time;
+                                println!("number of added block clauses = {}", clause_count);
+                                println!("add block clauses time = {:?}", add_block_clauses_time);
+                                println!("increment time = {:?}", time);
+                                println!();
+                                println!("solution: ");
+                                println!("{}\n", line);
+                                println!("s SATISFIABLE");
+                                return (count, clause_count, Some(final_tour));
+                            }
+                        }
+                        sol_cycles
+                    } else {
+                        sol_cycles
+                    };
+
+                    // Attempt Multi-Cycle Alternating Chain Splicer & Absorber
+                    let sol_cycles = if sol_cycles.len() > 1 {
+                        let absorbed = CycleChainAbsorber::absorb_all(&sol_cycles, &g, contractor, hub_registry);
+                        if absorbed.len() == 1 && absorbed[0].len() == g.adjacency_list.len() {
+                            println!("number of subcycles found = 1 (via cycle chain absorber)");
+                            let flat: Vec<i32> = absorbed.into_iter().flatten().collect();
+                            let final_tour = contractor.uncontract_cycle(&flat);
+                            let line = final_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                            let time = now - previous_time;
+                            let add_block_clauses_time = now - previous_time - sat_solving_time;
+                            println!("number of added block clauses = {}", clause_count);
+                            println!("add block clauses time = {:?}", add_block_clauses_time);
+                            println!("increment time = {:?}", time);
+                            println!();
+                            println!("solution: ");
+                            println!("{}\n", line);
+                            println!("s SATISFIABLE");
+                            return (count, clause_count, Some(final_tour));
+                        }
+                        absorbed
+                    } else {
+                        sol_cycles
+                    };
+
+                    // Attempt Hemisphere Splicing for 2..=4 macro-components
+                    let sol_cycles = if sol_cycles.len() >= 2 && sol_cycles.len() <= 4 {
+                        if let Some(spliced) = HemisphereSplicer::try_direct_splice_all(&sol_cycles, &g, contractor) {
+                            println!("HemisphereSplicer: directly spliced macro-components from {} to {} cycles", sol_cycles.len(), spliced.len());
+                            if spliced.len() == 1 && spliced[0].len() == g.adjacency_list.len() {
+                                println!("number of subcycles found = 1 (via direct hemisphere splicer)");
+                                let flat: Vec<i32> = spliced.into_iter().flatten().collect();
+                                let final_tour = contractor.uncontract_cycle(&flat);
+                                let line = final_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                                let time = now - previous_time;
+                                let add_block_clauses_time = now - previous_time - sat_solving_time;
+                                println!("number of added block clauses = {}", clause_count);
+                                println!("add block clauses time = {:?}", add_block_clauses_time);
+                                println!("increment time = {:?}", time);
+                                println!();
+                                println!("solution: ");
+                                println!("{}\n", line);
+                                println!("s SATISFIABLE");
+                                return (count, clause_count, Some(final_tour));
+                            }
+                            spliced
+                        } else {
+                            sol_cycles
+                        }
+                    } else {
+                        sol_cycles
+                    };
+
+                    // Attempt Multi-Hop Boundary Alternating Patcher for 2..=4 macro-components
+                    let sol_cycles = if sol_cycles.len() >= 2 && sol_cycles.len() <= 4 {
+                        if let Some(patched) = BoundaryAlternatingPatcher::try_patch_macro_hemispheres(&sol_cycles, &g, contractor, 4) {
+                            println!("BoundaryAlternatingPatcher: patched macro-hemispheres from {} to {} cycles", sol_cycles.len(), patched.len());
+                            if patched.len() == 1 && patched[0].len() == g.adjacency_list.len() {
+                                println!("number of subcycles found = 1 (via boundary alternating patcher)");
+                                let flat: Vec<i32> = patched.into_iter().flatten().collect();
+                                let final_tour = contractor.uncontract_cycle(&flat);
+                                let line = final_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                                let time = now - previous_time;
+                                let add_block_clauses_time = now - previous_time - sat_solving_time;
+                                println!("number of added block clauses = {}", clause_count);
+                                println!("add block clauses time = {:?}", add_block_clauses_time);
+                                println!("increment time = {:?}", time);
+                                println!();
+                                println!("solution: ");
+                                println!("{}\n", line);
+                                println!("s SATISFIABLE");
+                                return (count, clause_count, Some(final_tour));
+                            }
+                            patched
+                        } else {
+                            sol_cycles
+                        }
+                    } else {
+                        sol_cycles
+                    };
+
+                    // 2-opt / 3-opt solution constructor
+                    let (block_clauses, _active_cycles) = if opt == 0 {
+                        (get_blocking_clauses(&sol_cycles, encoder, &g, block_method, balanced), sol_cycles.clone())
+                    } else if opt >= 1 {
+                        let (clauses, cycles) = two_opt(&sol_cycles, encoder, &g, contractor, hub_registry, block_method, balanced, opt, three_opt);
+                        if cycles.len() == 1 && cycles[0].len() == g.adjacency_list.len() {
+                            let flat: Vec<i32> = cycles.into_iter().flatten().collect();
+                            let full_cycle = contractor.uncontract_cycle(&flat);
+                            let line = full_cycle.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                            let now = instant.elapsed();
+                            let time = now - previous_time;
+                            let add_block_clauses_time = now - previous_time - sat_solving_time;
+                            println!("number of added block clauses = {}", clause_count);
+                            println!("add block clauses time = {:?}", add_block_clauses_time);
+                            println!("increment time = {:?}", time);
+                            println!();
+                            println!("hamiltonian cycle found by 2-opt/3-opt");
+                            println!("solution: ");
+                            println!("{}\n", line);
+                            println!("s SATISFIABLE");
+                            return (count, clause_count, Some(full_cycle));
+                        }
+                        (clauses, cycles)
+                    } else {
+                        panic!("2-opt option \n-t 0:2-opt off\n-t 1,2,3:2-opt on");
+                    };
+
+                    // Gadget Interface Parity & Direct Splicing Check
+                    if _active_cycles.len() >= 2 {
+                        let total_nodes = g.adjacency_list.len();
+                        let max_cycle_idx = _active_cycles
+                            .iter()
+                            .enumerate()
+                            .max_by_key(|(_, c)| c.len())
+                            .map(|(idx, _)| idx);
+
+                        if let Some(giant_idx) = max_cycle_idx {
+                            let mut giant = _active_cycles[giant_idx].clone();
+                            if giant.len() > total_nodes / 2 {
+                                for (c_idx, subcycle) in _active_cycles.iter().enumerate() {
+                                    if c_idx != giant_idx && subcycle.len() <= 32 {
+                                        let gadget_res = GadgetInterfaceParityEngine::analyze_subcycle_gadget(
+                                            subcycle,
+                                            &g,
+                                            Some(&giant),
+                                            encoder,
+                                        );
+
+                                        // 1. Direct splice check
+                                        if let Some(spliced) = gadget_res.direct_spliced_tour {
+                                            giant = spliced;
+                                            if giant.len() == total_nodes {
+                                                println!("GadgetInterfaceParity: direct spliced full tour found ({} vertices)", giant.len());
+                                                let full_cycle = contractor.uncontract_cycle(&giant);
+                                                let line = full_cycle.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                                                println!();
+                                                println!("solution: ");
+                                                println!("{}\n", line);
+                                                println!("s SATISFIABLE");
+                                                return (count, clause_count, Some(full_cycle));
+                                            }
                                         }
-                                    }
 
-                                    // 2. Infeasible port pruning clauses & boundary cut parity clauses
-                                    for cl in gadget_res.pruning_clauses {
-                                        clause_count += 1;
-                                        let _ = solver.add_clause(cl.clone());
-                                        let mut g_cnf = Cnf::new();
-                                        g_cnf.add_clause(cl);
-                                        accumulated_cut_cnfs.push(g_cnf);
-                                    }
-                                    for cl in gadget_res.cut_parity_clauses {
-                                        clause_count += 1;
-                                        let _ = solver.add_clause(cl.clone());
-                                        let mut g_cnf = Cnf::new();
-                                        g_cnf.add_clause(cl);
-                                        accumulated_cut_cnfs.push(g_cnf);
+                                        // 2. Infeasible port pruning clauses & boundary cut parity clauses
+                                        for cl in gadget_res.pruning_clauses {
+                                            clause_count += 1;
+                                            working_cnf.add_clause(cl.clone());
+                                            let mut g_cnf = Cnf::new();
+                                            g_cnf.add_clause(cl);
+                                            accumulated_cut_cnfs.push(g_cnf);
+                                        }
+                                        for cl in gadget_res.cut_parity_clauses {
+                                            clause_count += 1;
+                                            working_cnf.add_clause(cl.clone());
+                                            let mut g_cnf = Cnf::new();
+                                            g_cnf.add_clause(cl);
+                                            accumulated_cut_cnfs.push(g_cnf);
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
 
+                    let mut cnf = Cnf::new();
+                    cnf.extend(block_clauses);
+                    count += 1;
 
-                let mut cnf = Cnf::new();
-                cnf.extend(block_clauses);
-                count += 1;
+                    previous_cnf = if output_folder != "default" {
+                        let mut write_cnf = previous_cnf;
+                        write_cnf.extend(cnf.clone());
+                        let output_file = format!("{}/increment{}.cnf", output_folder, count);
+                        let _ = file_operations::write_dimacs(write_cnf.clone(), &output_file);
+                        write_cnf
+                    } else {
+                        Cnf::new()
+                    };
 
-                previous_cnf = if output_folder != "default" {
-                    let mut write_cnf = previous_cnf;
-                    write_cnf.extend(cnf.clone());
-                    let output_file = format!("{}/increment{}.cnf", output_folder, count);
-                    let _ = file_operations::write_dimacs(write_cnf.clone(), &output_file);
-                    write_cnf
-                } else {
-                    Cnf::new()
-                };
-
-                if cnf_normalize == 1 {
-                    let normalized_cnf = cnf.normalize();
-                    clause_count += normalized_cnf.len() as i32;
-                    let _ = solver.add_cnf(normalized_cnf.clone());
-                    accumulated_cut_cnfs.push(normalized_cnf);
-                } else {
-                    clause_count += cnf.len() as i32;
-                    let _ = solver.add_cnf(cnf.clone());
-                    accumulated_cut_cnfs.push(cnf);
-                }
-
-                let total_v = g.adjacency_list.len();
-                let max_cycle_len = _active_cycles.iter().map(|c| c.len()).max().unwrap_or(0);
-                if _active_cycles.len() > 1 && (max_cycle_len >= total_v / 2 || _active_cycles.len() <= 25) {
-                    let freezer_opts = FreezerOptions::default();
-                    assumptions = BackboneFreezer::select_adaptive_frozen_assumptions(
-                        &_active_cycles,
-                        &g,
-                        encoder,
-                        contractor,
-                        &freezer_opts,
-                        sat_solving_time.as_secs_f64(),
-                    );
-                    if !assumptions.is_empty() {
-                        println!("BackboneFreezer: locked {} internal backbone edges (giant cycle len {})", assumptions.len(), max_cycle_len);
+                    if cnf_normalize == 1 {
+                        let normalized_cnf = cnf.normalize();
+                        clause_count += normalized_cnf.len() as i32;
+                        working_cnf.extend(normalized_cnf.clone());
+                        accumulated_cut_cnfs.push(normalized_cnf);
+                    } else {
+                        clause_count += cnf.len() as i32;
+                        working_cnf.extend(cnf.clone());
+                        accumulated_cut_cnfs.push(cnf);
                     }
-                } else {
-                    assumptions.clear();
-                }
 
-                let time = now - previous_time;
-                let add_block_clauses_time = now - previous_time - sat_solving_time;
-                previous_time = now;
-                println!("number of added block clauses = {}", clause_count);
-                println!("add block clauses time = {:?}", add_block_clauses_time);
-                println!("increment time = {:?}", time);
+                    let total_v = g.adjacency_list.len();
+                    let max_cycle_len = _active_cycles.iter().map(|c| c.len()).max().unwrap_or(0);
+                    if _active_cycles.len() > 1 && (max_cycle_len >= total_v / 2 || _active_cycles.len() <= 25) {
+                        let freezer_opts = FreezerOptions::default();
+                        assumptions = BackboneFreezer::select_adaptive_frozen_assumptions(
+                            &_active_cycles,
+                            &g,
+                            encoder,
+                            contractor,
+                            &freezer_opts,
+                            sat_solving_time.as_secs_f64(),
+                        );
+                        if !assumptions.is_empty() {
+                            println!("BackboneFreezer: locked {} internal backbone edges (giant cycle len {})", assumptions.len(), max_cycle_len);
+                        }
+                    } else {
+                        assumptions.clear();
+                    }
 
-                if SolverReseeder::should_reseed(sat_solving_time.as_secs_f64(), count as usize, &reseeder_opts) {
-                    println!("SolverReseeder: refreshing CaDiCaL instance (round {}, last SAT time {:.2}s, accumulated cuts: {})",
-                        count, sat_solving_time.as_secs_f64(), accumulated_cut_cnfs.len());
-                    solver = SolverReseeder::reseed_solver(&base_cnf, &accumulated_cut_cnfs, cadical_config);
+                    let time = now - previous_time;
+                    let add_block_clauses_time = now - previous_time - sat_solving_time;
+                    previous_time = now;
+                    println!("number of added block clauses = {}", clause_count);
+                    println!("add block clauses time = {:?}", add_block_clauses_time);
+                    println!("increment time = {:?}", time);
+
+                    if SolverReseeder::should_reseed(sat_solving_time.as_secs_f64(), count as usize, &reseeder_opts) {
+                        println!("SolverReseeder: refreshing CaDiCaL instance (round {}, last SAT time {:.2}s, accumulated cuts: {})",
+                            count, sat_solving_time.as_secs_f64(), accumulated_cut_cnfs.len());
+                    }
                 }
             }
-        } else {
-            println!("s UNSATISFIABLE");
-            return (count, clause_count, None);
+            PortfolioResult::Unsat => {
+                println!("s UNSATISFIABLE");
+                return (count, clause_count, None);
+            }
+            PortfolioResult::Interrupted => {
+                if instant.elapsed().as_secs_f64() >= timeout_secs {
+                    println!("\ns UNKNOWN (TIMEOUT: {:.2}s reached >= {:.2}s limit)", instant.elapsed().as_secs_f64(), timeout_secs);
+                    return (count, clause_count, None);
+                }
+                if !assumptions.is_empty() {
+                    assumptions.clear();
+                    continue;
+                }
+                return (count, clause_count, None);
+            }
         }
     }
+}
+
+pub fn get_solution_arcs_from_lits<'a, M>(lits: &[Lit], graph_lit_map: M) -> Vec<(i32, i32)>
+where
+    M: IntoIterator<Item = (&'a (i32, i32), &'a Lit)>,
+{
+    let lit_set: HashSet<Lit> = lits.iter().copied().collect();
+    let mut arcs = Vec::new();
+    for (&arc, &lit) in graph_lit_map {
+        if lit_set.contains(&lit) {
+            arcs.push(arc);
+        }
+    }
+    arcs
 }
 
 fn get_solution_arcs(sol:Assignment,lit_map:&BTreeMap<(i32,i32),Lit>) -> Vec<(i32,i32)>{
     let sol_arcs: Vec<(i32,i32)> = lit_map.iter().filter_map(|((u,v), lit)| if sol[lit.var()] == TernaryVal::True { Some((*u,*v)) } else { None }).collect();
     sol_arcs
-
 }
 
 fn get_solution_cycles(sol_arcs: Vec<(i32, i32)>) -> Vec<Vec<i32>> {

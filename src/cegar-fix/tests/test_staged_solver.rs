@@ -578,6 +578,75 @@ fn test_cegar_dual_channel_router_integration() {
     }
 }
 
+#[test]
+fn test_cegar_parallel_sat_portfolio_integration() {
+    use cegar_fix::hcp_solver::{solve_hamilton, get_solution_arcs_from_lits};
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use rustsat::types::Lit;
+    use std::collections::BTreeMap;
+    use std::time::Instant;
+
+    // 1. Test helper get_solution_arcs_from_lits
+    let mut lit_map = BTreeMap::new();
+    let lit1 = Lit::positive(0);
+    let lit2 = Lit::positive(1);
+    let lit3 = Lit::positive(2);
+    lit_map.insert((1, 2), lit1);
+    lit_map.insert((2, 3), lit2);
+    lit_map.insert((3, 1), lit3);
+
+    let active_lits = vec![lit1, lit3];
+    let arcs = get_solution_arcs_from_lits(&active_lits, &lit_map);
+    assert_eq!(arcs.len(), 2);
+    assert!(arcs.contains(&(1, 2)));
+    assert!(arcs.contains(&(3, 1)));
+    assert!(!arcs.contains(&(2, 3)));
+
+    // 2. Test CEGAR solving on graph with multiple subcycles / chords
+    let mut g = Graph::new();
+    // 30-node cycle with multiple chords forcing CEGAR subcycle cuts
+    for i in 1..30 {
+        g.add_edge(i, i + 1);
+    }
+    g.add_edge(30, 1);
+    g.add_edge(1, 10);
+    g.add_edge(10, 20);
+    g.add_edge(20, 30);
+    g.add_edge(5, 15);
+    g.add_edge(15, 25);
+
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+    let hub_reg = HubRegistry::new(&contracted_g);
+    let start = Instant::now();
+
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+    assert!(tour.is_some(), "Graph must be solved with ParallelSatPortfolio in CEGAR loop");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 30);
+
+    // Verify validity of Hamiltonian cycle on g
+    let mut seen = std::collections::HashSet::new();
+    for &v in &t {
+        assert!(seen.insert(v), "Duplicate vertex {} in tour", v);
+    }
+    for i in 0..t.len() {
+        let u = t[i];
+        let v = t[(i + 1) % t.len()];
+        assert!(
+            g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v)),
+            "Edge ({}, {}) must exist in graph",
+            u,
+            v
+        );
+    }
+}
+
 
 
 
