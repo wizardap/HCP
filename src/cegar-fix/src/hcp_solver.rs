@@ -404,7 +404,7 @@ fn cegar(
         }
 
         // SATソルバーで解を求める (3 concurrent CaDiCaL workers across Cores 0, 1, 2)
-        let port_res = ParallelSatPortfolio::solve_portfolio(&working_cnf, &assumptions, 3);
+        let port_res = ParallelSatPortfolio::solve_portfolio(&working_cnf, &assumptions, 3, count as usize);
         let now = instant.elapsed();
         let sat_solving_time = now - previous_time;
 

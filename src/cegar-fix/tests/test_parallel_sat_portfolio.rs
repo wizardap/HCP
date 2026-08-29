@@ -34,7 +34,7 @@ fn test_portfolio_solves_simple_sat() {
     cnf.add_clause(Clause::from_iter([lit_not_a, lit_c]));
     cnf.add_clause(Clause::from_iter([lit_not_b, lit_c]));
 
-    let result = ParallelSatPortfolio::solve_portfolio(&cnf, &[], 3);
+    let result = ParallelSatPortfolio::solve_portfolio(&cnf, &[], 3, 0);
     match result {
         PortfolioResult::Sat(model) => {
             assert!(
@@ -57,7 +57,7 @@ fn test_portfolio_solves_unsat() {
     cnf.add_clause(Clause::from_iter([lit_a]));
     cnf.add_clause(Clause::from_iter([lit_not_a]));
 
-    let result = ParallelSatPortfolio::solve_portfolio(&cnf, &[], 3);
+    let result = ParallelSatPortfolio::solve_portfolio(&cnf, &[], 3, 0);
     match result {
         PortfolioResult::Unsat => {}
         other => panic!("Expected Unsat, got {:?}", other),
@@ -78,7 +78,7 @@ fn test_portfolio_with_assumptions() {
 
     // Assumption: a = true (lit_a)
     let assumptions = vec![lit_a];
-    let result = ParallelSatPortfolio::solve_portfolio(&cnf, &assumptions, 3);
+    let result = ParallelSatPortfolio::solve_portfolio(&cnf, &assumptions, 3, 0);
     match result {
         PortfolioResult::Sat(model) => {
             assert!(verify_model_satisfies_cnf(&cnf, &model));
@@ -96,7 +96,7 @@ fn test_portfolio_with_assumptions() {
     cnf2.add_clause(Clause::from_iter([lit_a, lit_b]));
     let bad_assumptions = vec![lit_not_a, lit_not_b];
 
-    let result2 = ParallelSatPortfolio::solve_portfolio(&cnf2, &bad_assumptions, 3);
+    let result2 = ParallelSatPortfolio::solve_portfolio(&cnf2, &bad_assumptions, 3, 0);
     match result2 {
         PortfolioResult::Sat(model) => {
             assert!(
