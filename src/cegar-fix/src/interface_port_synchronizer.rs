@@ -154,6 +154,7 @@ impl InterfacePortSynchronizer {
     ///   - e \notin T_k \cup F_k: (!l_uv) and (!l_vu)
     pub fn encode_interface_port_synchronization(
         dual_paths: &[GadgetDualPath],
+        g: &Graph,
         encoder: &mut Encoder,
         cnf: &mut Cnf,
     ) {
@@ -177,8 +178,8 @@ impl InterfacePortSynchronizer {
             // 2. Identify all unique undirected internal edges in G[M_k]
             let mut internal_undirected_edges: HashSet<(i32, i32)> = HashSet::new();
             for &u in &dual.vertices {
-                if let Some(neighbors) = encoder.graph_lit_map.keys().filter(|(a, _)| *a == u).map(|(_, b)| *b).collect::<Vec<_>>().into() {
-                    for v in neighbors {
+                if let Some(neighbors) = g.adjacency_list.get(&u) {
+                    for &v in neighbors {
                         if mod_set.contains(&v) && u < v {
                             internal_undirected_edges.insert((u, v));
                         }

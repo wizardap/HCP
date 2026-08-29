@@ -299,7 +299,7 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
     let dual_paths = InterfacePortSynchronizer::extract_gadget_dual_paths(&g, 32);
     if dual_paths.len() >= 4 {
         println!("InterfacePortSynchronizer: detected {} gadget modules with dual T/F paths, injecting flow synchronization clauses", dual_paths.len());
-        InterfacePortSynchronizer::encode_interface_port_synchronization(&dual_paths, &mut encoder, &mut cnf);
+        InterfacePortSynchronizer::encode_interface_port_synchronization(&dual_paths, &g, &mut encoder, &mut cnf);
     }
 
     let current_cnf = if output_folder != "default" {

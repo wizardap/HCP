@@ -164,6 +164,7 @@ fn test_encode_interface_port_synchronization() {
         let mut cnf = encoder.encode(&g, 0, 0, 0, 0, 0, 0);
         InterfacePortSynchronizer::encode_interface_port_synchronization(
             &dual_paths,
+            &g,
             &mut encoder,
             &mut cnf,
         );
@@ -199,6 +200,7 @@ fn test_encode_interface_port_synchronization() {
         let mut cnf = encoder.encode(&g, 0, 0, 0, 0, 0, 0);
         InterfacePortSynchronizer::encode_interface_port_synchronization(
             &dual_paths,
+            &g,
             &mut encoder,
             &mut cnf,
         );
@@ -234,6 +236,7 @@ fn test_encode_interface_port_synchronization() {
         let mut cnf = encoder.encode(&g, 0, 0, 0, 0, 0, 0);
         InterfacePortSynchronizer::encode_interface_port_synchronization(
             &dual_paths,
+            &g,
             &mut encoder,
             &mut cnf,
         );
@@ -266,6 +269,7 @@ fn test_perimeter_loop_forbidden() {
     let mut cnf = encoder.encode(&g, 0, 0, 0, 0, 0, 0);
     InterfacePortSynchronizer::encode_interface_port_synchronization(
         &dual_paths,
+        &g,
         &mut encoder,
         &mut cnf,
     );
