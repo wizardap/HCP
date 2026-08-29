@@ -725,3 +725,99 @@ fn test_cegar_macro_cycle_stitcher_integration() {
         );
     }
 }
+
+#[test]
+fn test_cegar_giant_cycle_stitcher_integration() {
+    use cegar_fix::giant_cycle_stitcher::GiantCycleStitcher;
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use std::collections::HashSet;
+    use std::time::Instant;
+
+    // 1. Direct unit test of GiantCycleStitcher targeted giant cycle absorption
+    // Giant cycle (len = 24): 1..24
+    // Subcycle (len = 4): 25..28
+    let mut g_direct = Graph::new();
+    let giant_cycle: Vec<i32> = (1..=24).collect();
+    let subcycle: Vec<i32> = vec![25, 26, 27, 28];
+
+    let n_g = giant_cycle.len();
+    for i in 0..n_g {
+        g_direct.add_edge(giant_cycle[i], giant_cycle[(i + 1) % n_g]);
+    }
+    let n_s = subcycle.len();
+    for i in 0..n_s {
+        g_direct.add_edge(subcycle[i], subcycle[(i + 1) % n_s]);
+    }
+
+    // Add cross edges enabling 2-swap absorption between giant (edge 1-2) and subcycle (edge 25-26)
+    g_direct.add_edge(1, 25);
+    g_direct.add_edge(2, 26);
+
+    let protected = HashSet::new();
+    let initial_cycles = vec![giant_cycle.clone(), subcycle.clone()];
+    let stitched = GiantCycleStitcher::repair_until_fixed_point(&initial_cycles, &g_direct, &protected);
+    assert_eq!(stitched.len(), 1, "GiantCycleStitcher should absorb subcycle into giant cycle");
+    assert_eq!(stitched[0].len(), 28, "Stitched tour must contain all 28 vertices");
+
+    let mut direct_seen = HashSet::new();
+    for &v in &stitched[0] {
+        assert!(direct_seen.insert(v), "Duplicate vertex {} in direct stitched tour", v);
+    }
+    for i in 0..stitched[0].len() {
+        let u = stitched[0][i];
+        let v = stitched[0][(i + 1) % stitched[0].len()];
+        assert!(
+            g_direct.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v)),
+            "Direct stitched tour edge ({}, {}) must exist in graph",
+            u,
+            v
+        );
+    }
+
+    // 2. CEGAR end-to-end solve test with GiantCycleStitcher wired in
+    let mut g_cegar = Graph::new();
+    // 28-node graph with subcycle chords
+    for i in 1..28 {
+        g_cegar.add_edge(i, i + 1);
+    }
+    g_cegar.add_edge(28, 1);
+    // Add subcycle chords
+    g_cegar.add_edge(1, 8);
+    g_cegar.add_edge(8, 16);
+    g_cegar.add_edge(16, 24);
+    g_cegar.add_edge(24, 28);
+    g_cegar.add_edge(4, 12);
+    g_cegar.add_edge(12, 20);
+
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g_cegar);
+    let hub_reg = HubRegistry::new(&contracted_g);
+    let start = Instant::now();
+
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+    assert!(tour.is_some(), "Graph must be solved with GiantCycleStitcher in CEGAR loop");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 28);
+
+    let mut seen = HashSet::new();
+    for &v in &t {
+        assert!(seen.insert(v), "Duplicate vertex {} in tour", v);
+    }
+    for i in 0..t.len() {
+        let u = t[i];
+        let v = t[(i + 1) % t.len()];
+        assert!(
+            g_cegar.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v)),
+            "Edge ({}, {}) must exist in graph",
+            u,
+            v
+        );
+    }
+}
+

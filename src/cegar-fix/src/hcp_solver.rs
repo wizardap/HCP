@@ -31,7 +31,7 @@ use crate::static_cycle_cutter::StaticCycleCutter;
 use crate::boundary_alternating_patcher::BoundaryAlternatingPatcher;
 use crate::metagraph_router::MetagraphRouter;
 use crate::parallel_sat_portfolio::{ParallelSatPortfolio, PortfolioResult};
-use crate::macro_cycle_stitcher::MacroCycleStitcher;
+use crate::giant_cycle_stitcher::GiantCycleStitcher;
 
 
 /// Pre-emptively forbids 3-cycles (triangles) and 4-cycles in the initial CNF encoding in O(|E| * Delta).
@@ -636,15 +636,15 @@ fn cegar(
                         sol_cycles
                     };
 
-                    // Attempt Exact Macro-Cycle Alternating Symmetric Difference Stitcher
-                    let sol_cycles = if sol_cycles.len() > 1 && sol_cycles.len() <= 35 {
+                    // Attempt Universal Giant-Cycle SAT Stitcher & Multi-Cycle Alternating Repair
+                    let sol_cycles = if sol_cycles.len() > 1 && sol_cycles.len() <= 150 {
                         let protected_edges: HashSet<(i32, i32)> = contractor.chain_map.keys().copied().collect();
-                        let stitched = MacroCycleStitcher::stitch_until_fixed_point(&sol_cycles, &g, &protected_edges);
+                        let stitched = GiantCycleStitcher::repair_until_fixed_point(&sol_cycles, &g, &protected_edges);
                         if stitched.len() < sol_cycles.len() {
-                            println!("MacroCycleStitcher: stitched macro-cycles from {} down to {} cycles", sol_cycles.len(), stitched.len());
+                            println!("GiantCycleStitcher: stitched and absorbed subcycles from {} down to {} cycles", sol_cycles.len(), stitched.len());
                         }
                         if stitched.len() == 1 && stitched[0].len() == g.adjacency_list.len() {
-                            println!("number of subcycles found = 1 (via macro-cycle stitcher)");
+                            println!("number of subcycles found = 1 (via giant cycle stitcher)");
                             let flat: Vec<i32> = stitched.into_iter().flatten().collect();
                             let final_tour = contractor.uncontract_cycle(&flat);
                             let line = final_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
