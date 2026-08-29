@@ -377,4 +377,55 @@ fn test_cegar_boundary_alternating_patcher_integration() {
     }
 }
 
+#[test]
+fn test_fast_fail_assumptions_integration() {
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use std::time::Instant;
+
+    let mut g = Graph::new();
+    // 24-node cycle with chords inducing subcycles and exercising assumption conflict limiting
+    for i in 1..24 {
+        g.add_edge(i, i + 1);
+    }
+    g.add_edge(24, 1);
+    g.add_edge(1, 8);
+    g.add_edge(8, 16);
+    g.add_edge(16, 24);
+    g.add_edge(4, 12);
+    g.add_edge(12, 20);
+    g.add_edge(20, 4);
+
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+    let hub_reg = HubRegistry::new(&contracted_g);
+    let start = Instant::now();
+
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+    assert!(tour.is_some(), "Graph must be solved with fast-fail assumption conflict limiting");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 24);
+
+    // Verify validity of Hamiltonian cycle on g
+    let mut seen = std::collections::HashSet::new();
+    for &v in &t {
+        assert!(seen.insert(v), "Duplicate vertex {} in tour", v);
+    }
+    for i in 0..t.len() {
+        let u = t[i];
+        let v = t[(i + 1) % t.len()];
+        assert!(
+            g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v)),
+            "Edge ({}, {}) must exist in graph",
+            u,
+            v
+        );
+    }
+}
+
 

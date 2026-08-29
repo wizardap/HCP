@@ -1,6 +1,7 @@
 use rustsat::instances::*;
 use rustsat::types::*;
 use rustsat::solvers::*;
+use rustsat::solvers::LimitConflicts;
 use rustsat::clause;
 use rustsat_cadical::Config;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -417,14 +418,16 @@ fn cegar(
 
         // SATソルバーで解を求める
         let (res, _used_assumps) = if !assumptions.is_empty() {
-            match solver.solve_assumps(&assumptions) {
+            let _ = solver.limit_conflicts(Some(5000));
+            let res_assumps = solver.solve_assumps(&assumptions);
+            let _ = solver.limit_conflicts(None);
+            match res_assumps {
                 Ok(SolverResult::Sat) => (SolverResult::Sat, true),
-                Ok(SolverResult::Unsat) => {
-                    // Assumptions too restrictive; fall back to unconstrained solving
+                Ok(SolverResult::Unsat) | Ok(SolverResult::Interrupted) => {
+                    // Assumptions infeasible or too slow; immediately fall back to unconstrained solving
                     assumptions.clear();
                     (solver.solve().unwrap_or(SolverResult::Unsat), false)
                 }
-                Ok(other) => (other, true),
                 Err(_) => {
                     assumptions.clear();
                     (solver.solve().unwrap_or(SolverResult::Unsat), false)
@@ -2000,6 +2003,24 @@ mod tests_blocking_enhancements {
         let mut cnf_small = encoder_small.encode(&g_small, 1, 0, 0, 0, 0, 0);
         let added_small = add_cluster_cut_constraints(&g_small, &encoder_small, &mut cnf_small);
         assert_eq!(added_small, 0, "Must not add cluster cuts when satellite clusters are < 50");
+    }
+
+    #[test]
+    fn test_limit_conflicts_with_assumptions() {
+        use rustsat_cadical::CaDiCaL;
+        let mut solver = CaDiCaL::default();
+        let lit1 = Lit::positive(0);
+        let lit2 = Lit::positive(1);
+
+        // Add clause: lit1 or lit2
+        solver.add_clause(clause![lit1, lit2]).unwrap();
+
+        // Limit conflicts and solve with assumptions
+        let _ = solver.limit_conflicts(Some(5000));
+        let res = solver.solve_assumps(&[!lit1, !lit2]);
+        let _ = solver.limit_conflicts(None);
+
+        assert_eq!(res.unwrap(), SolverResult::Unsat);
     }
 }
 
