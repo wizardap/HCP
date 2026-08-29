@@ -1092,6 +1092,113 @@ fn test_cegar_global_supernode_mtz_integration() {
     }
 }
 
+#[test]
+fn test_cegar_transitive_macro_splicer_integration() {
+    use cegar_fix::transitive_macro_splicer::TransitiveMacroSplicer;
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use std::collections::HashSet;
+    use std::time::Instant;
 
+    let mut g = Graph::new();
 
+    // 4 cycles forming a transitive chain: C0 <-> C1 <-> C2 <-> C3
+    // C0: 1..=6
+    for i in 1..=6 {
+        let nxt = if i == 6 { 1 } else { i + 1 };
+        g.add_edge(i, nxt);
+    }
+    g.add_edge(3, 5);
+    g.add_edge(4, 6);
 
+    // C1: 7..=12
+    for i in 7..=12 {
+        let nxt = if i == 12 { 7 } else { i + 1 };
+        g.add_edge(i, nxt);
+    }
+    g.add_edge(9, 12);
+
+    // C2: 13..=18
+    for i in 13..=18 {
+        let nxt = if i == 18 { 13 } else { i + 1 };
+        g.add_edge(i, nxt);
+    }
+    g.add_edge(15, 18);
+
+    // C3: 19..=24
+    for i in 19..=24 {
+        let nxt = if i == 24 { 19 } else { i + 1 };
+        g.add_edge(i, nxt);
+    }
+    g.add_edge(21, 23);
+    g.add_edge(22, 24);
+
+    // Transitive bridge cross-edges:
+    // C0 <-> C1
+    g.add_edge(1, 7);
+    g.add_edge(2, 8);
+
+    // C1 <-> C2
+    g.add_edge(10, 13);
+    g.add_edge(11, 14);
+
+    // C2 <-> C3
+    g.add_edge(16, 19);
+    g.add_edge(17, 20);
+
+    // Verify 0 direct cross-edges between C0 (1..=6) and C3 (19..=24)
+    for u in 1..=6 {
+        if let Some(nbrs) = g.adjacency_list.get(&u) {
+            for v in 19..=24 {
+                assert!(!nbrs.contains(&v), "No direct cross-edges allowed between C0 and C3");
+            }
+        }
+    }
+
+    // Step 1: Direct test of TransitiveMacroSplicer on 4-cycle decomposition
+    let c0: Vec<i32> = (1..=6).collect();
+    let c1: Vec<i32> = (7..=12).collect();
+    let c2: Vec<i32> = (13..=18).collect();
+    let c3: Vec<i32> = (19..=24).collect();
+
+    let initial_cycles = vec![c0, c1, c2, c3];
+    let protected = HashSet::new();
+    let spliced = TransitiveMacroSplicer::splice_transitive_macro_graph(&initial_cycles, &g, &protected);
+    assert_eq!(spliced.len(), 1, "TransitiveMacroSplicer must splice transitive 4-cycle chain into 1 cycle");
+    assert_eq!(spliced[0].len(), 24, "Spliced cycle must contain all 24 vertices");
+
+    // Step 2: Full CEGAR end-to-end solve via solve_hamilton
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+    let hub_reg = HubRegistry::new(&contracted_g);
+    let start = Instant::now();
+
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+
+    assert!(tour.is_some(), "Graph with transitive 4-cycle chain must be solved via CEGAR with TransitiveMacroSplicer");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 24, "Tour length must equal 24");
+
+    // Step 3: Verify tour validity
+    let mut seen = HashSet::new();
+    for &v in &t {
+        assert!(seen.insert(v), "Duplicate vertex {} in tour", v);
+    }
+    assert_eq!(seen.len(), 24, "Tour must visit all 24 distinct vertices");
+
+    for i in 0..t.len() {
+        let u = t[i];
+        let v = t[(i + 1) % t.len()];
+        assert!(
+            g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v)),
+            "Edge ({}, {}) must exist in original graph",
+            u,
+            v
+        );
+    }
+}

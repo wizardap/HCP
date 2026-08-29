@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use crate::graph::Graph;
 use crate::macro_cycle_stitcher::MacroCycleStitcher;
+use crate::transitive_macro_splicer::TransitiveMacroSplicer;
 use rustsat::instances::Cnf;
 use rustsat::solvers::{Solve, SolverResult};
 use rustsat::types::{Clause, Lit};
@@ -911,6 +912,16 @@ impl GiantCycleStitcher {
             let stitched = MacroCycleStitcher::stitch_until_fixed_point(&current_cycles, g, protected_edges);
             if stitched.len() < current_cycles.len() {
                 current_cycles = stitched;
+                if current_cycles.len() <= 1 {
+                    break;
+                }
+                continue;
+            }
+
+            // 6. Transitive Macro-Graph Splicing: global multi-cycle spanning tree/forest splicing
+            let spliced = TransitiveMacroSplicer::splice_transitive_macro_graph(&current_cycles, g, protected_edges);
+            if spliced.len() < current_cycles.len() {
+                current_cycles = spliced;
                 if current_cycles.len() <= 1 {
                     break;
                 }
