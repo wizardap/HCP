@@ -47,10 +47,6 @@ impl CnfSubsumer {
             let mut is_subsumed = false;
 
             for kept_vec in &kept_clauses {
-                // If the kept clause is longer than candidate, it cannot be a subset
-                if kept_vec.len() > cand.len() {
-                    break;
-                }
                 // Check if kept_vec is a subset of cand (K <= C)
                 if kept_vec.iter().all(|l| cand_set.contains(l)) {
                     is_subsumed = true;

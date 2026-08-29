@@ -1,5 +1,5 @@
 use rustsat::instances::Cnf;
-use rustsat::solvers::{ControlSignal, LimitConflicts, Solve, SolveIncremental, SolverResult, Terminate};
+use rustsat::solvers::{ControlSignal, LimitConflicts, PhaseLit, Solve, SolveIncremental, SolverResult, Terminate};
 use rustsat::types::Lit;
 use rustsat_cadical::CaDiCaL;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -22,6 +22,7 @@ impl ParallelSatPortfolio {
     pub fn solve_portfolio(
         cnf: &Cnf,
         assumptions: &[Lit],
+        phase_hints: &[Lit],
         num_workers: usize,
         round: usize,
     ) -> PortfolioResult {
@@ -49,6 +50,11 @@ impl ParallelSatPortfolio {
                         w => {
                             let _ = solver.set_option("seed", (w as i32) * 1000 + 42 + (round as i32) * 17);
                         }
+                    }
+
+                    // Apply phase guidance from backbone edge hints
+                    for &hint_lit in phase_hints {
+                        let _ = solver.phase_lit(hint_lit);
                     }
 
                     if solver.add_cnf_ref(cnf).is_err() {

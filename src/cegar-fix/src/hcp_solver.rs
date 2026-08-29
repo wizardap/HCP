@@ -426,6 +426,7 @@ fn cegar(
 
     let mut working_cnf = base_cnf.clone();
     let mut assumptions: Vec<Lit> = Vec::new();
+    let mut phase_hints: Vec<Lit> = Vec::new();
     let mut accumulated_cut_cnfs: Vec<Cnf> = Vec::new();
     let reseeder_opts = ReseederOptions::default();
     let mut backbone_tracker = EmpiricalBackboneTracker::new(10);
@@ -437,7 +438,7 @@ fn cegar(
         }
 
         // SATソルバーで解を求める (3 concurrent CaDiCaL workers across Cores 0, 1, 2)
-        let port_res = ParallelSatPortfolio::solve_portfolio(&working_cnf, &assumptions, 3, count as usize);
+        let port_res = ParallelSatPortfolio::solve_portfolio(&working_cnf, &assumptions, &phase_hints, 3, count as usize);
         let now = instant.elapsed();
         let sat_solving_time = now - previous_time;
 
@@ -854,6 +855,7 @@ fn cegar(
                             let frequent_edges = backbone_tracker.get_frequent_backbone_edges(0.85);
                             let mut added_empirical = 0;
                             let mut assumption_set: HashSet<Lit> = assumptions.iter().copied().collect();
+                            phase_hints.clear();
 
                             if let Some(giant_cycle) = _active_cycles.iter().find(|c| c.len() == max_cycle_len) {
                                 let n_g = giant_cycle.len();
@@ -864,6 +866,7 @@ fn cegar(
                                     let max_v = u.max(v);
                                     if frequent_edges.contains(&(min_v, max_v)) {
                                         if let Some(&lit) = encoder.graph_lit_map.get(&(u, v)) {
+                                            phase_hints.push(lit);
                                             if assumption_set.insert(lit) {
                                                 assumptions.push(lit);
                                                 added_empirical += 1;
@@ -878,6 +881,7 @@ fn cegar(
                         }
                     } else {
                         assumptions.clear();
+                        phase_hints.clear();
                     }
 
                     let time = now - previous_time;
