@@ -197,8 +197,8 @@ impl MetagraphRouter {
             }
         }
 
-        // Merge clusters until total cluster count <= target_max_clusters
-        let target_max_clusters = 40;
+        // Merge clusters until total cluster count <= target_max_clusters (default 120)
+        let target_max_clusters = 120;
         let mut loop_count = 0;
         while raw_clusters.len() > target_max_clusters && loop_count < 10000 {
             loop_count += 1;
@@ -258,9 +258,6 @@ impl MetagraphRouter {
             }
         }
 
-
-
-
         // Sort clusters deterministically by smallest vertex ID
         raw_clusters.sort_by(|a, b| {
             let min_a = a.first().copied().unwrap_or(i32::MAX);
@@ -304,7 +301,7 @@ impl MetagraphRouter {
         modules
     }
 
-    /// Encodes MTZ unary order constraints across all supernodes into cnf.
+    /// Encodes MTZ unary order constraints across all supernodes into cnf using meta-edge indicator variables X_ij.
     pub fn encode_supernode_mtz(
         modules: &[GadgetModule],
         _g: &Graph,
@@ -346,50 +343,63 @@ impl MetagraphRouter {
             }
         }
 
-        // 4. MTZ implication clauses on directed boundary edges between module i and module j (i != j)
+        // 4. Group boundary edges by directed module pair (i, j)
+        let mut module_pair_edges: HashMap<(usize, usize), Vec<Lit>> = HashMap::new();
+        let mut module_out_lits: HashMap<usize, Vec<Lit>> = HashMap::new();
+        let mut module_in_lits: HashMap<usize, Vec<Lit>> = HashMap::new();
+
         for module in modules {
             let i = module.id;
-            let mut out_lits = Vec::new();
-            let mut in_lits = Vec::new();
-
             for &(u, v) in &module.boundary_edges {
                 if let Some(&j) = vertex_to_module.get(&v) {
-                    if i == j {
-                        continue;
-                    }
-                    if let Some(&l_uv) = encoder.graph_lit_map.get(&(u, v)) {
-                        out_lits.push(l_uv);
-
-                        if j != 0 {
-                            // !l_uv \/ O_{j, 1}
-                            cnf.add_clause(clause![!l_uv, order_vars[j][0]]);
-
-                            // For 1 <= t < K - 1: !l_uv \/ !O_{i, t} \/ O_{j, t+1}
-                            for t_idx in 0..(k - 2) {
-                                cnf.add_clause(clause![
-                                    !l_uv,
-                                    !order_vars[i][t_idx],
-                                    order_vars[j][t_idx + 1]
-                                ]);
-                            }
-
-                            // !l_uv \/ !O_{i, K-1}
-                            cnf.add_clause(clause![!l_uv, !order_vars[i][k - 2]]);
+                    if i != j {
+                        if let Some(&l_uv) = encoder.graph_lit_map.get(&(u, v)) {
+                            module_pair_edges.entry((i, j)).or_default().push(l_uv);
+                            module_out_lits.entry(i).or_default().push(l_uv);
                         }
-                    }
-                    if let Some(&l_vu) = encoder.graph_lit_map.get(&(v, u)) {
-                        in_lits.push(l_vu);
+                        if let Some(&l_vu) = encoder.graph_lit_map.get(&(v, u)) {
+                            module_in_lits.entry(j).or_default().push(l_vu);
+                        }
                     }
                 }
             }
+        }
 
-            // Boundary cut constraints: at least 1 outgoing boundary edge and at least 1 incoming boundary edge
-            if !out_lits.is_empty() {
+        // 5. Allocate X_ij meta-edge indicator variables and apply MTZ implications
+        for (&(i, j), lits) in &module_pair_edges {
+            let x_ij = encoder.instance.new_lit();
+            // For each underlying boundary edge: !l_uv \/ X_ij
+            for &l_uv in lits {
+                cnf.add_clause(clause![!l_uv, x_ij]);
+            }
+
+            if j != 0 {
+                // !X_ij \/ O_{j, 1}
+                cnf.add_clause(clause![!x_ij, order_vars[j][0]]);
+
+                // For 1 <= t < K - 1: !X_ij \/ !O_{i, t} \/ O_{j, t+1}
+                for t_idx in 0..(k - 2) {
+                    cnf.add_clause(clause![
+                        !x_ij,
+                        !order_vars[i][t_idx],
+                        order_vars[j][t_idx + 1]
+                    ]);
+                }
+
+                // !X_ij \/ !O_{i, K-1}
+                cnf.add_clause(clause![!x_ij, !order_vars[i][k - 2]]);
+            }
+        }
+
+        // 6. Boundary cut constraints: at least 1 outgoing boundary edge and at least 1 incoming boundary edge
+        for module in modules {
+            let i = module.id;
+            if let Some(mut out_lits) = module_out_lits.remove(&i) {
                 out_lits.sort_unstable();
                 out_lits.dedup();
                 cnf.add_clause(Clause::from_iter(out_lits));
             }
-            if !in_lits.is_empty() {
+            if let Some(mut in_lits) = module_in_lits.remove(&i) {
                 in_lits.sort_unstable();
                 in_lits.dedup();
                 cnf.add_clause(Clause::from_iter(in_lits));
