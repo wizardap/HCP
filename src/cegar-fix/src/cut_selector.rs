@@ -5,19 +5,19 @@ use crate::encoder::Encoder;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CutSelectorOptions {
-    pub max_cuts_per_round: usize,    // Default: 40
-    pub max_cycle_len_for_cut: usize, // Default: 64
-    pub small_cycle_threshold: usize, // Default: 8
-    pub enable_boundary_cuts: bool,   // Default: true
+    pub max_cycle_len_threshold: usize, // Default: 64
+    pub base_max_cuts: usize,           // Default: 40
+    pub high_volume_max_cuts: usize,    // Default: 100
+    pub tiny_cycle_boundary_len: usize, // Default: 8
 }
 
 impl Default for CutSelectorOptions {
     fn default() -> Self {
         Self {
-            max_cuts_per_round: 40,
-            max_cycle_len_for_cut: 64,
-            small_cycle_threshold: 8,
-            enable_boundary_cuts: true,
+            max_cycle_len_threshold: 64,
+            base_max_cuts: 40,
+            high_volume_max_cuts: 100,
+            tiny_cycle_boundary_len: 8,
         }
     }
 }
@@ -25,7 +25,7 @@ impl Default for CutSelectorOptions {
 pub struct CutSelector;
 
 impl CutSelector {
-    /// Selects, ranks, and caps subcycles, then generates direct blocking and boundary cut clauses.
+    /// Selects, ranks, and dynamically budgets subcycles, then generates direct blocking and boundary cut clauses.
     pub fn select_and_generate_cuts(
         cycles: &[Vec<i32>],
         g: &Graph,
@@ -33,19 +33,30 @@ impl CutSelector {
         options: &CutSelectorOptions,
     ) -> (Vec<Clause>, Vec<Vec<i32>>) {
         // 1. Candidate Filtering:
-        // Filter out cycles with length > options.max_cycle_len_for_cut or length < 3.
+        // Filter out cycles with length > options.max_cycle_len_threshold or length < 3.
         let mut candidates: Vec<Vec<i32>> = cycles
             .iter()
-            .filter(|c| c.len() >= 3 && c.len() <= options.max_cycle_len_for_cut)
+            .filter(|c| c.len() >= 3 && c.len() <= options.max_cycle_len_threshold)
             .cloned()
             .collect();
+
+        // 2. Dynamic Capacity Calculation:
+        // Count candidates with len <= 16.
+        // If candidate count > 30, effective_max_cuts = options.high_volume_max_cuts (100).
+        // Otherwise, effective_max_cuts = options.base_max_cuts (40).
+        let short_candidate_count = candidates.iter().filter(|c| c.len() <= 16).count();
+        let effective_max_cuts = if short_candidate_count > 30 {
+            options.high_volume_max_cuts
+        } else {
+            options.base_max_cuts
+        };
 
         // Sort candidate cycles in ascending order of length (c.len())
         candidates.sort_by_key(|c| c.len());
 
-        // 2. Budget Capping:
-        // Take the first min(candidates.len(), options.max_cuts_per_round) cycles.
-        // Fallback: if candidates is empty (all cycles > max_cycle_len_for_cut), take the shortest cycle to guarantee progress.
+        // 3. Budget Capping & Priority Selection:
+        // Take the first min(candidates.len(), effective_max_cuts) cycles.
+        // Fallback: if candidates is empty (all cycles > max_cycle_len_threshold), take the shortest cycle to guarantee progress.
         let selected_cycles: Vec<Vec<i32>> = if candidates.is_empty() {
             cycles
                 .iter()
@@ -57,11 +68,11 @@ impl CutSelector {
         } else {
             candidates
                 .into_iter()
-                .take(options.max_cuts_per_round)
+                .take(effective_max_cuts)
                 .collect()
         };
 
-        // 3. Clause Generation:
+        // 4. Clause Generation:
         let mut clauses = Vec::new();
 
         for cycle in &selected_cycles {
@@ -86,7 +97,7 @@ impl CutSelector {
             }
 
             // Boundary cut for tiny cycles: at least one outgoing edge from the cycle must be traversed
-            if options.enable_boundary_cuts && cycle.len() <= options.small_cycle_threshold {
+            if options.tiny_cycle_boundary_len > 0 && cycle.len() <= options.tiny_cycle_boundary_len {
                 let cycle_set: HashSet<i32> = cycle.iter().copied().collect();
                 let mut cut_edges = Vec::new();
                 let mut seen_edges = HashSet::new();
@@ -115,7 +126,7 @@ impl CutSelector {
             }
         }
 
-        // 4. Return (clauses, selected_cycles)
+        // 5. Return (clauses, selected_cycles)
         (clauses, selected_cycles)
     }
 }

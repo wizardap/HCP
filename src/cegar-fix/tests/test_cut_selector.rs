@@ -21,24 +21,122 @@ fn test_cut_selector_budget_capping() {
     let mut encoder = Encoder::new();
     let _ = encoder.encode(&g, 0, 0, 0, 0, 0, 0);
 
-    // Default max_cuts_per_round is 40
+    // Default options
     let options = CutSelectorOptions::default();
-    assert_eq!(options.max_cuts_per_round, 40);
+    assert_eq!(options.base_max_cuts, 40);
+    assert_eq!(options.high_volume_max_cuts, 100);
+    assert_eq!(options.max_cycle_len_threshold, 64);
+    assert_eq!(options.tiny_cycle_boundary_len, 8);
 
+    // 100 triangles (len=3 <= 16) triggers high_volume_max_cuts (100)
     let (clauses, selected_cycles) =
         CutSelector::select_and_generate_cuts(&cycles, &g, &encoder, &options);
 
-    assert_eq!(selected_cycles.len(), 40);
+    assert_eq!(selected_cycles.len(), 100);
     assert!(!clauses.is_empty());
 
     // Custom budget: 15
     let custom_options = CutSelectorOptions {
-        max_cuts_per_round: 15,
+        base_max_cuts: 15,
+        high_volume_max_cuts: 15,
         ..CutSelectorOptions::default()
     };
     let (_, selected_15) =
         CutSelector::select_and_generate_cuts(&cycles, &g, &encoder, &custom_options);
     assert_eq!(selected_15.len(), 15);
+}
+
+#[test]
+fn test_cut_selector_dynamic_budget_scaling() {
+    // 1. High-volume case: 120 cycles of length 16
+    let mut g_high = Graph::new();
+    let mut cycles_high = Vec::new();
+    for i in 0..120 {
+        let mut cycle = Vec::new();
+        for j in 0..16 {
+            let u = 16 * i + j + 1;
+            let v = 16 * i + ((j + 1) % 16) + 1;
+            g_high.add_edge(u, v);
+            cycle.push(u);
+        }
+        cycles_high.push(cycle);
+    }
+    let mut enc_high = Encoder::new();
+    let _ = enc_high.encode(&g_high, 0, 0, 0, 0, 0, 0);
+
+    let opts = CutSelectorOptions::default();
+    let (clauses_high, selected_high) =
+        CutSelector::select_and_generate_cuts(&cycles_high, &g_high, &enc_high, &opts);
+
+    // Candidates <= 16 is 120 (> 30 threshold), so dynamic budget scales to high_volume_max_cuts (100)
+    assert_eq!(selected_high.len(), 100);
+    assert_eq!(clauses_high.len(), 100);
+
+    // 2. Low-volume case: 20 cycles of length 16
+    let mut g_low = Graph::new();
+    let mut cycles_low = Vec::new();
+    for i in 0..20 {
+        let mut cycle = Vec::new();
+        for j in 0..16 {
+            let u = 16 * i + j + 1;
+            let v = 16 * i + ((j + 1) % 16) + 1;
+            g_low.add_edge(u, v);
+            cycle.push(u);
+        }
+        cycles_low.push(cycle);
+    }
+    let mut enc_low = Encoder::new();
+    let _ = enc_low.encode(&g_low, 0, 0, 0, 0, 0, 0);
+
+    let (clauses_low, selected_low) =
+        CutSelector::select_and_generate_cuts(&cycles_low, &g_low, &enc_low, &opts);
+
+    // Candidates <= 16 is 20 (<= 30), so budget is base_max_cuts (40).
+    // Since input has 20 cycles, min(20, 40) = 20 are selected.
+    assert_eq!(selected_low.len(), 20);
+    assert_eq!(clauses_low.len(), 20);
+
+    // 3. Medium-volume exceeding base: 50 cycles of length 16
+    let mut g_med = Graph::new();
+    let mut cycles_med = Vec::new();
+    for i in 0..50 {
+        let mut cycle = Vec::new();
+        for j in 0..16 {
+            let u = 16 * i + j + 1;
+            let v = 16 * i + ((j + 1) % 16) + 1;
+            g_med.add_edge(u, v);
+            cycle.push(u);
+        }
+        cycles_med.push(cycle);
+    }
+    let mut enc_med = Encoder::new();
+    let _ = enc_med.encode(&g_med, 0, 0, 0, 0, 0, 0);
+
+    let (_, selected_med) =
+        CutSelector::select_and_generate_cuts(&cycles_med, &g_med, &enc_med, &opts);
+    assert_eq!(selected_med.len(), 50);
+
+    // 4. Low short-cycle count but many longer cycles: 50 cycles of length 20
+    let mut g_long = Graph::new();
+    let mut cycles_long = Vec::new();
+    for i in 0..50 {
+        let mut cycle = Vec::new();
+        for j in 0..20 {
+            let u = 20 * i + j + 1;
+            let v = 20 * i + ((j + 1) % 20) + 1;
+            g_long.add_edge(u, v);
+            cycle.push(u);
+        }
+        cycles_long.push(cycle);
+    }
+    let mut enc_long = Encoder::new();
+    let _ = enc_long.encode(&g_long, 0, 0, 0, 0, 0, 0);
+
+    let (_, selected_long) =
+        CutSelector::select_and_generate_cuts(&cycles_long, &g_long, &enc_long, &opts);
+    // Candidates <= 16 is 0 (<= 30), so effective_max_cuts = base_max_cuts (40).
+    // min(50, 40) = 40 selected.
+    assert_eq!(selected_long.len(), 40);
 }
 
 #[test]
@@ -70,7 +168,7 @@ fn test_cut_selector_short_cycle_priority() {
     g.add_edge(33, 34);
     g.add_edge(34, 30);
 
-    // Cycle of length 100 (should be skipped, default max_cycle_len_for_cut = 64)
+    // Cycle of length 100 (should be skipped, default max_cycle_len_threshold = 64)
     let mut c_len100 = Vec::new();
     for i in 100..200 {
         c_len100.push(i);
@@ -121,7 +219,7 @@ fn test_cut_selector_boundary_cuts() {
     let triangle = vec![1, 2, 3];
     let cycles = vec![triangle.clone()];
 
-    // 1. Boundary cuts enabled (default):
+    // 1. Boundary cuts enabled (default tiny_cycle_boundary_len = 8):
     // Direct clause: ¬x_{1->2} ∨ ¬x_{2->3} ∨ ¬x_{3->1}
     // Outgoing cut edges from {1, 2, 3} to {4} are (1, 4) and (3, 4) -> boundary disjunction: x_{1->4} ∨ x_{3->4}
     let options = CutSelectorOptions::default();
@@ -159,9 +257,9 @@ fn test_cut_selector_boundary_cuts() {
     });
     assert!(boundary_found, "Boundary disjunction clause must be generated");
 
-    // 2. Boundary cuts disabled: only 1 direct clause
+    // 2. Boundary cuts disabled (tiny_cycle_boundary_len = 0): only 1 direct clause
     let no_boundary_options = CutSelectorOptions {
-        enable_boundary_cuts: false,
+        tiny_cycle_boundary_len: 0,
         ..CutSelectorOptions::default()
     };
     let (no_b_clauses, _) =
@@ -220,7 +318,7 @@ fn test_cut_selector_empty_and_thresholds() {
     assert!(clauses.is_empty());
     assert!(selected.is_empty());
 
-    // Test small_cycle_threshold: if cycle len > small_cycle_threshold, boundary cut is skipped
+    // Test tiny_cycle_boundary_len: if cycle len > tiny_cycle_boundary_len, boundary cut is skipped
     let mut g_thresh = Graph::new();
     // 10-cycle with external node 99
     let mut cycle_10 = Vec::new();
@@ -235,11 +333,10 @@ fn test_cut_selector_empty_and_thresholds() {
     let mut enc_thresh = Encoder::new();
     let _ = enc_thresh.encode(&g_thresh, 0, 0, 0, 0, 0, 0);
 
-    // Default small_cycle_threshold is 8, cycle len is 10 -> boundary cut skipped, only direct clause
+    // Default tiny_cycle_boundary_len is 8, cycle len is 10 -> boundary cut skipped, only direct clause
     let opts = CutSelectorOptions {
-        max_cycle_len_for_cut: 20,
-        small_cycle_threshold: 8,
-        enable_boundary_cuts: true,
+        max_cycle_len_threshold: 20,
+        tiny_cycle_boundary_len: 8,
         ..CutSelectorOptions::default()
     };
     let (clauses_thresh, selected_thresh) = CutSelector::select_and_generate_cuts(
@@ -264,10 +361,10 @@ fn test_cut_selector_fallback_when_all_cycles_exceed_max_len() {
     let mut enc = Encoder::new();
     let _ = enc.encode(&g, 0, 0, 0, 0, 0, 0);
 
-    // max_cycle_len_for_cut is 64, but cycle is 70.
+    // max_cycle_len_threshold is 64, but cycle is 70.
     // Fallback should still select the single shortest cycle and generate a direct blocking clause!
     let opts = CutSelectorOptions {
-        max_cycle_len_for_cut: 64,
+        max_cycle_len_threshold: 64,
         ..CutSelectorOptions::default()
     };
     let (clauses, selected) = CutSelector::select_and_generate_cuts(
