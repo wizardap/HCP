@@ -413,6 +413,9 @@ impl Inverse3SatSynthesizer {
         g: &Graph,
     ) -> (Option<Vec<i32>>, Option<Vec<i32>>) {
         let n = mod_vertices.len();
+        if n < 2 || n > 32 {
+            return (None, None);
+        }
         let mod_set: HashSet<i32> = mod_vertices.iter().copied().collect();
 
         let mut all_paths_a_to_b: Vec<Vec<i32>> = Vec::new();
@@ -423,6 +426,7 @@ impl Inverse3SatSynthesizer {
         let mut visited = HashSet::with_capacity(n);
         path.push(port_a);
         visited.insert(port_a);
+        let mut steps = 0;
         Self::dfs_hamiltonian_paths(
             port_a,
             port_b,
@@ -432,6 +436,7 @@ impl Inverse3SatSynthesizer {
             &mut path,
             &mut visited,
             &mut all_paths_a_to_b,
+            &mut steps,
         );
 
         // Search paths port_b -> port_a
@@ -439,6 +444,7 @@ impl Inverse3SatSynthesizer {
         visited.clear();
         path.push(port_b);
         visited.insert(port_b);
+        let mut steps = 0;
         Self::dfs_hamiltonian_paths(
             port_b,
             port_a,
@@ -448,6 +454,7 @@ impl Inverse3SatSynthesizer {
             &mut path,
             &mut visited,
             &mut all_paths_b_to_a,
+            &mut steps,
         );
 
         if !all_paths_a_to_b.is_empty() && !all_paths_b_to_a.is_empty() {
@@ -478,8 +485,10 @@ impl Inverse3SatSynthesizer {
         path: &mut Vec<i32>,
         visited: &mut HashSet<i32>,
         results: &mut Vec<Vec<i32>>,
+        steps: &mut usize,
     ) {
-        if results.len() >= 10 {
+        *steps += 1;
+        if *steps > 10_000 || results.len() >= 10 {
             return;
         }
         if path.len() == target_len {
@@ -503,6 +512,7 @@ impl Inverse3SatSynthesizer {
                         path,
                         visited,
                         results,
+                        steps,
                     );
                     path.pop();
                     visited.remove(&next);
