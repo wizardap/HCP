@@ -29,6 +29,7 @@ use crate::solver_reseeder::{SolverReseeder, ReseederOptions};
 use crate::hemisphere_splicer::HemisphereSplicer;
 use crate::static_cycle_cutter::StaticCycleCutter;
 use crate::boundary_alternating_patcher::BoundaryAlternatingPatcher;
+use crate::metagraph_router::MetagraphRouter;
 
 
 /// Pre-emptively forbids 3-cycles (triangles) and 4-cycles in the initial CNF encoding in O(|E| * Delta).
@@ -278,6 +279,15 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
     if !static_cuts.is_empty() {
         println!("StaticCycleCutter: injected {} static small-cycle elimination clauses at Round 0", static_cuts.len());
         cnf.extend(static_cuts);
+    }
+
+    // Metagraph Router: detect gadget supernodes and inject Supernode MTZ constraints
+    let modules = MetagraphRouter::detect_gadget_modules(&g);
+    if modules.len() >= 3 && modules.len() <= 120 {
+        let pre_clauses = cnf.len();
+        MetagraphRouter::encode_supernode_mtz(&modules, &g, &mut encoder, &mut cnf);
+        let mtz_clauses = cnf.len() - pre_clauses;
+        println!("MetagraphRouter: detected {} supernode modules, injected {} supernode MTZ clauses at Round 0", modules.len(), mtz_clauses);
     }
 
     let current_cnf = if output_folder != "default" {

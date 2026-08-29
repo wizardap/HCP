@@ -428,4 +428,74 @@ fn test_fast_fail_assumptions_integration() {
     }
 }
 
+#[test]
+fn test_cegar_metagraph_router_integration() {
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use cegar_fix::metagraph_router::MetagraphRouter;
+    use std::time::Instant;
+
+    let mut g = Graph::new();
+    // 4 K4 gadget modules arranged in a ring with inter-module connecting edges
+    // Module 0: 1, 2, 3, 4
+    // Module 1: 5, 6, 7, 8
+    // Module 2: 9, 10, 11, 12
+    // Module 3: 13, 14, 15, 16
+    for m in 0..4 {
+        let base = m * 4 + 1;
+        for i in 0..4 {
+            for j in (i + 1)..4 {
+                g.add_edge(base + i, base + j);
+            }
+        }
+    }
+
+    // Inter-module ring connections
+    g.add_edge(4, 5);
+    g.add_edge(8, 9);
+    g.add_edge(12, 13);
+    g.add_edge(16, 1);
+
+    // Cross chords between modules to provide alternative paths and test MTZ pruning
+    g.add_edge(3, 6);
+    g.add_edge(7, 10);
+    g.add_edge(11, 14);
+    g.add_edge(15, 2);
+
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+    let hub_reg = HubRegistry::new(&contracted_g);
+
+    let modules = MetagraphRouter::detect_gadget_modules(&contracted_g);
+    assert_eq!(modules.len(), 4, "Expected 4 gadget modules in contracted graph");
+
+    let start = Instant::now();
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+    assert!(tour.is_some(), "Graph with 4 gadget modules must be solved via MetagraphRouter and CEGAR");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 16);
+
+    // Verify validity of Hamiltonian cycle on g
+    let mut seen = std::collections::HashSet::new();
+    for &v in &t {
+        assert!(seen.insert(v), "Duplicate vertex {} in tour", v);
+    }
+    for i in 0..t.len() {
+        let u = t[i];
+        let v = t[(i + 1) % t.len()];
+        assert!(
+            g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v)),
+            "Edge ({}, {}) must exist in graph",
+            u,
+            v
+        );
+    }
+}
+
+
 
