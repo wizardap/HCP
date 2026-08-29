@@ -647,6 +647,81 @@ fn test_cegar_parallel_sat_portfolio_integration() {
     }
 }
 
+#[test]
+fn test_cegar_macro_cycle_stitcher_integration() {
+    use cegar_fix::macro_cycle_stitcher::MacroCycleStitcher;
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use std::collections::HashSet;
+    use std::time::Instant;
 
+    // 1. Direct unit test of MacroCycleStitcher on 3-cycle stitching
+    // Cycle A: 1-2-3-4-1
+    // Cycle B: 5-6-7-8-5
+    // Cycle C: 9-10-11-12-9
+    let mut g_direct = Graph::new();
+    let cycle_a = vec![1, 2, 3, 4];
+    let cycle_b = vec![5, 6, 7, 8];
+    let cycle_c = vec![9, 10, 11, 12];
 
+    for c in &[&cycle_a, &cycle_b, &cycle_c] {
+        let n = c.len();
+        for i in 0..n {
+            g_direct.add_edge(c[i], c[(i + 1) % n]);
+        }
+    }
+    // Add cross edges allowing 3-cycle alternating symmetric difference stitching
+    // (2, 5), (6, 9), (10, 1) connects C1 -> C2 -> C3 -> C1
+    g_direct.add_edge(2, 5);
+    g_direct.add_edge(6, 9);
+    g_direct.add_edge(10, 1);
 
+    let protected = HashSet::new();
+    let initial_cycles = vec![cycle_a.clone(), cycle_b.clone(), cycle_c.clone()];
+    let stitched = MacroCycleStitcher::stitch_until_fixed_point(&initial_cycles, &g_direct, &protected);
+    assert_eq!(stitched.len(), 1, "MacroCycleStitcher should stitch 3 cycles into 1");
+    assert_eq!(stitched[0].len(), 12, "Stitched tour must contain all 12 vertices");
+
+    // 2. CEGAR end-to-end solve test with MacroCycleStitcher wired in
+    let mut g_cegar = Graph::new();
+    // 24-node graph with multiple sub-cycle chords
+    for i in 1..24 {
+        g_cegar.add_edge(i, i + 1);
+    }
+    g_cegar.add_edge(24, 1);
+    g_cegar.add_edge(1, 8);
+    g_cegar.add_edge(8, 16);
+    g_cegar.add_edge(16, 24);
+    g_cegar.add_edge(4, 12);
+    g_cegar.add_edge(12, 20);
+
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g_cegar);
+    let hub_reg = HubRegistry::new(&contracted_g);
+    let start = Instant::now();
+
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+    assert!(tour.is_some(), "Graph must be solved with MacroCycleStitcher in CEGAR loop");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 24);
+
+    let mut seen = HashSet::new();
+    for &v in &t {
+        assert!(seen.insert(v), "Duplicate vertex {} in tour", v);
+    }
+    for i in 0..t.len() {
+        let u = t[i];
+        let v = t[(i + 1) % t.len()];
+        assert!(
+            g_cegar.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v)),
+            "Edge ({}, {}) must exist in graph",
+            u,
+            v
+        );
+    }
+}
