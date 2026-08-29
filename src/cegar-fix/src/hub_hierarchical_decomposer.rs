@@ -112,7 +112,7 @@ impl HubHierarchicalDecomposer {
                 for &p in &ports {
                     internal_paths.push((p, p, vec![v]));
                 }
-            } else {
+            } else if vertices.len() <= 64 && interface_ports.len() <= 8 {
                 for i in 0..interface_ports.len() {
                     for j in 0..interface_ports.len() {
                         if i == j {
@@ -148,7 +148,7 @@ impl HubHierarchicalDecomposer {
         end_v: i32,
     ) -> Option<Vec<i32>> {
         let n = module_verts.len();
-        if n == 0 {
+        if n == 0 || n > 64 {
             return None;
         }
         if n == 1 {
