@@ -33,6 +33,7 @@ use crate::metagraph_router::MetagraphRouter;
 use crate::parallel_sat_portfolio::{ParallelSatPortfolio, PortfolioResult};
 use crate::giant_cycle_stitcher::GiantCycleStitcher;
 use crate::interface_port_synchronizer::InterfacePortSynchronizer;
+use crate::inverse_3sat_synthesizer::Inverse3SatSynthesizer;
 
 
 /// Pre-emptively forbids 3-cycles (triangles) and 4-cycles in the initial CNF encoding in O(|E| * Delta).
@@ -251,6 +252,13 @@ pub fn add_cluster_cut_constraints(
 
 pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &HubRegistry, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, _cegar_fallback:i32, _mtz_stall:i32, _adaptive_escalation:i32, _sub_hcp_timeout: u64, _max_cluster_size: usize, timeout_secs: f64, instant:Instant,output_folder:&str) -> Option<Vec<i32>> {
     let now = instant.elapsed();
+
+    // Fast Track: Inverse 3-SAT De-reduction & Tour Synthesis
+    if let Some(synthesized_tour) = Inverse3SatSynthesizer::try_solve_via_inverse_3sat(&g) {
+        println!("Inverse3SatSynthesizer: successfully de-reduced graph to 3-SAT and synthesized valid Hamiltonian tour!");
+        return Some(contractor.expand_tour(&synthesized_tour));
+    }
+
     let mut encoder = Encoder::new();
     // グラフをcnf形式に変形し、cnfへ格納
     let mut cnf = encoder.encode(&g,encode_method,symmetry,loop_prohibition,dearcify,degree_order,arcs_order);

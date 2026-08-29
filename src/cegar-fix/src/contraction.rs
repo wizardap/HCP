@@ -306,6 +306,10 @@ impl Degree2Contractor {
         full_cycle
     }
 
+    pub fn expand_tour(&self, contracted_tour: &[i32]) -> Vec<i32> {
+        self.uncontract_cycle(contracted_tour)
+    }
+
     pub fn uncontract_path(&self, contracted_path: &[i32]) -> Vec<i32> {
         let mut full_path = Vec::new();
         let len = contracted_path.len();

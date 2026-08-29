@@ -1293,3 +1293,99 @@ fn test_cegar_interface_port_synchronizer_integration() {
         );
     }
 }
+
+#[test]
+fn test_cegar_inverse_3sat_synthesizer_integration() {
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use cegar_fix::tour_verifier::TourVerifier;
+    use std::collections::HashSet;
+    use std::time::Instant;
+
+    let mut g = Graph::new();
+
+    // Variable x1 gadget: vertices 1..=6
+    // Ports: A1 = 1, B1 = 6
+    // Rung 1 (positive for C1): (2, 3)
+    // Rung 2 (negative for C2): (4, 5)
+    g.add_edge(1, 2);
+    g.add_edge(2, 3);
+    g.add_edge(3, 4);
+    g.add_edge(4, 5);
+    g.add_edge(5, 6);
+
+    // Variable x2 gadget: vertices 7..=12
+    // Ports: A2 = 7, B2 = 12
+    // Rung 1 (positive for C1): (8, 9)
+    // Rung 2 (positive for C2): (10, 11)
+    g.add_edge(7, 8);
+    g.add_edge(8, 9);
+    g.add_edge(9, 10);
+    g.add_edge(10, 11);
+    g.add_edge(11, 12);
+
+    // Clause 1 (x1 \/ x2): clause node 13
+    // Literal x1 (positive): hooks (2, 13) and (13, 3)
+    // Literal x2 (positive): hooks (8, 13) and (13, 9)
+    g.add_edge(2, 13);
+    g.add_edge(13, 3);
+    g.add_edge(8, 13);
+    g.add_edge(13, 9);
+
+    // Clause 2 (~x1 \/ x2): clause node 14
+    // Literal ~x1 (negative): hooks (5, 14) and (14, 4)
+    // Literal x2 (positive): hooks (10, 14) and (14, 11)
+    g.add_edge(5, 14);
+    g.add_edge(14, 4);
+    g.add_edge(10, 14);
+    g.add_edge(14, 11);
+
+    // Boundary connector edges between V1 {1, 6} and V2 {7, 12}
+    g.add_edge(1, 7);
+    g.add_edge(1, 12);
+    g.add_edge(6, 7);
+    g.add_edge(6, 12);
+
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+    assert_eq!(contracted_g.adjacency_list.len(), 14, "Contracted graph must retain all 14 vertices");
+
+    let hub_reg = HubRegistry::new(&contracted_g);
+    let start = Instant::now();
+
+    // Solve via CEGAR pipeline with Inverse3SatSynthesizer fast track wired at Round 0
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+
+    assert!(tour.is_some(), "14-vertex 2-variable 3-SAT reduction graph must be solved via Inverse3SatSynthesizer");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 14, "Tour length must equal 14");
+
+    // Verify distinct vertex visitation
+    let mut seen = HashSet::new();
+    for &v in &t {
+        assert!(seen.insert(v), "Duplicate vertex {} in tour", v);
+    }
+    assert_eq!(seen.len(), 14, "Tour must visit all 14 distinct vertices");
+
+    // Verify tour validity with TourVerifier
+    let verify_res = TourVerifier::verify_raw_tour(&t, &g);
+    assert!(verify_res.is_ok(), "Tour verification failed: {:?}", verify_res.err());
+
+    // Verify validity of all consecutive edges
+    for i in 0..t.len() {
+        let u = t[i];
+        let v = t[(i + 1) % t.len()];
+        assert!(
+            g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v)),
+            "Edge ({}, {}) must exist in original graph",
+            u,
+            v
+        );
+    }
+}
+
