@@ -33,6 +33,8 @@ use crate::interface_port_synchronizer::InterfacePortSynchronizer;
 use crate::inverse_3sat_synthesizer::Inverse3SatSynthesizer;
 use crate::hub_hierarchical_decomposer::HubHierarchicalDecomposer;
 use crate::empirical_backbone_cutter::{EmpiricalBackboneCutter, EmpiricalBackboneTracker};
+use crate::cnf_subsumer::CnfSubsumer;
+
 
 
 /// Pre-emptively forbids 3-cycles (triangles) and 4-cycles in the initial CNF encoding in O(|E| * Delta).
@@ -885,9 +887,13 @@ fn cegar(
                     println!("add block clauses time = {:?}", add_block_clauses_time);
                     println!("increment time = {:?}", time);
 
-                    if SolverReseeder::should_reseed(sat_solving_time.as_secs_f64(), count as usize, &reseeder_opts) {
-                        println!("SolverReseeder: refreshing CaDiCaL instance (round {}, last SAT time {:.2}s, accumulated cuts: {})",
-                            count, sat_solving_time.as_secs_f64(), accumulated_cut_cnfs.len());
+                    if SolverReseeder::should_reseed(sat_solving_time.as_secs_f64(), count as usize, &reseeder_opts) || accumulated_cut_cnfs.len() >= 100 {
+                        let pruned_cnf = CnfSubsumer::prune_and_subsume_cuts(&accumulated_cut_cnfs);
+                        println!("SolverReseeder: compressed {} cut sets down to {} non-redundant clauses (round {}, last SAT time {:.2}s)",
+                            accumulated_cut_cnfs.len(), pruned_cnf.len(), count, sat_solving_time.as_secs_f64());
+                        working_cnf = base_cnf.clone();
+                        working_cnf.extend(pruned_cnf.clone());
+                        accumulated_cut_cnfs = vec![pruned_cnf];
                     }
                 }
             }

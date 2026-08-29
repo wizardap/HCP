@@ -1692,6 +1692,77 @@ fn test_cegar_empirical_backbone_cutter_integration() {
     }
 }
 
+#[test]
+fn test_cegar_cnf_subsumer_integration() {
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use cegar_fix::cnf_subsumer::CnfSubsumer;
+    use cegar_fix::tour_verifier::TourVerifier;
+    use rustsat::instances::Cnf;
+    use rustsat::types::Lit;
+    use rustsat::clause;
+    use std::collections::HashSet;
+    use std::time::Instant;
+
+    // 1. Direct unit verification of CnfSubsumer::prune_and_subsume_cuts
+    let l1 = Lit::positive(1);
+    let l2 = Lit::positive(2);
+    let l3 = Lit::positive(3);
+    let l4 = Lit::positive(4);
+
+    let mut cnf1 = Cnf::new();
+    cnf1.add_clause(clause!(l1, l2)); // Short clause
+    cnf1.add_clause(clause!(l1, l2, l3)); // Subsumed by (l1, l2)
+    cnf1.add_clause(clause!(l1, !l1)); // Tautology
+
+    let mut cnf2 = Cnf::new();
+    cnf2.add_clause(clause!(l1, l2)); // Duplicate
+    cnf2.add_clause(clause!(l3, l4)); // Distinct clause
+    cnf2.add_clause(clause!(l1, l2, l4)); // Subsumed by (l1, l2)
+
+    let pruned = CnfSubsumer::prune_and_subsume_cuts(&[cnf1, cnf2]);
+    assert_eq!(pruned.len(), 2, "Pruned CNF should contain exactly (l1, l2) and (l3, l4)");
+
+    // 2. CEGAR end-to-end solve on 30-vertex graph with chords
+    let mut g = Graph::new();
+    for i in 1..30 {
+        g.add_edge(i, i + 1);
+    }
+    g.add_edge(30, 1);
+    g.add_edge(1, 15);
+    g.add_edge(15, 30);
+    g.add_edge(5, 20);
+    g.add_edge(10, 25);
+    g.add_edge(3, 18);
+    g.add_edge(8, 23);
+
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+    let hub_reg = HubRegistry::new(&contracted_g);
+    let start = Instant::now();
+
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+
+    assert!(tour.is_some(), "Graph must be solved with CnfSubsumer wired into CEGAR loop");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 30, "Tour length must equal 30 vertices");
+
+    let verify_res = TourVerifier::verify_raw_tour(&t, &g);
+    assert!(verify_res.is_ok(), "Tour verification failed: {:?}", verify_res.err());
+
+    let mut seen = HashSet::new();
+    for &v in &t {
+        assert!(seen.insert(v), "Duplicate vertex {} in tour", v);
+    }
+    assert_eq!(seen.len(), 30, "Tour must visit all 30 distinct vertices");
+}
+
+
 
 
 
