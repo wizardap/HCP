@@ -44,6 +44,7 @@ pub mod parallel_sat_portfolio;
 pub mod macro_cycle_stitcher;
 pub mod giant_cycle_stitcher;
 pub mod transitive_macro_splicer;
+pub mod interface_port_synchronizer;
 
 
 use contraction::Degree2Contractor;
