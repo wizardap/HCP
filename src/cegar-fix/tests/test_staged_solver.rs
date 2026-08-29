@@ -497,5 +497,87 @@ fn test_cegar_metagraph_router_integration() {
     }
 }
 
+#[test]
+fn test_cegar_dual_channel_router_integration() {
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use cegar_fix::metagraph_router::MetagraphRouter;
+    use std::time::Instant;
+
+    let mut g = Graph::new();
+    // 3 gadget modules with 14 vertices each (total 42 vertices)
+    // Module vertices > 12 will trigger splitting into 2 channels per module (6 channels total)
+    // C0: 1..=7, C1: 8..=14
+    // C2: 15..=21, C3: 22..=28
+    // C4: 29..=35, C5: 36..=42
+    for m in 0..3 {
+        let base = m * 14;
+        // Channel A vertices (all degree >= 3 to avoid contraction)
+        for i in 1..=6 {
+            g.add_edge(base + i, base + i + 1);
+        }
+        for i in 1..=5 {
+            g.add_edge(base + i, base + i + 2);
+        }
+
+        // Channel B vertices (all degree >= 3 to avoid contraction)
+        for i in 8..=13 {
+            g.add_edge(base + i, base + i + 1);
+        }
+        for i in 8..=12 {
+            g.add_edge(base + i, base + i + 2);
+        }
+
+        // Internal intra-module bridge between Channel A and Channel B
+        g.add_edge(base + 7, base + 8);
+        g.add_edge(base + 14, base + 1);
+    }
+
+    // Inter-module bridges forming 2-pass tour across 6 channels:
+    // Pass 1: C0 -> C2 -> C4
+    g.add_edge(7, 15);
+    g.add_edge(21, 29);
+    g.add_edge(35, 8);
+    // Pass 2: C1 -> C3 -> C5 -> C0
+    g.add_edge(14, 22);
+    g.add_edge(28, 36);
+    g.add_edge(42, 1);
+
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+    let hub_reg = HubRegistry::new(&contracted_g);
+
+    let channels = MetagraphRouter::detect_dual_channels(&contracted_g);
+    assert_eq!(channels.len(), 6, "Expected 6 dual-channel modules (3 gadgets * 2 channels)");
+
+    let start = Instant::now();
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+    assert!(tour.is_some(), "Graph with dual-channel modules must be solved via DualChannelRouter and CEGAR");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 42);
+
+    // Verify validity of Hamiltonian cycle on g
+    let mut seen = std::collections::HashSet::new();
+    for &v in &t {
+        assert!(seen.insert(v), "Duplicate vertex {} in tour", v);
+    }
+    for i in 0..t.len() {
+        let u = t[i];
+        let v = t[(i + 1) % t.len()];
+        assert!(
+            g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v)),
+            "Edge ({}, {}) must exist in graph",
+            u,
+            v
+        );
+    }
+}
+
+
 
 

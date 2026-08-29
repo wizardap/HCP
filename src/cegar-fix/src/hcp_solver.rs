@@ -281,13 +281,13 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
         cnf.extend(static_cuts);
     }
 
-    // Metagraph Router: detect gadget supernodes and inject Supernode MTZ constraints
-    let modules = MetagraphRouter::detect_gadget_modules(&g);
-    if modules.len() >= 3 && modules.len() <= 120 {
+    // Dual-Channel Metagraph Router: detect 2-channel sub-gadgets and inject Dual-Channel MTZ constraints
+    let channels = MetagraphRouter::detect_dual_channels(&g);
+    if channels.len() >= 3 && channels.len() <= 200 {
         let pre_clauses = cnf.len();
-        MetagraphRouter::encode_supernode_mtz(&modules, &g, &mut encoder, &mut cnf);
+        MetagraphRouter::encode_dual_channel_mtz(&channels, &mut encoder, &mut cnf);
         let mtz_clauses = cnf.len() - pre_clauses;
-        println!("MetagraphRouter: detected {} supernode modules, injected {} supernode MTZ clauses at Round 0", modules.len(), mtz_clauses);
+        println!("DualChannelRouter: detected {} channel modules, injected {} dual-channel MTZ clauses at Round 0", channels.len(), mtz_clauses);
     }
 
     let current_cnf = if output_folder != "default" {
