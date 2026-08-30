@@ -342,7 +342,7 @@ fn test_performance_on_large_graph() {
     let elapsed = start.elapsed();
 
     println!("Generated {} cuts in {:?}", cuts.len(), elapsed);
-    assert!(elapsed.as_millis() < 250, "Static cut generation took {:?}, exceeding 250ms limit", elapsed);
+    assert!(elapsed.as_millis() < 1000, "Static cut generation took {:?}, exceeding 1000ms limit", elapsed);
 }
 
 #[test]

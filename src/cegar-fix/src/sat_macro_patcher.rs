@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::graph::Graph;
 use rustsat::clause;
 use rustsat::instances::Cnf;
-use rustsat::solvers::{Solve, SolverResult};
+use rustsat::solvers::{LimitConflicts, Solve, SolverResult};
 use rustsat::types::{Clause, Lit, TernaryVal, Var};
 use rustsat_cadical::CaDiCaL;
 
@@ -430,6 +430,7 @@ impl SatMacroPatcher {
 
         // 3. Solving & Tour Reconstruction
         let mut solver = CaDiCaL::default();
+        let _ = solver.limit_conflicts(Some(2000));
         if solver.add_cnf_ref(&cnf).is_err() {
             return None;
         }

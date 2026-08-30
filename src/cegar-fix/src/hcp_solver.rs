@@ -865,14 +865,19 @@ fn cegar(
                         round_cuts.add_clause(Clause::from_iter(cl));
                     }
 
-                    // Inject boundary cut clauses for all non-giant subcycles
-                    for cycle in &sol_cycles {
-                        if cycle.len() >= 3 && cycle.len() < total_v / 2 {
-                            let b_clauses = get_boundary_cut_clauses(cycle, encoder, &g, total_v, 0);
-                            for cl in b_clauses {
-                                clause_count += 1;
-                                round_cuts.add_clause(cl);
-                            }
+                    // Inject boundary cut clauses for shortest non-giant subcycles (budgeted to top 30)
+                    let mut non_giant_cycles: Vec<&Vec<i32>> = sol_cycles
+                        .iter()
+                        .filter(|c| c.len() >= 3 && c.len() < total_v / 2)
+                        .collect();
+                    non_giant_cycles.sort_by_key(|c| c.len());
+                    non_giant_cycles.truncate(30);
+
+                    for cycle in non_giant_cycles {
+                        let b_clauses = get_boundary_cut_clauses(cycle, encoder, &g, total_v, 0);
+                        for cl in b_clauses {
+                            clause_count += 1;
+                            round_cuts.add_clause(cl);
                         }
                     }
 
@@ -974,8 +979,7 @@ fn cegar(
                     println!("increment time = {:?}", time);
 
                     if SolverReseeder::should_reseed(sat_solving_time.as_secs_f64(), count as usize, &reseeder_opts)
-                        || accumulated_cut_cnfs.len() >= 10
-                        || (count > 0 && count % 3 == 0) {
+                        || accumulated_cut_cnfs.len() >= 10 {
                         let pruned_cnf = CnfSubsumer::prune_and_subsume_cuts(&accumulated_cut_cnfs);
                         println!("SolverReseeder: compressed {} cut sets down to {} non-redundant clauses (round {}, last SAT time {:.2}s)",
                             accumulated_cut_cnfs.len(), pruned_cnf.len(), count, sat_solving_time.as_secs_f64());

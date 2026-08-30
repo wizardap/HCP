@@ -9,7 +9,7 @@ use crate::sat_macro_patcher::SatMacroPatcher;
 use crate::gadget_path_absorber::GadgetPathAbsorber;
 use crate::subcycle_absorber::SubcycleAbsorber;
 use rustsat::instances::Cnf;
-use rustsat::solvers::{Solve, SolverResult};
+use rustsat::solvers::{LimitConflicts, Solve, SolverResult};
 use rustsat::types::{Clause, Lit};
 use rustsat_cadical::CaDiCaL;
 
@@ -274,6 +274,7 @@ impl GiantCycleStitcher {
 
         // Solve SAT subproblem with CaDiCaL
         let mut solver = CaDiCaL::default();
+        let _ = solver.limit_conflicts(Some(2000));
         if solver.add_cnf_ref(&cnf).is_err() {
             return None;
         }

@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::graph::Graph;
 use rustsat::clause;
 use rustsat::instances::Cnf;
-use rustsat::solvers::{Solve, SolverResult};
+use rustsat::solvers::{LimitConflicts, Solve, SolverResult};
 use rustsat::types::{Clause, Lit, TernaryVal, Var};
 use rustsat_cadical::CaDiCaL;
 
@@ -680,6 +680,7 @@ impl MultiOptSatSplicer {
 
         for k in (1..=num_att).rev() {
             let mut solver = CaDiCaL::default();
+            let _ = solver.limit_conflicts(Some(2000));
             let mut cnf = base_cnf.clone();
             let c = num_att - k;
 

@@ -73,7 +73,8 @@ impl ParallelSatPortfolio {
                         if cancelled_ref.load(Ordering::Relaxed) {
                             return;
                         }
-                        let _ = solver.limit_conflicts(Some(5000));
+                        let conflict_limit = (assumptions.len() * 100).clamp(200, 2500) as u32;
+                        let _ = solver.limit_conflicts(Some(conflict_limit));
                         let assumps_res = solver.solve_assumps(assumptions);
                         match assumps_res {
                             Ok(SolverResult::Sat) => {
