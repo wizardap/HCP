@@ -777,6 +777,7 @@ fn cegar(
                         }
                     }
 
+                    let mut round_cuts = Cnf::new();
                     // Gadget Interface Parity & Direct Splicing Check
                     if _active_cycles.len() >= 2 {
                         let total_nodes = g.adjacency_list.len();
@@ -818,17 +819,11 @@ fn cegar(
                                     if analyzed_subcycles.insert(c_idx) {
                                         for cl in gadget_res.pruning_clauses {
                                             clause_count += 1;
-                                            working_cnf.add_clause(cl.clone());
-                                            let mut g_cnf = Cnf::new();
-                                            g_cnf.add_clause(cl);
-                                            accumulated_cut_cnfs.push(g_cnf);
+                                            round_cuts.add_clause(cl);
                                         }
                                         for cl in gadget_res.cut_parity_clauses {
                                             clause_count += 1;
-                                            working_cnf.add_clause(cl.clone());
-                                            let mut g_cnf = Cnf::new();
-                                            g_cnf.add_clause(cl);
-                                            accumulated_cut_cnfs.push(g_cnf);
+                                            round_cuts.add_clause(cl);
                                         }
                                     }
                                 }
@@ -853,12 +848,10 @@ fn cegar(
                     if cnf_normalize == 1 {
                         let normalized_cnf = cnf.normalize();
                         clause_count += normalized_cnf.len() as i32;
-                        working_cnf.extend(normalized_cnf.clone());
-                        accumulated_cut_cnfs.push(normalized_cnf);
+                        round_cuts.extend(normalized_cnf);
                     } else {
                         clause_count += cnf.len() as i32;
-                        working_cnf.extend(cnf.clone());
-                        accumulated_cut_cnfs.push(cnf);
+                        round_cuts.extend(cnf);
                     }
 
                     let total_v = g.adjacency_list.len();
@@ -869,11 +862,7 @@ fn cegar(
                     );
                     for cl in comprehensive_sec {
                         clause_count += 1;
-                        let clause = Clause::from_iter(cl);
-                        working_cnf.add_clause(clause.clone());
-                        let mut g_cnf = Cnf::new();
-                        g_cnf.add_clause(clause);
-                        accumulated_cut_cnfs.push(g_cnf);
+                        round_cuts.add_clause(Clause::from_iter(cl));
                     }
 
                     // Inject boundary cut clauses for all non-giant subcycles
@@ -882,10 +871,7 @@ fn cegar(
                             let b_clauses = get_boundary_cut_clauses(cycle, encoder, &g, total_v, 0);
                             for cl in b_clauses {
                                 clause_count += 1;
-                                working_cnf.add_clause(cl.clone());
-                                let mut g_cnf = Cnf::new();
-                                g_cnf.add_clause(cl);
-                                accumulated_cut_cnfs.push(g_cnf);
+                                round_cuts.add_clause(cl);
                             }
                         }
                     }
@@ -903,10 +889,7 @@ fn cegar(
                             let b_clauses = get_boundary_cut_clauses(cycle, encoder, &g, total_v, 0);
                             for cl in b_clauses {
                                 clause_count += 1;
-                                working_cnf.add_clause(cl.clone());
-                                let mut g_cnf = Cnf::new();
-                                g_cnf.add_clause(cl);
-                                accumulated_cut_cnfs.push(g_cnf);
+                                round_cuts.add_clause(cl);
                             }
                         }
                     }
@@ -925,12 +908,14 @@ fn cegar(
                             );
                             for cl in bicomponent_cuts {
                                 clause_count += 1;
-                                working_cnf.add_clause(cl.clone());
-                                let mut g_cnf = Cnf::new();
-                                g_cnf.add_clause(cl);
-                                accumulated_cut_cnfs.push(g_cnf);
+                                round_cuts.add_clause(cl);
                             }
                         }
+                    }
+
+                    if !round_cuts.is_empty() {
+                        working_cnf.extend(round_cuts.clone());
+                        accumulated_cut_cnfs.push(round_cuts);
                     }
                     let max_cycle_len = _active_cycles.iter().map(|c| c.len()).max().unwrap_or(0);
                     if _active_cycles.len() > 1 && (max_cycle_len >= total_v / 2 || _active_cycles.len() <= 25) {
@@ -989,7 +974,8 @@ fn cegar(
                     println!("increment time = {:?}", time);
 
                     if SolverReseeder::should_reseed(sat_solving_time.as_secs_f64(), count as usize, &reseeder_opts)
-                        || accumulated_cut_cnfs.len() >= 500 {
+                        || accumulated_cut_cnfs.len() >= 10
+                        || (count > 0 && count % 3 == 0) {
                         let pruned_cnf = CnfSubsumer::prune_and_subsume_cuts(&accumulated_cut_cnfs);
                         println!("SolverReseeder: compressed {} cut sets down to {} non-redundant clauses (round {}, last SAT time {:.2}s)",
                             accumulated_cut_cnfs.len(), pruned_cnf.len(), count, sat_solving_time.as_secs_f64());

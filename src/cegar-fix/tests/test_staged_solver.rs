@@ -555,7 +555,7 @@ fn test_cegar_dual_channel_router_integration() {
         contracted_g,
         &contractor,
         &hub_reg,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 30.0, start, "default"
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
     );
     assert!(tour.is_some(), "Graph with dual-channel modules must be solved via DualChannelRouter and CEGAR");
     let t = tour.unwrap();
