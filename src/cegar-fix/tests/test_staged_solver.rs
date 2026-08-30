@@ -2176,6 +2176,87 @@ fn test_cegar_sat_macro_patcher_components_integration() {
     assert_eq!(seen.len(), 36, "Tour must visit all 36 distinct vertices");
 }
 
+#[test]
+fn test_cegar_gadget_path_absorber_integration() {
+    use cegar_fix::graph::Graph;
+    use cegar_fix::giant_cycle_stitcher::GiantCycleStitcher;
+    use cegar_fix::gadget_path_absorber::GadgetPathAbsorber;
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use cegar_fix::tour_verifier::TourVerifier;
+    use std::collections::HashSet;
+    use std::time::Instant;
+
+    let mut g = Graph::new();
+    let c1: Vec<i32> = (1..=20).collect();
+    let c2: Vec<i32> = (21..=26).collect();
+
+    // Giant cycle C1: 1..=20 with chords (all degree >= 3)
+    for i in 0..20 {
+        g.add_edge(c1[i], c1[(i + 1) % 20]);
+    }
+    for i in 1..=20 {
+        let chord_target = ((i + 2) % 20) + 1;
+        g.add_edge(i, chord_target);
+    }
+
+    // Satellite gadget C2: 21..=26 with chords (all degree >= 3)
+    for i in 0..6 {
+        g.add_edge(c2[i], c2[(i + 1) % 6]);
+    }
+    g.add_edge(21, 24);
+    g.add_edge(22, 25);
+    g.add_edge(23, 26);
+
+    // Cross-edges connecting endpoints of Hamiltonian path 21..26 to giant cycle edge (1, 2)
+    g.add_edge(1, 21);
+    g.add_edge(26, 2);
+
+    let protected = HashSet::new();
+    let initial_cycles = vec![c1.clone(), c2.clone()];
+
+    // 1. Direct unit verification: GadgetPathAbsorber directly
+    let absorbed = GadgetPathAbsorber::try_absorb_gadgets(&initial_cycles, &g, &protected);
+    assert_eq!(absorbed.len(), 1, "GadgetPathAbsorber should absorb satellite gadget into 1 cycle");
+    assert_eq!(absorbed[0].len(), 26, "Absorbed tour must contain 26 vertices");
+    let verify_absorbed = TourVerifier::verify_raw_tour(&absorbed[0], &g);
+    assert!(verify_absorbed.is_ok(), "Direct absorbed tour verification failed: {:?}", verify_absorbed.err());
+
+    // 2. Direct unit verification: GiantCycleStitcher using GadgetPathAbsorber
+    let stitched = GiantCycleStitcher::repair_until_fixed_point(&initial_cycles, &g, &protected);
+    assert_eq!(stitched.len(), 1, "GiantCycleStitcher should stitch cycles into 1");
+    assert_eq!(stitched[0].len(), 26, "Stitched tour must contain 26 vertices");
+    let verify_stitched = TourVerifier::verify_raw_tour(&stitched[0], &g);
+    assert!(verify_stitched.is_ok(), "Direct stitched tour verification failed: {:?}", verify_stitched.err());
+
+    // 3. Full CEGAR end-to-end solve
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+    let hub_reg = HubRegistry::new(&contracted_g);
+    let start = Instant::now();
+
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+
+    assert!(tour.is_some(), "Graph must be solved with GadgetPathAbsorber wired into CEGAR loop");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 26, "Tour length must equal 26 vertices");
+
+    let verify_res = TourVerifier::verify_raw_tour(&t, &g);
+    assert!(verify_res.is_ok(), "Tour verification failed: {:?}", verify_res.err());
+
+    let mut seen = HashSet::new();
+    for &v in &t {
+        assert!(seen.insert(v), "Duplicate vertex {} in tour", v);
+    }
+    assert_eq!(seen.len(), 26, "Tour must visit all 26 distinct vertices");
+}
+
+
 
 
 

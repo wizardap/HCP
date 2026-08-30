@@ -36,6 +36,7 @@ use crate::empirical_backbone_cutter::{EmpiricalBackboneCutter, EmpiricalBackbon
 use crate::cnf_subsumer::CnfSubsumer;
 use crate::twin_giant_splicer::TwinGiantSplicer;
 use crate::sat_macro_patcher::SatMacroPatcher;
+use crate::gadget_path_absorber::GadgetPathAbsorber;
 
 
 
@@ -748,6 +749,31 @@ fn cegar(
                             return (count, clause_count, Some(full_cycle));
                         } else if patched.len() < _active_cycles.len() {
                             _active_cycles = patched;
+                        }
+                    }
+
+                    // Attempt GadgetPathAbsorber satellite subcycle absorption
+                    if _active_cycles.len() >= 2 {
+                        let protected_edges: HashSet<(i32, i32)> = contractor.chain_map.keys().copied().collect();
+                        let absorbed = GadgetPathAbsorber::try_absorb_gadgets(&_active_cycles, &g, &protected_edges);
+                        if absorbed.len() == 1 && absorbed[0].len() == g.adjacency_list.len() {
+                            println!("GadgetPathAbsorber: successfully absorbed satellite gadgets into full Hamiltonian tour");
+                            let full_cycle = contractor.uncontract_cycle(&absorbed[0]);
+                            let line = full_cycle.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                            let now = instant.elapsed();
+                            let time = now - previous_time;
+                            let add_block_clauses_time = now - previous_time - sat_solving_time;
+                            println!("number of added block clauses = {}", clause_count);
+                            println!("add block clauses time = {:?}", add_block_clauses_time);
+                            println!("increment time = {:?}", time);
+                            println!();
+                            println!("solution: ");
+                            println!("{}\n", line);
+                            println!("s SATISFIABLE");
+                            return (count, clause_count, Some(full_cycle));
+                        } else if absorbed.len() < _active_cycles.len() {
+                            println!("GadgetPathAbsorber: absorbed satellite subcycles from {} down to {} cycles", _active_cycles.len(), absorbed.len());
+                            _active_cycles = absorbed;
                         }
                     }
 

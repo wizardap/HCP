@@ -6,6 +6,7 @@ use crate::multi_opt_sat_splicer::MultiOptSatSplicer;
 use crate::twin_giant_splicer::TwinGiantSplicer;
 use crate::macro_component_splicer::MacroComponentSplicer;
 use crate::sat_macro_patcher::SatMacroPatcher;
+use crate::gadget_path_absorber::GadgetPathAbsorber;
 use rustsat::instances::Cnf;
 use rustsat::solvers::{Solve, SolverResult};
 use rustsat::types::{Clause, Lit};
@@ -975,6 +976,17 @@ impl GiantCycleStitcher {
                     continue;
                 }
             }
+
+            // 11. Gadget Path Absorber: absorb satellite subcycles (|C| <= 16) via Hamiltonian path replacement
+            let absorbed_gadgets = GadgetPathAbsorber::try_absorb_gadgets(&current_cycles, g, protected_edges);
+            if absorbed_gadgets.len() < current_cycles.len() {
+                current_cycles = absorbed_gadgets;
+                if current_cycles.len() <= 1 {
+                    break;
+                }
+                continue;
+            }
+
             // If no strategy decreased cycle count, fixed point reached
             if current_cycles.len() == prev_count {
                 break;
