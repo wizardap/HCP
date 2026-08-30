@@ -149,12 +149,7 @@ impl SatMacroPatcher {
         }
 
         // 4. Deterministic sorting: descending by length, then tiebreak by min vertex
-        result_cycles.sort_by(|a, b| {
-            b.len()
-                .cmp(&a.len())
-                .then_with(|| a.iter().min().cmp(&b.iter().min()))
-                .then_with(|| a.cmp(b))
-        });
+        result_cycles.sort_by_cached_key(|c| (std::cmp::Reverse(c.len()), c.iter().min().copied(), c.clone()));
 
         result_cycles
     }
