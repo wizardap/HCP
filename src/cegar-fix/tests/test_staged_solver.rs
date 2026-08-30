@@ -2334,7 +2334,7 @@ fn test_cegar_multi_macro_gadget_integration() {
         let u = spliced1[i];
         let v = spliced1[(i + 1) % spliced1.len()];
         assert!(seen1.insert(u), "Duplicate vertex {} in spliced1", u);
-        assert!(g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v)), "Edge ({}, {}) must exist in graph", u, v);
+        assert!(g.adjacency_list.get(&u).is_some_and(|nbrs| nbrs.contains(&v)), "Edge ({}, {}) must exist in graph", u, v);
     }
 
     let res2 = GadgetInterfaceParityEngine::analyze_subcycle_gadget(&s2, &g, Some(&m2), &encoder);
@@ -2346,7 +2346,7 @@ fn test_cegar_multi_macro_gadget_integration() {
         let u = spliced2[i];
         let v = spliced2[(i + 1) % spliced2.len()];
         assert!(seen2.insert(u), "Duplicate vertex {} in spliced2", u);
-        assert!(g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v)), "Edge ({}, {}) must exist in graph", u, v);
+        assert!(g.adjacency_list.get(&u).is_some_and(|nbrs| nbrs.contains(&v)), "Edge ({}, {}) must exist in graph", u, v);
     }
 
     // 2. Full CEGAR end-to-end solve
@@ -2374,13 +2374,4 @@ fn test_cegar_multi_macro_gadget_integration() {
     }
     assert_eq!(seen.len(), 48, "Tour must visit all 48 distinct vertices");
 }
-
-
-
-
-
-
-
-
-
 
