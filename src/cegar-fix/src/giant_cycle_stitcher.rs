@@ -651,6 +651,7 @@ impl GiantCycleStitcher {
 
         // Solve SAT subproblem with CaDiCaL
         let mut solver = CaDiCaL::default();
+        let _ = solver.limit_conflicts(Some(2000));
         if solver.add_cnf_ref(&cnf).is_err() {
             return cycles.to_vec();
         }
@@ -865,7 +866,7 @@ impl GiantCycleStitcher {
             return cycles.to_vec();
         }
 
-        let max_passes = 20;
+        let max_passes = 6;
         let mut current_cycles = cycles.to_vec();
 
         for _ in 0..max_passes {

@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::graph::Graph;
 use rustsat::clause;
 use rustsat::instances::Cnf;
-use rustsat::solvers::{Solve, SolverResult};
+use rustsat::solvers::{LimitConflicts, Solve, SolverResult};
 use rustsat::types::{Clause, Lit, TernaryVal, Var};
 use rustsat_cadical::CaDiCaL;
 
@@ -48,7 +48,7 @@ impl TransitiveMacroSplicer {
         }
 
         let mut current_cycles = cycles.to_vec();
-        let max_passes = 10;
+        let max_passes = 6;
 
         for _ in 0..max_passes {
             if current_cycles.len() <= 1 {
@@ -440,9 +440,21 @@ impl TransitiveMacroSplicer {
         // 6. Solve with target attached nodes k from num_att down to 1
         let att_lits: Vec<Lit> = (1..n).map(|loc| att_var[&loc]).collect();
         let num_att = att_lits.len();
+        let target_ks: Vec<usize> = if num_att <= 4 {
+            (1..=num_att).rev().collect()
+        } else {
+            let mut targets = vec![num_att];
+            let t34 = (num_att * 3) / 4;
+            if t34 > 1 && t34 < num_att { targets.push(t34); }
+            let t12 = num_att / 2;
+            if t12 > 1 && t12 < t34 { targets.push(t12); }
+            if !targets.contains(&1) { targets.push(1); }
+            targets
+        };
 
-        for k in (1..=num_att).rev() {
+        for k in target_ks {
             let mut solver = CaDiCaL::default();
+            let _ = solver.limit_conflicts(Some(2000));
             let mut cnf = base_cnf.clone();
             let c = num_att - k; // At most c unattached nodes allowed
 

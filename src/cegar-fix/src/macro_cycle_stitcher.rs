@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use crate::graph::Graph;
 use rustsat::instances::Cnf;
-use rustsat::solvers::{Solve, SolverResult};
+use rustsat::solvers::{LimitConflicts, Solve, SolverResult};
 use rustsat::types::{Clause, Lit};
 use rustsat_cadical::CaDiCaL;
 
@@ -152,6 +152,7 @@ impl MacroCycleStitcher {
             cnf.add_clause(Clause::from_iter(active_lits));
 
             let mut solver = CaDiCaL::default();
+            let _ = solver.limit_conflicts(Some(2000));
             if solver.add_cnf_ref(&cnf).is_ok() {
                 let mut attempts = 0;
                 while attempts < 15 {
@@ -390,7 +391,7 @@ impl MacroCycleStitcher {
         }
 
         let mut current_cycles = cycles.to_vec();
-        let max_passes = 20;
+        let max_passes = 6;
 
         for _ in 0..max_passes {
             if current_cycles.len() <= 1 {
