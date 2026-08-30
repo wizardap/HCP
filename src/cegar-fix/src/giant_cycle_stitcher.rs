@@ -964,15 +964,13 @@ impl GiantCycleStitcher {
                 continue;
             }
 
-            // 10. SAT Macro-Patcher: exact SAT spanning tree over all candidate 2-opt bridges
-            if let Some(tour) = SatMacroPatcher::try_patch_all_cycles(&current_cycles, g, protected_edges) {
-                current_cycles = vec![tour];
-                if current_cycles.len() <= 1 {
+            // 10. Exact SAT Macro-Patching: simultaneous multi-cycle spanning tree solver
+            if current_cycles.len() <= 30 {
+                if let Some(tour) = SatMacroPatcher::try_patch_all_cycles(&current_cycles, g, protected_edges) {
+                    current_cycles = vec![tour];
                     break;
                 }
-                continue;
             }
-
             // If no strategy decreased cycle count, fixed point reached
             if current_cycles.len() == prev_count {
                 break;
