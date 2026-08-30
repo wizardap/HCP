@@ -1724,7 +1724,28 @@ fn test_cegar_cnf_subsumer_integration() {
     let pruned = CnfSubsumer::prune_and_subsume_cuts(&[cnf1, cnf2]);
     assert_eq!(pruned.len(), 2, "Pruned CNF should contain exactly (l1, l2) and (l3, l4)");
 
-    // 2. CEGAR end-to-end solve on 30-vertex graph with chords
+    // 2. Direct unit verification of SubcycleAbsorber::absorb_subcycles_with_protected_set
+    use cegar_fix::subcycle_absorber::SubcycleAbsorber;
+    let mut g_absorb = Graph::new();
+    for i in 1..20 {
+        g_absorb.add_edge(i, i + 1);
+    }
+    g_absorb.add_edge(20, 1);
+    for i in 21..24 {
+        g_absorb.add_edge(i, i + 1);
+    }
+    g_absorb.add_edge(24, 21);
+    g_absorb.add_edge(1, 21);
+    g_absorb.add_edge(2, 24);
+
+    let giant = (1..=20).collect::<Vec<i32>>();
+    let small = (21..=24).collect::<Vec<i32>>();
+    let prot = HashSet::new();
+    let absorbed = SubcycleAbsorber::absorb_subcycles_with_protected_set(&[giant, small], &g_absorb, &prot);
+    assert_eq!(absorbed.len(), 1, "SubcycleAbsorber should absorb small cycle into giant");
+    assert_eq!(absorbed[0].len(), 24, "Absorbed cycle must have 24 vertices");
+
+    // 3. CEGAR end-to-end solve on 30-vertex graph with chords
     let mut g = Graph::new();
     for i in 1..30 {
         g.add_edge(i, i + 1);

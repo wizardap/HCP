@@ -7,6 +7,7 @@ use crate::twin_giant_splicer::TwinGiantSplicer;
 use crate::macro_component_splicer::MacroComponentSplicer;
 use crate::sat_macro_patcher::SatMacroPatcher;
 use crate::gadget_path_absorber::GadgetPathAbsorber;
+use crate::subcycle_absorber::SubcycleAbsorber;
 use rustsat::instances::Cnf;
 use rustsat::solvers::{Solve, SolverResult};
 use rustsat::types::{Clause, Lit};
@@ -981,6 +982,16 @@ impl GiantCycleStitcher {
             let absorbed_gadgets = GadgetPathAbsorber::try_absorb_gadgets(&current_cycles, g, protected_edges);
             if absorbed_gadgets.len() < current_cycles.len() {
                 current_cycles = absorbed_gadgets;
+                if current_cycles.len() <= 1 {
+                    break;
+                }
+                continue;
+            }
+
+            // 12. Subcycle Absorber: greedy rotation/reversal insertion into dominant giant cycle
+            let absorbed_subcycles = SubcycleAbsorber::absorb_subcycles_with_protected_set(&current_cycles, g, protected_edges);
+            if absorbed_subcycles.len() < current_cycles.len() {
+                current_cycles = absorbed_subcycles;
                 if current_cycles.len() <= 1 {
                     break;
                 }

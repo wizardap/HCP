@@ -85,6 +85,78 @@ impl SubcycleAbsorber {
         result
     }
 
+    /// Attempts to absorb smaller subcycles into dominant giant cycle using a pre-existing protected edge set.
+    pub fn absorb_subcycles_with_protected_set(
+        cycles: &[Vec<i32>],
+        g: &Graph,
+        protected_edges: &HashSet<(i32, i32)>,
+    ) -> Vec<Vec<i32>> {
+        if cycles.len() <= 1 {
+            return cycles.to_vec();
+        }
+
+        let mut max_len = 0;
+        let mut giant_idx = 0;
+        for (i, c) in cycles.iter().enumerate() {
+            if c.len() > max_len {
+                max_len = c.len();
+                giant_idx = i;
+            }
+        }
+
+        let mut giant_cycle = cycles[giant_idx].clone();
+        let mut unabsorbed: Vec<Vec<i32>> = cycles
+            .iter()
+            .enumerate()
+            .filter(|&(i, _)| i != giant_idx)
+            .map(|(_, c)| c.clone())
+            .collect();
+
+        let mut is_protected_edge: HashSet<(i32, i32)> = HashSet::new();
+        for &(u, v) in protected_edges {
+            is_protected_edge.insert((u, v));
+            is_protected_edge.insert((v, u));
+        }
+
+        let mut progress = true;
+        while progress && !unabsorbed.is_empty() {
+            progress = false;
+
+            let mut giant_pos: HashMap<i32, usize> = HashMap::new();
+            for (idx, &v) in giant_cycle.iter().enumerate() {
+                giant_pos.insert(v, idx);
+            }
+
+            let mut next_unabsorbed = Vec::new();
+
+            for small_cycle in unabsorbed {
+                if let Some(spliced_giant) = Self::try_splice_subcycle(
+                    &giant_cycle,
+                    &giant_pos,
+                    &small_cycle,
+                    g,
+                    &is_protected_edge,
+                ) {
+                    giant_cycle = spliced_giant;
+                    progress = true;
+                    giant_pos.clear();
+                    for (idx, &v) in giant_cycle.iter().enumerate() {
+                        giant_pos.insert(v, idx);
+                    }
+                } else {
+                    next_unabsorbed.push(small_cycle);
+                }
+            }
+
+            unabsorbed = next_unabsorbed;
+        }
+
+        let mut result = Vec::with_capacity(1 + unabsorbed.len());
+        result.push(giant_cycle);
+        result.extend(unabsorbed);
+        result
+    }
+
     /// Tries all rotations (forward and reverse) of small_cycle to find an insertion into giant_cycle.
     fn try_splice_subcycle(
         giant: &[i32],
