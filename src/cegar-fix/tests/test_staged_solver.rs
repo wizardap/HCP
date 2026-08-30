@@ -2064,6 +2064,118 @@ fn test_cegar_sat_macro_patcher_integration() {
     assert_eq!(seen.len(), 24, "Tour must visit all 24 distinct vertices");
 }
 
+#[test]
+fn test_cegar_sat_macro_patcher_components_integration() {
+    use cegar_fix::graph::Graph;
+    use cegar_fix::giant_cycle_stitcher::GiantCycleStitcher;
+    use cegar_fix::sat_macro_patcher::SatMacroPatcher;
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use cegar_fix::tour_verifier::TourVerifier;
+    use std::collections::HashSet;
+    use std::time::Instant;
+
+    let mut g = Graph::new();
+    let c1: Vec<i32> = (1..=6).collect();
+    let c2: Vec<i32> = (7..=12).collect();
+    let c3: Vec<i32> = (13..=18).collect();
+    let c4: Vec<i32> = (19..=24).collect();
+    let c5: Vec<i32> = (25..=30).collect();
+    let c6: Vec<i32> = (31..=36).collect();
+
+    let cycles = vec![c1.clone(), c2.clone(), c3.clone(), c4.clone(), c5.clone(), c6.clone()];
+
+    // Add ring edges and chords for all 6 cycles (ensures min-degree >= 3)
+    for c in &cycles {
+        for i in 0..6 {
+            g.add_edge(c[i], c[(i + 1) % 6]);
+        }
+        g.add_edge(c[0], c[3]);
+        g.add_edge(c[1], c[4]);
+        g.add_edge(c[2], c[5]);
+    }
+
+    // Component 1 bridges: C1 <-> C2 and C2 <-> C3
+    // C1 <-> C2 via cross-edges (1, 7) and (2, 8), replacing (1, 2) and (7, 8)
+    g.add_edge(1, 7);
+    g.add_edge(2, 8);
+
+    // C2 <-> C3 via cross-edges (9, 13) and (10, 14), replacing (9, 10) and (13, 14)
+    g.add_edge(9, 13);
+    g.add_edge(10, 14);
+
+    // Component 2 bridges: C4 <-> C5 and C5 <-> C6
+    // C4 <-> C5 via cross-edges (19, 25) and (20, 26), replacing (19, 20) and (25, 26)
+    g.add_edge(19, 25);
+    g.add_edge(20, 26);
+
+    // C5 <-> C6 via cross-edges (27, 31) and (28, 32), replacing (27, 28) and (31, 32)
+    g.add_edge(27, 31);
+    g.add_edge(28, 32);
+
+    let protected = HashSet::new();
+
+    // 1. Verify partial component patching on 2 disconnected macro-components
+    let partial_patched = SatMacroPatcher::try_patch_components(&cycles, &g, &protected);
+    assert_eq!(partial_patched.len(), 2, "SatMacroPatcher should patch 6 cycles into 2 component giant cycles");
+    for comp_tour in &partial_patched {
+        assert_eq!(comp_tour.len(), 18, "Each component tour must have 18 vertices");
+        let n = comp_tour.len();
+        let mut comp_seen = HashSet::new();
+        for i in 0..n {
+            let u = comp_tour[i];
+            let v = comp_tour[(i + 1) % n];
+            assert!(comp_seen.insert(u), "Duplicate vertex {} in component tour", u);
+            assert!(g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v)), "Edge ({}, {}) must exist in graph", u, v);
+        }
+    }
+
+    // 2. Add bridge connecting the two components: C3 <-> C4
+    // C3 <-> C4 via cross-edges (15, 21) and (16, 22), replacing (15, 16) and (21, 22)
+    g.add_edge(15, 21);
+    g.add_edge(16, 22);
+
+    // Verify full macro patching across all 6 cycles
+    let full_patched = SatMacroPatcher::try_patch_components(&cycles, &g, &protected);
+    assert_eq!(full_patched.len(), 1, "SatMacroPatcher should patch all 6 cycles into 1 Hamiltonian cycle");
+    assert_eq!(full_patched[0].len(), 36, "Patched tour must contain 36 vertices");
+    let verify_patch = TourVerifier::verify_raw_tour(&full_patched[0], &g);
+    assert!(verify_patch.is_ok(), "Direct patched tour verification failed: {:?}", verify_patch.err());
+
+    // 3. Direct verification via GiantCycleStitcher using SatMacroPatcher::try_patch_components
+    let stitched = GiantCycleStitcher::repair_until_fixed_point(&cycles, &g, &protected);
+    assert_eq!(stitched.len(), 1, "GiantCycleStitcher should stitch 6 cycles into 1");
+    assert_eq!(stitched[0].len(), 36, "Stitched tour must contain 36 vertices");
+    let verify_stitched = TourVerifier::verify_raw_tour(&stitched[0], &g);
+    assert!(verify_stitched.is_ok(), "Direct stitched tour verification failed: {:?}", verify_stitched.err());
+
+    // 4. Full CEGAR end-to-end solve
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+    let hub_reg = HubRegistry::new(&contracted_g);
+    let start = Instant::now();
+
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+
+    assert!(tour.is_some(), "Graph must be solved with SatMacroPatcher component-wise patching wired into CEGAR loop");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 36, "Tour length must equal 36 vertices");
+
+    let verify_res = TourVerifier::verify_raw_tour(&t, &g);
+    assert!(verify_res.is_ok(), "Tour verification failed: {:?}", verify_res.err());
+
+    let mut seen = HashSet::new();
+    for &v in &t {
+        assert!(seen.insert(v), "Duplicate vertex {} in tour", v);
+    }
+    assert_eq!(seen.len(), 36, "Tour must visit all 36 distinct vertices");
+}
+
 
 
 

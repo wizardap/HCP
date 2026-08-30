@@ -701,7 +701,7 @@ fn cegar(
                     };
 
                     // 2-opt / 3-opt solution constructor
-                    let (block_clauses, _active_cycles) = if opt == 0 {
+                    let (block_clauses, mut _active_cycles) = if opt == 0 {
                         (get_blocking_clauses(&sol_cycles, encoder, &g, block_method, balanced), sol_cycles.clone())
                     } else if opt >= 1 {
                         let (clauses, cycles) = two_opt(&sol_cycles, encoder, &g, contractor, hub_registry, block_method, balanced, opt, three_opt);
@@ -727,26 +727,27 @@ fn cegar(
                         panic!("2-opt option \n-t 0:2-opt off\n-t 1,2,3:2-opt on");
                     };
 
-                    // Attempt exact SAT Macro-Patcher spanning tree when <= 30 active cycles remain
-                    if _active_cycles.len() >= 2 && _active_cycles.len() <= 30 {
+                    // Attempt exact SAT Macro-Patcher spanning tree / components when <= 60 active cycles remain
+                    if _active_cycles.len() >= 2 && _active_cycles.len() <= 60 {
                         let protected_edges: HashSet<(i32, i32)> = contractor.chain_map.keys().copied().collect();
-                        if let Some(tour) = SatMacroPatcher::try_patch_all_cycles(&_active_cycles, &g, &protected_edges) {
-                            if tour.len() == g.adjacency_list.len() {
-                                println!("SatMacroPatcher: successfully synthesized full Hamiltonian tour from {} active cycles", _active_cycles.len());
-                                let full_cycle = contractor.uncontract_cycle(&tour);
-                                let line = full_cycle.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
-                                let now = instant.elapsed();
-                                let time = now - previous_time;
-                                let add_block_clauses_time = now - previous_time - sat_solving_time;
-                                println!("number of added block clauses = {}", clause_count);
-                                println!("add block clauses time = {:?}", add_block_clauses_time);
-                                println!("increment time = {:?}", time);
-                                println!();
-                                println!("solution: ");
-                                println!("{}\n", line);
-                                println!("s SATISFIABLE");
-                                return (count, clause_count, Some(full_cycle));
-                            }
+                        let patched = SatMacroPatcher::try_patch_components(&_active_cycles, &g, &protected_edges);
+                        if patched.len() == 1 && patched[0].len() == g.adjacency_list.len() {
+                            println!("SatMacroPatcher: successfully synthesized full Hamiltonian tour from {} active cycles", _active_cycles.len());
+                            let full_cycle = contractor.uncontract_cycle(&patched[0]);
+                            let line = full_cycle.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                            let now = instant.elapsed();
+                            let time = now - previous_time;
+                            let add_block_clauses_time = now - previous_time - sat_solving_time;
+                            println!("number of added block clauses = {}", clause_count);
+                            println!("add block clauses time = {:?}", add_block_clauses_time);
+                            println!("increment time = {:?}", time);
+                            println!();
+                            println!("solution: ");
+                            println!("{}\n", line);
+                            println!("s SATISFIABLE");
+                            return (count, clause_count, Some(full_cycle));
+                        } else if patched.len() < _active_cycles.len() {
+                            _active_cycles = patched;
                         }
                     }
 
