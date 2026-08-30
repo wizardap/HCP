@@ -1,6 +1,28 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use crate::graph::Graph;
 use rustsat::types::{Clause, Lit};
+
+pub trait LitMap {
+    fn get_lit(&self, u: i32, v: i32) -> Option<Lit>;
+}
+
+impl LitMap for HashMap<(i32, i32), Lit> {
+    fn get_lit(&self, u: i32, v: i32) -> Option<Lit> {
+        self.get(&(u, v)).copied()
+    }
+}
+
+impl LitMap for BTreeMap<(i32, i32), Lit> {
+    fn get_lit(&self, u: i32, v: i32) -> Option<Lit> {
+        self.get(&(u, v)).copied()
+    }
+}
+
+impl<T: LitMap + ?Sized> LitMap for &T {
+    fn get_lit(&self, u: i32, v: i32) -> Option<Lit> {
+        (**self).get_lit(u, v)
+    }
+}
 
 #[inline]
 fn min_max(u: i32, v: i32) -> (i32, i32) {
@@ -122,11 +144,11 @@ impl TwinGiantSplicer {
     }
 
     /// Generates exact bicomponent cut clauses between two giant cycles C1 and C2.
-    pub fn generate_bicomponent_cut_clauses(
+    pub fn generate_bicomponent_cut_clauses<M: LitMap + ?Sized>(
         c1: &[i32],
         c2: &[i32],
         g: &Graph,
-        graph_lit_map: &HashMap<(i32, i32), Lit>,
+        graph_lit_map: &M,
     ) -> Vec<Clause> {
         if c1.is_empty() || c2.is_empty() {
             return Vec::new();
@@ -142,7 +164,7 @@ impl TwinGiantSplicer {
             if let Some(neighbors) = g.adjacency_list.get(&u) {
                 for &v in neighbors {
                     if s2.contains(&v) {
-                        if let Some(&lit) = graph_lit_map.get(&(u, v)) {
+                        if let Some(lit) = graph_lit_map.get_lit(u, v) {
                             lits_1_to_2.push(lit);
                         }
                     }
@@ -154,7 +176,7 @@ impl TwinGiantSplicer {
             if let Some(neighbors) = g.adjacency_list.get(&u) {
                 for &v in neighbors {
                     if s1.contains(&v) {
-                        if let Some(&lit) = graph_lit_map.get(&(u, v)) {
+                        if let Some(lit) = graph_lit_map.get_lit(u, v) {
                             lits_2_to_1.push(lit);
                         }
                     }

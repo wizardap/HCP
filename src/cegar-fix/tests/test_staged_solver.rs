@@ -1762,6 +1762,103 @@ fn test_cegar_cnf_subsumer_integration() {
     assert_eq!(seen.len(), 30, "Tour must visit all 30 distinct vertices");
 }
 
+#[test]
+fn test_cegar_twin_giant_splicer_integration() {
+    use cegar_fix::giant_cycle_stitcher::GiantCycleStitcher;
+    use cegar_fix::twin_giant_splicer::TwinGiantSplicer;
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use cegar_fix::tour_verifier::TourVerifier;
+    use cegar_fix::encoder::Encoder;
+    use std::collections::HashSet;
+    use std::time::Instant;
+
+    let mut g = Graph::new();
+    let c1: Vec<i32> = (1..=12).collect();
+    let c2: Vec<i32> = (13..=24).collect();
+
+    // Giant cycle 1: 1..=12 with internal chords (all degree >= 3)
+    for i in 0..12 {
+        g.add_edge(c1[i], c1[(i + 1) % 12]);
+    }
+    g.add_edge(1, 4);
+    g.add_edge(2, 5);
+    g.add_edge(3, 6);
+    g.add_edge(4, 7);
+    g.add_edge(5, 8);
+    g.add_edge(6, 9);
+    g.add_edge(7, 10);
+    g.add_edge(8, 11);
+    g.add_edge(9, 12);
+    g.add_edge(10, 1);
+    g.add_edge(11, 2);
+    g.add_edge(12, 3);
+
+    // Giant cycle 2: 13..=24 with internal chords (all degree >= 3)
+    for i in 0..12 {
+        g.add_edge(c2[i], c2[(i + 1) % 12]);
+    }
+    g.add_edge(13, 16);
+    g.add_edge(14, 17);
+    g.add_edge(15, 18);
+    g.add_edge(16, 19);
+    g.add_edge(17, 20);
+    g.add_edge(18, 21);
+    g.add_edge(19, 22);
+    g.add_edge(20, 23);
+    g.add_edge(21, 24);
+    g.add_edge(22, 13);
+    g.add_edge(23, 14);
+    g.add_edge(24, 15);
+
+    // Cross-giant connecting edges enabling 2-opt splice and bicomponent cuts
+    g.add_edge(1, 13);
+    g.add_edge(2, 14);
+
+    // 1. Direct unit verification: GiantCycleStitcher using TwinGiantSplicer
+    let protected = HashSet::new();
+    let initial_cycles = vec![c1.clone(), c2.clone()];
+    let stitched = GiantCycleStitcher::repair_until_fixed_point(&initial_cycles, &g, &protected);
+    assert_eq!(stitched.len(), 1, "GiantCycleStitcher should stitch two twin giant cycles into 1");
+    assert_eq!(stitched[0].len(), 24, "Stitched tour must contain all 24 vertices");
+
+    let verify_direct = TourVerifier::verify_raw_tour(&stitched[0], &g);
+    assert!(verify_direct.is_ok(), "Direct stitched tour verification failed: {:?}", verify_direct.err());
+
+    // 2. Direct verification of TwinGiantSplicer bicomponent cut generation with Encoder
+    let mut encoder = Encoder::new();
+    let _ = encoder.encode(&g, 0, 0, 0, 0, 0, 0);
+    let cuts = TwinGiantSplicer::generate_bicomponent_cut_clauses(&c1, &c2, &g, &encoder.graph_lit_map);
+    assert_eq!(cuts.len(), 2, "Expected 2 bicomponent cut clauses: delta+(C1 -> C2) and delta+(C2 -> C1)");
+
+    // 3. Full CEGAR end-to-end solve
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+    let hub_reg = HubRegistry::new(&contracted_g);
+    let start = Instant::now();
+
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+
+    assert!(tour.is_some(), "Graph must be solved with TwinGiantSplicer wired into CEGAR loop");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 24, "Tour length must equal 24 vertices");
+
+    let verify_res = TourVerifier::verify_raw_tour(&t, &g);
+    assert!(verify_res.is_ok(), "Tour verification failed: {:?}", verify_res.err());
+
+    let mut seen = HashSet::new();
+    for &v in &t {
+        assert!(seen.insert(v), "Duplicate vertex {} in tour", v);
+    }
+    assert_eq!(seen.len(), 24, "Tour must visit all 24 distinct vertices");
+}
+
+
 
 
 

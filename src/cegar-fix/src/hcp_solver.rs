@@ -34,6 +34,7 @@ use crate::inverse_3sat_synthesizer::Inverse3SatSynthesizer;
 use crate::hub_hierarchical_decomposer::HubHierarchicalDecomposer;
 use crate::empirical_backbone_cutter::{EmpiricalBackboneCutter, EmpiricalBackboneTracker};
 use crate::cnf_subsumer::CnfSubsumer;
+use crate::twin_giant_splicer::TwinGiantSplicer;
 
 
 
@@ -827,6 +828,28 @@ fn cegar(
                         if cycle.len() >= 3 && cycle.len() < total_v / 2 {
                             let b_clauses = get_boundary_cut_clauses(cycle, encoder, &g, total_v, 0);
                             for cl in b_clauses {
+                                clause_count += 1;
+                                working_cnf.add_clause(cl.clone());
+                                let mut g_cnf = Cnf::new();
+                                g_cnf.add_clause(cl);
+                                accumulated_cut_cnfs.push(g_cnf);
+                            }
+                        }
+                    }
+
+                    // Inject bicomponent cut clauses if top two largest cycles both have length >= total_v / 5
+                    if sol_cycles.len() == 2 {
+                        let mut sorted_cycles: Vec<&Vec<i32>> = sol_cycles.iter().collect();
+                        sorted_cycles.sort_by(|a, b| b.len().cmp(&a.len()));
+                        let threshold = total_v / 5;
+                        if sorted_cycles[0].len() >= threshold && sorted_cycles[1].len() >= threshold {
+                            let bicomponent_cuts = TwinGiantSplicer::generate_bicomponent_cut_clauses(
+                                sorted_cycles[0],
+                                sorted_cycles[1],
+                                &g,
+                                &encoder.graph_lit_map,
+                            );
+                            for cl in bicomponent_cuts {
                                 clause_count += 1;
                                 working_cnf.add_clause(cl.clone());
                                 let mut g_cnf = Cnf::new();
