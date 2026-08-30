@@ -51,3 +51,4 @@ pub mod multi_opt_sat_splicer;
 pub mod empirical_backbone_cutter;
 pub mod cnf_subsumer;
 pub mod twin_giant_splicer;
+pub mod macro_component_splicer;
