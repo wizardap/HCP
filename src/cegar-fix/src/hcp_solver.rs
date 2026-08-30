@@ -787,6 +787,7 @@ fn cegar(
                             .map(|(idx, _)| idx)
                             .collect();
 
+                        let mut analyzed_subcycles = HashSet::new();
                         for &m_idx in &macro_indices {
                             let mut macro_cycle = _active_cycles[m_idx].clone();
                             for (c_idx, subcycle) in _active_cycles.iter().enumerate() {
@@ -813,20 +814,22 @@ fn cegar(
                                         }
                                     }
 
-                                    // 2. Infeasible port pruning clauses & boundary cut parity clauses
-                                    for cl in gadget_res.pruning_clauses {
-                                        clause_count += 1;
-                                        working_cnf.add_clause(cl.clone());
-                                        let mut g_cnf = Cnf::new();
-                                        g_cnf.add_clause(cl);
-                                        accumulated_cut_cnfs.push(g_cnf);
-                                    }
-                                    for cl in gadget_res.cut_parity_clauses {
-                                        clause_count += 1;
-                                        working_cnf.add_clause(cl.clone());
-                                        let mut g_cnf = Cnf::new();
-                                        g_cnf.add_clause(cl);
-                                        accumulated_cut_cnfs.push(g_cnf);
+                                    // 2. Infeasible port pruning clauses & boundary cut parity clauses (deduplicated per subcycle)
+                                    if analyzed_subcycles.insert(c_idx) {
+                                        for cl in gadget_res.pruning_clauses {
+                                            clause_count += 1;
+                                            working_cnf.add_clause(cl.clone());
+                                            let mut g_cnf = Cnf::new();
+                                            g_cnf.add_clause(cl);
+                                            accumulated_cut_cnfs.push(g_cnf);
+                                        }
+                                        for cl in gadget_res.cut_parity_clauses {
+                                            clause_count += 1;
+                                            working_cnf.add_clause(cl.clone());
+                                            let mut g_cnf = Cnf::new();
+                                            g_cnf.add_clause(cl);
+                                            accumulated_cut_cnfs.push(g_cnf);
+                                        }
                                     }
                                 }
                             }
@@ -887,8 +890,8 @@ fn cegar(
                         }
                     }
 
-                    // Enforce 100% full-spectrum cut selection when <= 50 subcycles remain
-                    if _active_cycles.len() <= 50 {
+                    // Enforce 100% full-spectrum cut selection on reduced active cycles when <= 50 subcycles remain
+                    if _active_cycles.len() <= 50 && _active_cycles != sol_cycles {
                         let active_sec = EmpiricalBackboneCutter::generate_comprehensive_sec_clauses(
                             &_active_cycles,
                             total_v / 2,
