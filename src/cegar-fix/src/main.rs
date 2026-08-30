@@ -50,6 +50,7 @@ pub mod hub_hierarchical_decomposer;
 pub mod multi_opt_sat_splicer;
 pub mod empirical_backbone_cutter;
 pub mod cnf_subsumer;
+pub mod twin_giant_splicer;
 
 
 use contraction::Degree2Contractor;
