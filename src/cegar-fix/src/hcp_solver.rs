@@ -988,7 +988,9 @@ fn cegar(
                     println!("add block clauses time = {:?}", add_block_clauses_time);
                     println!("increment time = {:?}", time);
 
-                    if SolverReseeder::should_reseed(sat_solving_time.as_secs_f64(), count as usize, &reseeder_opts) || accumulated_cut_cnfs.len() >= 100 {
+                    if SolverReseeder::should_reseed(sat_solving_time.as_secs_f64(), count as usize, &reseeder_opts)
+                        || accumulated_cut_cnfs.len() >= 10
+                        || (count > 0 && count % 3 == 0) {
                         let pruned_cnf = CnfSubsumer::prune_and_subsume_cuts(&accumulated_cut_cnfs);
                         println!("SolverReseeder: compressed {} cut sets down to {} non-redundant clauses (round {}, last SAT time {:.2}s)",
                             accumulated_cut_cnfs.len(), pruned_cnf.len(), count, sat_solving_time.as_secs_f64());
