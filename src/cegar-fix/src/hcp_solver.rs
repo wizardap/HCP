@@ -838,7 +838,7 @@ fn cegar(
                     }
 
                     // Inject bicomponent cut clauses if top two largest cycles both have length >= total_v / 5
-                    if sol_cycles.len() == 2 {
+                    if sol_cycles.len() >= 2 {
                         let mut sorted_cycles: Vec<&Vec<i32>> = sol_cycles.iter().collect();
                         sorted_cycles.sort_by(|a, b| b.len().cmp(&a.len()));
                         let threshold = total_v / 5;

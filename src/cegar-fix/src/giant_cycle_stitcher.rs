@@ -4,6 +4,7 @@ use crate::macro_cycle_stitcher::MacroCycleStitcher;
 use crate::transitive_macro_splicer::TransitiveMacroSplicer;
 use crate::multi_opt_sat_splicer::MultiOptSatSplicer;
 use crate::twin_giant_splicer::TwinGiantSplicer;
+use crate::macro_component_splicer::MacroComponentSplicer;
 use rustsat::instances::Cnf;
 use rustsat::solvers::{Solve, SolverResult};
 use rustsat::types::{Clause, Lit};
@@ -950,6 +951,16 @@ impl GiantCycleStitcher {
                     }
                     continue;
                 }
+            }
+
+            // 9. Macro-Component Spanning Tree Splicer
+            let macro_spliced = MacroComponentSplicer::splice_spanning_components(&current_cycles, g, protected_edges);
+            if macro_spliced.len() < current_cycles.len() {
+                current_cycles = macro_spliced;
+                if current_cycles.len() <= 1 {
+                    break;
+                }
+                continue;
             }
 
             // If no strategy decreased cycle count, fixed point reached

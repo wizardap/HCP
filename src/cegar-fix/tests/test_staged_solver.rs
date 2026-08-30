@@ -1858,6 +1858,106 @@ fn test_cegar_twin_giant_splicer_integration() {
     assert_eq!(seen.len(), 24, "Tour must visit all 24 distinct vertices");
 }
 
+#[test]
+fn test_cegar_macro_component_splicer_integration() {
+    use cegar_fix::giant_cycle_stitcher::GiantCycleStitcher;
+    use cegar_fix::macro_component_splicer::MacroComponentSplicer;
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use cegar_fix::tour_verifier::TourVerifier;
+    use std::collections::HashSet;
+    use std::time::Instant;
+
+    let mut g = Graph::new();
+    let c1: Vec<i32> = (1..=8).collect();
+    let c2: Vec<i32> = (9..=16).collect();
+    let c3: Vec<i32> = (17..=24).collect();
+
+    // Cycle 1: 1..=8 with chords (all degree >= 3)
+    for i in 0..8 {
+        g.add_edge(c1[i], c1[(i + 1) % 8]);
+    }
+    g.add_edge(1, 4);
+    g.add_edge(2, 5);
+    g.add_edge(3, 6);
+    g.add_edge(7, 2);
+    g.add_edge(8, 3);
+
+    // Cycle 2: 9..=16 with chords (all degree >= 3)
+    for i in 0..8 {
+        g.add_edge(c2[i], c2[(i + 1) % 8]);
+    }
+    g.add_edge(9, 12);
+    g.add_edge(10, 13);
+    g.add_edge(11, 14);
+    g.add_edge(15, 10);
+    g.add_edge(16, 11);
+
+    // Cycle 3: 17..=24 with chords (all degree >= 3)
+    for i in 0..8 {
+        g.add_edge(c3[i], c3[(i + 1) % 8]);
+    }
+    g.add_edge(17, 20);
+    g.add_edge(18, 21);
+    g.add_edge(19, 22);
+    g.add_edge(23, 18);
+    g.add_edge(24, 19);
+
+    // Cross-component connecting bridges:
+    // C1 <-> C2 via cross-edges (1, 9) and (2, 10), replacing (1, 2) in C1 and (9, 10) in C2
+    g.add_edge(1, 9);
+    g.add_edge(2, 10);
+
+    // C2 <-> C3 via cross-edges (15, 17) and (16, 18), replacing (15, 16) in C2 and (17, 18) in C3
+    g.add_edge(15, 17);
+    g.add_edge(16, 18);
+
+    // 1. Direct unit verification: MacroComponentSplicer directly
+    let protected = HashSet::new();
+    let initial_cycles = vec![c1.clone(), c2.clone(), c3.clone()];
+    let spliced = MacroComponentSplicer::splice_spanning_components(&initial_cycles, &g, &protected);
+    assert_eq!(spliced.len(), 1, "MacroComponentSplicer should splice 3-component spanning tree into 1");
+    assert_eq!(spliced[0].len(), 24, "Spliced tour must contain all 24 vertices");
+
+    let verify_spliced = TourVerifier::verify_raw_tour(&spliced[0], &g);
+    assert!(verify_spliced.is_ok(), "Direct spliced tour verification failed: {:?}", verify_spliced.err());
+
+    // 2. Direct unit verification: GiantCycleStitcher using MacroComponentSplicer
+    let stitched = GiantCycleStitcher::repair_until_fixed_point(&initial_cycles, &g, &protected);
+    assert_eq!(stitched.len(), 1, "GiantCycleStitcher should stitch 3-component spanning tree into 1");
+    assert_eq!(stitched[0].len(), 24, "Stitched tour must contain all 24 vertices");
+
+    let verify_stitched = TourVerifier::verify_raw_tour(&stitched[0], &g);
+    assert!(verify_stitched.is_ok(), "Direct stitched tour verification failed: {:?}", verify_stitched.err());
+
+    // 3. Full CEGAR end-to-end solve
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+    let hub_reg = HubRegistry::new(&contracted_g);
+    let start = Instant::now();
+
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+
+    assert!(tour.is_some(), "Graph must be solved with MacroComponentSplicer wired into CEGAR loop");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 24, "Tour length must equal 24 vertices");
+
+    let verify_res = TourVerifier::verify_raw_tour(&t, &g);
+    assert!(verify_res.is_ok(), "Tour verification failed: {:?}", verify_res.err());
+
+    let mut seen = HashSet::new();
+    for &v in &t {
+        assert!(seen.insert(v), "Duplicate vertex {} in tour", v);
+    }
+    assert_eq!(seen.len(), 24, "Tour must visit all 24 distinct vertices");
+}
+
+
 
 
 
