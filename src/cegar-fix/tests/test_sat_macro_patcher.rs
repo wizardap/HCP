@@ -209,3 +209,131 @@ fn test_protected_edge_preservation() {
         "Expected None when an essential bridge cuts a protected edge"
     );
 }
+
+#[test]
+fn test_try_patch_components_partial_merge() {
+    let mut g = Graph::new();
+
+    // 6 cycles: C0..C2 in cluster A, C3..C5 in cluster B
+    let mut cycles = Vec::new();
+    for i in 0..6 {
+        let base = (i * 4 + 1) as i32;
+        let v1 = base;
+        let v2 = base + 1;
+        let v3 = base + 2;
+        let v4 = base + 3;
+
+        g.add_edge(v1, v2);
+        g.add_edge(v2, v3);
+        g.add_edge(v3, v4);
+        g.add_edge(v4, v1);
+
+        cycles.push(vec![v1, v2, v3, v4]);
+    }
+
+    // Cluster A: C0 - C1 - C2
+    // C0 - C1: cut (1, 2) in C0, (5, 6) in C1; add (1, 5), (2, 6)
+    g.add_edge(1, 5);
+    g.add_edge(2, 6);
+    // C1 - C2: cut (7, 8) in C1, (9, 10) in C2; add (7, 9), (8, 10)
+    g.add_edge(7, 9);
+    g.add_edge(8, 10);
+
+    // Cluster B: C3 - C4 - C5
+    // C3 - C4: cut (13, 14) in C3, (17, 18) in C4; add (13, 17), (14, 18)
+    g.add_edge(13, 17);
+    g.add_edge(14, 18);
+    // C4 - C5: cut (19, 20) in C4, (21, 22) in C5; add (19, 21), (20, 22)
+    g.add_edge(19, 21);
+    g.add_edge(20, 22);
+
+    let protected = HashSet::new();
+
+    let result = SatMacroPatcher::try_patch_components(&cycles, &g, &protected);
+    assert_eq!(result.len(), 2, "Expected 6 cycles to merge into 2 cycles (2 clusters of 3)");
+
+    let mut all_nodes = Vec::new();
+    for cycle in &result {
+        assert_eq!(cycle.len(), 12, "Each merged cluster cycle should have 12 vertices");
+        all_nodes.extend_from_slice(cycle);
+        let cycle_nodes: Vec<i32> = cycle.clone();
+        verify_valid_cycle(cycle, &g, &cycle_nodes);
+    }
+    let expected_all: HashSet<i32> = (1..=24).collect();
+    let result_all: HashSet<i32> = all_nodes.into_iter().collect();
+    assert_eq!(result_all, expected_all, "All 24 vertices must be present in output cycles");
+}
+
+#[test]
+fn test_try_patch_components_no_merge() {
+    let mut g = Graph::new();
+    let mut cycles = Vec::new();
+
+    for i in 0..3 {
+        let base = (i * 4 + 1) as i32;
+        let v1 = base;
+        let v2 = base + 1;
+        let v3 = base + 2;
+        let v4 = base + 3;
+
+        g.add_edge(v1, v2);
+        g.add_edge(v2, v3);
+        g.add_edge(v3, v4);
+        g.add_edge(v4, v1);
+
+        cycles.push(vec![v1, v2, v3, v4]);
+    }
+
+    let protected = HashSet::new();
+
+    let result = SatMacroPatcher::try_patch_components(&cycles, &g, &protected);
+    assert_eq!(result.len(), 3, "Isolated cycles without bridges should remain unchanged");
+    for cycle in &result {
+        assert_eq!(cycle.len(), 4);
+    }
+}
+
+#[test]
+fn test_try_patch_components_all_merge() {
+    let mut g = Graph::new();
+    let mut cycles = Vec::new();
+
+    for i in 0..6 {
+        let base = (i * 4 + 1) as i32;
+        let v1 = base;
+        let v2 = base + 1;
+        let v3 = base + 2;
+        let v4 = base + 3;
+
+        g.add_edge(v1, v2);
+        g.add_edge(v2, v3);
+        g.add_edge(v3, v4);
+        g.add_edge(v4, v1);
+
+        cycles.push(vec![v1, v2, v3, v4]);
+    }
+
+    // Connect C0-C1, C1-C2, C2-C3, C3-C4, C4-C5
+    g.add_edge(1, 5);
+    g.add_edge(2, 6);
+
+    g.add_edge(7, 9);
+    g.add_edge(8, 10);
+
+    g.add_edge(11, 13);
+    g.add_edge(12, 14);
+
+    g.add_edge(15, 17);
+    g.add_edge(16, 18);
+
+    g.add_edge(19, 21);
+    g.add_edge(20, 22);
+
+    let protected = HashSet::new();
+
+    let result = SatMacroPatcher::try_patch_components(&cycles, &g, &protected);
+    assert_eq!(result.len(), 1, "All 6 cycles should merge into 1 single cycle");
+    let expected_nodes: Vec<i32> = (1..=24).collect();
+    verify_valid_cycle(&result[0], &g, &expected_nodes);
+}
+

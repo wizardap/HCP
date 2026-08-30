@@ -28,6 +28,137 @@ pub struct Bridge {
 pub struct SatMacroPatcher;
 
 impl SatMacroPatcher {
+    /// Attempts to merge cycles in every connected component of the 2-opt bridge graph.
+    /// Returns the consolidated list of cycles with reduced cycle count if any component was merged.
+    pub fn try_patch_components(
+        cycles: &[Vec<i32>],
+        g: &Graph,
+        protected_edges: &HashSet<(i32, i32)>,
+    ) -> Vec<Vec<i32>> {
+        if cycles.is_empty() {
+            return Vec::new();
+        }
+
+        if cycles.len() == 1 {
+            return cycles.to_vec();
+        }
+
+        let k = cycles.len();
+        let total_v: usize = cycles.iter().map(|c| c.len()).sum();
+
+        let mut vertex_to_cycle: HashMap<i32, usize> = HashMap::with_capacity(total_v);
+        let mut cycle_neighbors: HashMap<i32, [i32; 2]> = HashMap::with_capacity(total_v);
+
+        for (c_idx, cycle) in cycles.iter().enumerate() {
+            let n = cycle.len();
+            for pos in 0..n {
+                let u = cycle[pos];
+                let prev = cycle[(pos + n - 1) % n];
+                let next = cycle[(pos + 1) % n];
+                vertex_to_cycle.insert(u, c_idx);
+                cycle_neighbors.insert(u, [prev, next]);
+            }
+        }
+
+        let canonical_protected: HashSet<(i32, i32)> = protected_edges
+            .iter()
+            .map(|&(u, v)| min_max(u, v))
+            .collect();
+
+        // 1. Build Macro-Adjacency Graph of 2-opt bridges
+        let mut macro_adj: Vec<HashSet<usize>> = vec![HashSet::new(); k];
+
+        for i in 0..k {
+            let cycle = &cycles[i];
+            let n = cycle.len();
+            for pos in 0..n {
+                let u1 = cycle[pos];
+                let u2 = cycle[(pos + 1) % n];
+                let e_i = min_max(u1, u2);
+                if canonical_protected.contains(&e_i) {
+                    continue;
+                }
+
+                if let Some(nbrs) = g.adjacency_list.get(&u1) {
+                    for &v1 in nbrs {
+                        let j = match vertex_to_cycle.get(&v1) {
+                            Some(&idx) if idx > i => idx,
+                            _ => continue,
+                        };
+
+                        let [v_prev, v_next] = cycle_neighbors[&v1];
+                        for &v2 in &[v_prev, v_next] {
+                            let e_j = min_max(v1, v2);
+                            if canonical_protected.contains(&e_j) {
+                                continue;
+                            }
+
+                            if let Some(u2_nbrs) = g.adjacency_list.get(&u2) {
+                                if u2_nbrs.contains(&v2) {
+                                    macro_adj[i].insert(j);
+                                    macro_adj[j].insert(i);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Discover Connected Components in Macro-Graph
+        let mut comp_visited = vec![false; k];
+        let mut components: Vec<Vec<usize>> = Vec::new();
+
+        for i in 0..k {
+            if !comp_visited[i] {
+                let mut comp = Vec::new();
+                let mut queue = VecDeque::new();
+                comp_visited[i] = true;
+                queue.push_back(i);
+
+                while let Some(curr) = queue.pop_front() {
+                    comp.push(curr);
+                    for &nbr in &macro_adj[curr] {
+                        if !comp_visited[nbr] {
+                            comp_visited[nbr] = true;
+                            queue.push_back(nbr);
+                        }
+                    }
+                }
+                comp.sort_unstable();
+                components.push(comp);
+            }
+        }
+
+        // 3. Per-Component Exact SAT Spanning Tree Solving
+        let mut result_cycles: Vec<Vec<i32>> = Vec::new();
+
+        for comp in components {
+            if comp.len() == 1 {
+                result_cycles.push(cycles[comp[0]].clone());
+            } else {
+                let sub_cycles: Vec<Vec<i32>> = comp.iter().map(|&idx| cycles[idx].clone()).collect();
+                if let Some(merged) = Self::try_patch_all_cycles(&sub_cycles, g, protected_edges) {
+                    result_cycles.push(merged);
+                } else {
+                    for &idx in &comp {
+                        result_cycles.push(cycles[idx].clone());
+                    }
+                }
+            }
+        }
+
+        // 4. Deterministic sorting: descending by length, then tiebreak by min vertex
+        result_cycles.sort_by(|a, b| {
+            b.len()
+                .cmp(&a.len())
+                .then_with(|| a.iter().min().cmp(&b.iter().min()))
+                .then_with(|| a.cmp(b))
+        });
+
+        result_cycles
+    }
+
     /// Solves an exact SAT spanning tree formulation over all candidate 2-opt bridges between the cycles.
     /// Returns Some(single_hamiltonian_cycle) if a valid simultaneous bridge set exists, or None.
     pub fn try_patch_all_cycles(
@@ -46,7 +177,7 @@ impl SatMacroPatcher {
             return Some(cycles[0].clone());
         }
 
-        if cycles.len() > 30 {
+        if cycles.len() > 60 {
             return None;
         }
 
