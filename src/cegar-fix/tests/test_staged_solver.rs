@@ -1957,6 +1957,114 @@ fn test_cegar_macro_component_splicer_integration() {
     assert_eq!(seen.len(), 24, "Tour must visit all 24 distinct vertices");
 }
 
+#[test]
+fn test_cegar_sat_macro_patcher_integration() {
+    use cegar_fix::graph::Graph;
+    use cegar_fix::giant_cycle_stitcher::GiantCycleStitcher;
+    use cegar_fix::sat_macro_patcher::SatMacroPatcher;
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use cegar_fix::tour_verifier::TourVerifier;
+    use std::collections::HashSet;
+    use std::time::Instant;
+
+    let mut g = Graph::new();
+    let c1: Vec<i32> = (1..=6).collect();
+    let c2: Vec<i32> = (7..=12).collect();
+    let c3: Vec<i32> = (13..=18).collect();
+    let c4: Vec<i32> = (19..=24).collect();
+
+    // Cycle 1: 1..=6 with chords (all degree >= 3)
+    for i in 0..6 {
+        g.add_edge(c1[i], c1[(i + 1) % 6]);
+    }
+    g.add_edge(1, 4);
+    g.add_edge(2, 5);
+    g.add_edge(3, 6);
+
+    // Cycle 2: 7..=12 with chords (all degree >= 3)
+    for i in 0..6 {
+        g.add_edge(c2[i], c2[(i + 1) % 6]);
+    }
+    g.add_edge(7, 10);
+    g.add_edge(8, 11);
+    g.add_edge(9, 12);
+
+    // Cycle 3: 13..=18 with chords (all degree >= 3)
+    for i in 0..6 {
+        g.add_edge(c3[i], c3[(i + 1) % 6]);
+    }
+    g.add_edge(13, 16);
+    g.add_edge(14, 17);
+    g.add_edge(15, 18);
+
+    // Cycle 4: 19..=24 with chords (all degree >= 3)
+    for i in 0..6 {
+        g.add_edge(c4[i], c4[(i + 1) % 6]);
+    }
+    g.add_edge(19, 22);
+    g.add_edge(20, 23);
+    g.add_edge(21, 24);
+
+    // Spanning tree 2-opt bridges:
+    // C1 <-> C2 via cross-edges (1, 7) and (2, 8), replacing (1, 2) and (7, 8)
+    g.add_edge(1, 7);
+    g.add_edge(2, 8);
+
+    // C1 <-> C3 via cross-edges (4, 13) and (5, 14), replacing (4, 5) and (13, 14)
+    g.add_edge(4, 13);
+    g.add_edge(5, 14);
+
+    // C3 <-> C4 via cross-edges (16, 19) and (17, 20), replacing (16, 17) and (19, 20)
+    g.add_edge(16, 19);
+    g.add_edge(17, 20);
+
+    let protected = HashSet::new();
+    let initial_cycles = vec![c1.clone(), c2.clone(), c3.clone(), c4.clone()];
+
+    // 1. Direct unit verification: SatMacroPatcher directly
+    let patched = SatMacroPatcher::try_patch_all_cycles(&initial_cycles, &g, &protected);
+    assert!(patched.is_some(), "SatMacroPatcher should patch 4 cycles into 1");
+    let patch_tour = patched.unwrap();
+    assert_eq!(patch_tour.len(), 24, "Patched tour must contain 24 vertices");
+    let verify_patch = TourVerifier::verify_raw_tour(&patch_tour, &g);
+    assert!(verify_patch.is_ok(), "Direct patched tour verification failed: {:?}", verify_patch.err());
+
+    // 2. Direct unit verification: GiantCycleStitcher using SatMacroPatcher
+    let stitched = GiantCycleStitcher::repair_until_fixed_point(&initial_cycles, &g, &protected);
+    assert_eq!(stitched.len(), 1, "GiantCycleStitcher should stitch 4 cycles into 1");
+    assert_eq!(stitched[0].len(), 24, "Stitched tour must contain 24 vertices");
+    let verify_stitched = TourVerifier::verify_raw_tour(&stitched[0], &g);
+    assert!(verify_stitched.is_ok(), "Direct stitched tour verification failed: {:?}", verify_stitched.err());
+
+    // 3. Full CEGAR end-to-end solve
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+    let hub_reg = HubRegistry::new(&contracted_g);
+    let start = Instant::now();
+
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+
+    assert!(tour.is_some(), "Graph must be solved with SatMacroPatcher wired into CEGAR loop");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 24, "Tour length must equal 24 vertices");
+
+    let verify_res = TourVerifier::verify_raw_tour(&t, &g);
+    assert!(verify_res.is_ok(), "Tour verification failed: {:?}", verify_res.err());
+
+    let mut seen = HashSet::new();
+    for &v in &t {
+        assert!(seen.insert(v), "Duplicate vertex {} in tour", v);
+    }
+    assert_eq!(seen.len(), 24, "Tour must visit all 24 distinct vertices");
+}
+
+
 
 
 

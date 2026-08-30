@@ -5,6 +5,7 @@ use crate::transitive_macro_splicer::TransitiveMacroSplicer;
 use crate::multi_opt_sat_splicer::MultiOptSatSplicer;
 use crate::twin_giant_splicer::TwinGiantSplicer;
 use crate::macro_component_splicer::MacroComponentSplicer;
+use crate::sat_macro_patcher::SatMacroPatcher;
 use rustsat::instances::Cnf;
 use rustsat::solvers::{Solve, SolverResult};
 use rustsat::types::{Clause, Lit};
@@ -957,6 +958,15 @@ impl GiantCycleStitcher {
             let macro_spliced = MacroComponentSplicer::splice_spanning_components(&current_cycles, g, protected_edges);
             if macro_spliced.len() < current_cycles.len() {
                 current_cycles = macro_spliced;
+                if current_cycles.len() <= 1 {
+                    break;
+                }
+                continue;
+            }
+
+            // 10. SAT Macro-Patcher: exact SAT spanning tree over all candidate 2-opt bridges
+            if let Some(tour) = SatMacroPatcher::try_patch_all_cycles(&current_cycles, g, protected_edges) {
+                current_cycles = vec![tour];
                 if current_cycles.len() <= 1 {
                     break;
                 }
