@@ -780,54 +780,53 @@ fn cegar(
                     // Gadget Interface Parity & Direct Splicing Check
                     if _active_cycles.len() >= 2 {
                         let total_nodes = g.adjacency_list.len();
-                        let max_cycle_idx = _active_cycles
+                        let macro_indices: Vec<usize> = _active_cycles
                             .iter()
                             .enumerate()
-                            .max_by_key(|(_, c)| c.len())
-                            .map(|(idx, _)| idx);
+                            .filter(|(_, c)| c.len() >= total_nodes / 10)
+                            .map(|(idx, _)| idx)
+                            .collect();
 
-                        if let Some(giant_idx) = max_cycle_idx {
-                            let mut giant = _active_cycles[giant_idx].clone();
-                            if giant.len() > total_nodes / 2 {
-                                for (c_idx, subcycle) in _active_cycles.iter().enumerate() {
-                                    if c_idx != giant_idx && subcycle.len() <= 32 {
-                                        let gadget_res = GadgetInterfaceParityEngine::analyze_subcycle_gadget(
-                                            subcycle,
-                                            &g,
-                                            Some(&giant),
-                                            encoder,
-                                        );
+                        for &m_idx in &macro_indices {
+                            let mut macro_cycle = _active_cycles[m_idx].clone();
+                            for (c_idx, subcycle) in _active_cycles.iter().enumerate() {
+                                if c_idx != m_idx && subcycle.len() <= 32 {
+                                    let gadget_res = GadgetInterfaceParityEngine::analyze_subcycle_gadget(
+                                        subcycle,
+                                        &g,
+                                        Some(&macro_cycle),
+                                        encoder,
+                                    );
 
-                                        // 1. Direct splice check
-                                        if let Some(spliced) = gadget_res.direct_spliced_tour {
-                                            giant = spliced;
-                                            if giant.len() == total_nodes {
-                                                println!("GadgetInterfaceParity: direct spliced full tour found ({} vertices)", giant.len());
-                                                let full_cycle = contractor.uncontract_cycle(&giant);
-                                                let line = full_cycle.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
-                                                println!();
-                                                println!("solution: ");
-                                                println!("{}\n", line);
-                                                println!("s SATISFIABLE");
-                                                return (count, clause_count, Some(full_cycle));
-                                            }
+                                    // 1. Direct splice check
+                                    if let Some(spliced) = gadget_res.direct_spliced_tour {
+                                        macro_cycle = spliced;
+                                        if macro_cycle.len() == total_nodes {
+                                            println!("GadgetInterfaceParity: direct spliced full tour found ({} vertices)", macro_cycle.len());
+                                            let full_cycle = contractor.uncontract_cycle(&macro_cycle);
+                                            let line = full_cycle.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                                            println!();
+                                            println!("solution: ");
+                                            println!("{}\n", line);
+                                            println!("s SATISFIABLE");
+                                            return (count, clause_count, Some(full_cycle));
                                         }
+                                    }
 
-                                        // 2. Infeasible port pruning clauses & boundary cut parity clauses
-                                        for cl in gadget_res.pruning_clauses {
-                                            clause_count += 1;
-                                            working_cnf.add_clause(cl.clone());
-                                            let mut g_cnf = Cnf::new();
-                                            g_cnf.add_clause(cl);
-                                            accumulated_cut_cnfs.push(g_cnf);
-                                        }
-                                        for cl in gadget_res.cut_parity_clauses {
-                                            clause_count += 1;
-                                            working_cnf.add_clause(cl.clone());
-                                            let mut g_cnf = Cnf::new();
-                                            g_cnf.add_clause(cl);
-                                            accumulated_cut_cnfs.push(g_cnf);
-                                        }
+                                    // 2. Infeasible port pruning clauses & boundary cut parity clauses
+                                    for cl in gadget_res.pruning_clauses {
+                                        clause_count += 1;
+                                        working_cnf.add_clause(cl.clone());
+                                        let mut g_cnf = Cnf::new();
+                                        g_cnf.add_clause(cl);
+                                        accumulated_cut_cnfs.push(g_cnf);
+                                    }
+                                    for cl in gadget_res.cut_parity_clauses {
+                                        clause_count += 1;
+                                        working_cnf.add_clause(cl.clone());
+                                        let mut g_cnf = Cnf::new();
+                                        g_cnf.add_clause(cl);
+                                        accumulated_cut_cnfs.push(g_cnf);
                                     }
                                 }
                             }
@@ -884,6 +883,36 @@ fn cegar(
                                 let mut g_cnf = Cnf::new();
                                 g_cnf.add_clause(cl);
                                 accumulated_cut_cnfs.push(g_cnf);
+                            }
+                        }
+                    }
+
+                    // Enforce 100% full-spectrum cut selection when <= 50 subcycles remain
+                    if _active_cycles.len() <= 50 {
+                        let active_sec = EmpiricalBackboneCutter::generate_comprehensive_sec_clauses(
+                            &_active_cycles,
+                            total_v / 2,
+                            &encoder.graph_lit_map,
+                        );
+                        for cl in active_sec {
+                            clause_count += 1;
+                            let clause = Clause::from_iter(cl);
+                            working_cnf.add_clause(clause.clone());
+                            let mut g_cnf = Cnf::new();
+                            g_cnf.add_clause(clause);
+                            accumulated_cut_cnfs.push(g_cnf);
+                        }
+
+                        for cycle in &_active_cycles {
+                            if cycle.len() >= 3 && cycle.len() < total_v / 2 {
+                                let b_clauses = get_boundary_cut_clauses(cycle, encoder, &g, total_v, 0);
+                                for cl in b_clauses {
+                                    clause_count += 1;
+                                    working_cnf.add_clause(cl.clone());
+                                    let mut g_cnf = Cnf::new();
+                                    g_cnf.add_clause(cl);
+                                    accumulated_cut_cnfs.push(g_cnf);
+                                }
                             }
                         }
                     }
@@ -1557,7 +1586,13 @@ fn get_blocking_clauses(
     _block_method: i32,
     _balanced: i32,
 ) -> Vec<Clause> {
-    let options = CutSelectorOptions::default();
+    let mut options = CutSelectorOptions::default();
+    if cycles.len() <= 50 {
+        let total_v = g.adjacency_list.len();
+        options.base_max_cuts = usize::MAX;
+        options.max_cycle_len_threshold = if total_v > 0 { total_v / 2 } else { usize::MAX };
+        options.tiny_cycle_boundary_len = options.max_cycle_len_threshold;
+    }
     let (mut clauses, selected) = CutSelector::select_and_generate_cuts(cycles, g, encoder, &options);
     if !selected.is_empty() {
         println!("CutSelector: selected {}/{} subcycles (generated {} budgeted clauses)", selected.len(), cycles.len(), clauses.len());
