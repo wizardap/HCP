@@ -2256,6 +2256,126 @@ fn test_cegar_gadget_path_absorber_integration() {
     assert_eq!(seen.len(), 26, "Tour must visit all 26 distinct vertices");
 }
 
+#[test]
+fn test_cegar_multi_macro_gadget_integration() {
+    use cegar_fix::graph::Graph;
+    use cegar_fix::encoder::Encoder;
+    use cegar_fix::gadget_parity::GadgetInterfaceParityEngine;
+    use cegar_fix::hcp_solver::solve_hamilton;
+    use cegar_fix::contraction::Degree2Contractor;
+    use cegar_fix::hub_registry::HubRegistry;
+    use cegar_fix::tour_verifier::TourVerifier;
+    use std::collections::HashSet;
+    use std::time::Instant;
+
+    let mut g = Graph::new();
+    let m1: Vec<i32> = (1..=20).collect();
+    let m2: Vec<i32> = (21..=40).collect();
+    let s1: Vec<i32> = (41..=44).collect();
+    let s2: Vec<i32> = (45..=48).collect();
+
+    // Macro-cycle 1: 1..=20 with chords (all degree >= 3)
+    for i in 0..20 {
+        g.add_edge(m1[i], m1[(i + 1) % 20]);
+    }
+    for i in 1..=20 {
+        let chord_target = ((i + 2) % 20) + 1;
+        g.add_edge(i, chord_target);
+    }
+
+    // Macro-cycle 2: 21..=40 with chords (all degree >= 3)
+    for i in 0..20 {
+        g.add_edge(m2[i], m2[(i + 1) % 20]);
+    }
+    for i in 21..=40 {
+        let chord_target = 21 + ((i - 21 + 3) % 20);
+        g.add_edge(i, chord_target);
+    }
+
+    // Satellite subcycle 1: 41..=44 with chords (all degree >= 3)
+    for i in 0..4 {
+        g.add_edge(s1[i], s1[(i + 1) % 4]);
+    }
+    g.add_edge(41, 43);
+    g.add_edge(42, 44);
+
+    // Satellite subcycle 2: 45..=48 with chords (all degree >= 3)
+    for i in 0..4 {
+        g.add_edge(s2[i], s2[(i + 1) % 4]);
+    }
+    g.add_edge(45, 47);
+    g.add_edge(46, 48);
+
+    // Connecting cross-edges:
+    // Satellite 1 attaches to Macro-cycle 1 adjacent vertices (1, 2)
+    g.add_edge(1, 41);
+    g.add_edge(44, 2);
+
+    // Satellite 2 attaches to Macro-cycle 2 adjacent vertices (21, 22)
+    g.add_edge(21, 45);
+    g.add_edge(48, 22);
+
+    // Cross-macro bridges connecting M1 and M2 (e.g., between (10, 11) and (30, 31))
+    g.add_edge(10, 30);
+    g.add_edge(11, 31);
+    g.add_edge(9, 29);
+    g.add_edge(12, 32);
+
+    // 1. Direct unit verification: GadgetInterfaceParityEngine on each macro-cycle + satellite
+    let mut encoder = Encoder::new();
+    let _ = encoder.encode(&g, 0, 0, 0, 0, 0, 0);
+
+    let res1 = GadgetInterfaceParityEngine::analyze_subcycle_gadget(&s1, &g, Some(&m1), &encoder);
+    assert!(res1.direct_spliced_tour.is_some(), "GadgetInterfaceParityEngine should splice S1 with M1");
+    let spliced1 = res1.direct_spliced_tour.unwrap();
+    assert_eq!(spliced1.len(), 24, "Spliced tour of M1 + S1 must contain 24 vertices");
+    let mut seen1 = HashSet::new();
+    for i in 0..spliced1.len() {
+        let u = spliced1[i];
+        let v = spliced1[(i + 1) % spliced1.len()];
+        assert!(seen1.insert(u), "Duplicate vertex {} in spliced1", u);
+        assert!(g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v)), "Edge ({}, {}) must exist in graph", u, v);
+    }
+
+    let res2 = GadgetInterfaceParityEngine::analyze_subcycle_gadget(&s2, &g, Some(&m2), &encoder);
+    assert!(res2.direct_spliced_tour.is_some(), "GadgetInterfaceParityEngine should splice S2 with M2");
+    let spliced2 = res2.direct_spliced_tour.unwrap();
+    assert_eq!(spliced2.len(), 24, "Spliced tour of M2 + S2 must contain 24 vertices");
+    let mut seen2 = HashSet::new();
+    for i in 0..spliced2.len() {
+        let u = spliced2[i];
+        let v = spliced2[(i + 1) % spliced2.len()];
+        assert!(seen2.insert(u), "Duplicate vertex {} in spliced2", u);
+        assert!(g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v)), "Edge ({}, {}) must exist in graph", u, v);
+    }
+
+    // 2. Full CEGAR end-to-end solve
+    let (contracted_g, contractor) = Degree2Contractor::contract(&g);
+    let hub_reg = HubRegistry::new(&contracted_g);
+    let start = Instant::now();
+
+    let tour = solve_hamilton(
+        contracted_g,
+        &contractor,
+        &hub_reg,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
+    );
+
+    assert!(tour.is_some(), "Multi-macro gadget graph must be solved via CEGAR");
+    let t = tour.unwrap();
+    assert_eq!(t.len(), 48, "Tour length must equal 48 vertices");
+
+    let verify_res = TourVerifier::verify_raw_tour(&t, &g);
+    assert!(verify_res.is_ok(), "Tour verification failed: {:?}", verify_res.err());
+
+    let mut seen = HashSet::new();
+    for &v in &t {
+        assert!(seen.insert(v), "Duplicate vertex {} in tour", v);
+    }
+    assert_eq!(seen.len(), 48, "Tour must visit all 48 distinct vertices");
+}
+
+
 
 
 
