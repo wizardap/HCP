@@ -890,32 +890,23 @@ fn cegar(
                         }
                     }
 
-                    // Enforce 100% full-spectrum cut selection on reduced active cycles when <= 50 subcycles remain
+                    // Injected cuts on reduced active cycles when <= 50 subcycles remain
                     if _active_cycles.len() <= 50 && _active_cycles != sol_cycles {
-                        let active_sec = EmpiricalBackboneCutter::generate_comprehensive_sec_clauses(
-                            &_active_cycles,
-                            total_v / 2,
-                            &encoder.graph_lit_map,
-                        );
-                        for cl in active_sec {
-                            clause_count += 1;
-                            let clause = Clause::from_iter(cl);
-                            working_cnf.add_clause(clause.clone());
-                            let mut g_cnf = Cnf::new();
-                            g_cnf.add_clause(clause);
-                            accumulated_cut_cnfs.push(g_cnf);
-                        }
+                        let mut non_giant_active: Vec<&Vec<i32>> = _active_cycles
+                            .iter()
+                            .filter(|c| c.len() >= 3 && c.len() < total_v / 2)
+                            .collect();
+                        non_giant_active.sort_by_key(|c| c.len());
+                        non_giant_active.truncate(20);
 
-                        for cycle in &_active_cycles {
-                            if cycle.len() >= 3 && cycle.len() < total_v / 2 {
-                                let b_clauses = get_boundary_cut_clauses(cycle, encoder, &g, total_v, 0);
-                                for cl in b_clauses {
-                                    clause_count += 1;
-                                    working_cnf.add_clause(cl.clone());
-                                    let mut g_cnf = Cnf::new();
-                                    g_cnf.add_clause(cl);
-                                    accumulated_cut_cnfs.push(g_cnf);
-                                }
+                        for cycle in non_giant_active {
+                            let b_clauses = get_boundary_cut_clauses(cycle, encoder, &g, total_v, 0);
+                            for cl in b_clauses {
+                                clause_count += 1;
+                                working_cnf.add_clause(cl.clone());
+                                let mut g_cnf = Cnf::new();
+                                g_cnf.add_clause(cl);
+                                accumulated_cut_cnfs.push(g_cnf);
                             }
                         }
                     }
@@ -1592,9 +1583,9 @@ fn get_blocking_clauses(
     let mut options = CutSelectorOptions::default();
     if cycles.len() <= 50 {
         let total_v = g.adjacency_list.len();
-        options.base_max_cuts = usize::MAX;
+        options.base_max_cuts = 40;
         options.max_cycle_len_threshold = if total_v > 0 { total_v / 2 } else { usize::MAX };
-        options.tiny_cycle_boundary_len = options.max_cycle_len_threshold;
+        options.tiny_cycle_boundary_len = 32;
     }
     let (mut clauses, selected) = CutSelector::select_and_generate_cuts(cycles, g, encoder, &options);
     if !selected.is_empty() {
