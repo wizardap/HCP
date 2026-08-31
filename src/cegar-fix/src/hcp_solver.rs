@@ -38,6 +38,8 @@ use crate::twin_giant_splicer::TwinGiantSplicer;
 use crate::sat_macro_patcher::SatMacroPatcher;
 use crate::gadget_path_absorber::GadgetPathAbsorber;
 use crate::incremental_sat::IncrementalSatSolver;
+use crate::macro_crossover_splicer::MacroCrossoverSplicer;
+use crate::quotient_block_cutter::QuotientBlockCutter;
 
 
 
@@ -448,6 +450,12 @@ fn cegar(
     let inc_timeout = if total_v >= 500 { 180.0 } else { 15.0 };
     let mut backbone_tracker = EmpiricalBackboneTracker::new(10);
 
+    // Modular Quotient Block Pre-computation for blocking module-partition subcycles
+    let modular_blocks = QuotientBlockCutter::detect_modular_blocks(&g, contractor);
+    if !modular_blocks.is_empty() {
+        println!("QuotientBlockCutter: detected {} modular block clusters", modular_blocks.len());
+    }
+
     loop {
         if instant.elapsed().as_secs_f64() >= timeout_secs {
             println!("\ns UNKNOWN (TIMEOUT: {:.2}s reached >= {:.2}s limit)", instant.elapsed().as_secs_f64(), timeout_secs);
@@ -775,7 +783,7 @@ fn cegar(
 
                     // Attempt MacroCrossoverSplicer when 2 <= _active_cycles.len() <= 6 (parity-breaking k-opt for macro-cycles)
                     if _active_cycles.len() >= 2 && _active_cycles.len() <= 6 {
-                        if let Some(spliced_tour) = crate::macro_crossover_splicer::MacroCrossoverSplicer::try_crossover_splice(&_active_cycles, &g, contractor) {
+                        if let Some(spliced_tour) = MacroCrossoverSplicer::try_crossover_splice(&_active_cycles, &g, contractor) {
                             println!("MacroCrossoverSplicer: successfully spliced {} macro-cycles into single tour via auxiliary SAT crossover", _active_cycles.len());
                             let full_cycle = contractor.uncontract_cycle(&spliced_tour);
                             let line = full_cycle.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
@@ -953,6 +961,18 @@ fn cegar(
                                 &encoder.graph_lit_map,
                             );
                             for cl in bicomponent_cuts {
+                                clause_count += 1;
+                                round_cuts.add_clause(cl);
+                            }
+                        }
+                    }
+
+                    // Inject modular quotient cuts if subcycles partition modular blocks
+                    if !modular_blocks.is_empty() && sol_cycles.len() >= 2 {
+                        let q_cuts = QuotientBlockCutter::generate_quotient_sec_clauses(&sol_cycles, &modular_blocks, &g, encoder);
+                        if !q_cuts.is_empty() {
+                            println!("QuotientBlockCutter: injected {} modular quotient cut clauses", q_cuts.len());
+                            for cl in q_cuts {
                                 clause_count += 1;
                                 round_cuts.add_clause(cl);
                             }
