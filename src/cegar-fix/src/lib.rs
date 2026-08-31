@@ -59,3 +59,4 @@ pub mod macro_crossover_splicer;
 pub mod quotient_block_cutter;
 pub mod bipartite_module_detector;
 pub mod module_dual_path_extractor;
+pub mod module_state_cnf_encoder;

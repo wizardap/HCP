@@ -40,6 +40,9 @@ use crate::gadget_path_absorber::GadgetPathAbsorber;
 use crate::incremental_sat::IncrementalSatSolver;
 use crate::macro_crossover_splicer::MacroCrossoverSplicer;
 use crate::quotient_block_cutter::QuotientBlockCutter;
+use crate::bipartite_module_detector::BipartiteModuleDetector;
+use crate::module_dual_path_extractor::ModuleDualPathExtractor;
+use crate::module_state_cnf_encoder::ModuleStateCnfEncoder;
 
 
 
@@ -327,6 +330,38 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
     if dual_paths.len() >= 4 {
         println!("InterfacePortSynchronizer: detected {} gadget modules with dual T/F paths, injecting flow synchronization clauses", dual_paths.len());
         InterfacePortSynchronizer::encode_interface_port_synchronization(&dual_paths, &g, &mut encoder, &mut cnf);
+    }
+
+    // Bipartite Module State Equivalence Encoder (Approach 2)
+    // For large graphs with degree-2 contracted modules (e.g. 44-vertex modules in 3-SAT reductions)
+    if g.adjacency_list.len() >= 44 && !contractor.chain_map.is_empty() {
+        let bip_modules = BipartiteModuleDetector::detect_44_modules(&g, contractor);
+        if !bip_modules.is_empty() {
+            let mut total_added_module_clauses = 0;
+            let mut synchronized_modules = 0;
+            for m in &bip_modules {
+                if let Some((t_path, f_path)) = ModuleDualPathExtractor::extract_dual_paths(&m.vertices, &g, contractor) {
+                    let added = ModuleStateCnfEncoder::encode_module_dual_state(
+                        &m.vertices,
+                        &t_path,
+                        &f_path,
+                        &g,
+                        &mut encoder,
+                        &mut cnf,
+                    );
+                    total_added_module_clauses += added;
+                    synchronized_modules += 1;
+                }
+            }
+            if synchronized_modules > 0 {
+                println!(
+                    "ModuleStateCnfEncoder: synchronized {}/{} 44-vertex modules, injected {} state-equivalence clauses at Round 0",
+                    synchronized_modules,
+                    bip_modules.len(),
+                    total_added_module_clauses
+                );
+            }
+        }
     }
 
     let current_cnf = if output_folder != "default" {

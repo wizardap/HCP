@@ -15,11 +15,11 @@ fn test_detect_44_modules_synthetic() {
         let v = i + 1;
         contractor.chain_map.insert((u, v), vec![1000 + i]);
         contractor.chain_map.insert((v, u), vec![1000 + i]);
-        // Internal cycle connecting virtual edges
+        // Dense internal connectivity inside M0
         g.add_edge(v, (v % 44) + 1);
-        // Internal chord
-        let chord_target = ((v + 6) % 44) + 1;
-        g.add_edge(v, chord_target);
+        g.add_edge(u, ((u + 2) % 44) + 1);
+        g.add_edge(v, ((v + 6) % 44) + 1);
+        g.add_edge(u, ((u + 10) % 44) + 1);
     }
 
     // In M1: 22 virtual edges (45, 46), ..., (87, 88)
@@ -28,12 +28,15 @@ fn test_detect_44_modules_synthetic() {
         let v = i + 1;
         contractor.chain_map.insert((u, v), vec![2000 + i]);
         contractor.chain_map.insert((v, u), vec![2000 + i]);
-        // Internal cycle connecting virtual edges
-        let next_node = if v == 88 { 45 } else { v + 1 };
-        g.add_edge(v, next_node);
-        // Internal chord
-        let chord_target = 45 + ((v - 45 + 6) % 44);
-        g.add_edge(v, chord_target);
+        // Dense internal connectivity inside M1
+        let next_v = if v == 88 { 45 } else { v + 1 };
+        g.add_edge(v, next_v);
+        let next_u = 45 + ((u - 45 + 2) % 44);
+        g.add_edge(u, next_u);
+        let chord_v = 45 + ((v - 45 + 6) % 44);
+        g.add_edge(v, chord_v);
+        let chord_u = 45 + ((u - 45 + 10) % 44);
+        g.add_edge(u, chord_u);
     }
 
     // Cross edges between M0 and M1 (only 2 boundary edges)
