@@ -57,50 +57,70 @@ impl ModuleDualPathExtractor {
             }
         }
 
-        // Search for Hamiltonian paths using bounded DFS
-        // Candidate start vertices: any vertex in the module
+        // Identify boundary ports (vertices with no internal virtual partner, or lowest internal virtual degree)
+        let mut boundary_ports: Vec<i32> = mod_vertices
+            .iter()
+            .copied()
+            .filter(|v| !virtual_partner.contains_key(v))
+            .collect();
+
+        if boundary_ports.len() < 2 {
+            // Fallback: any vertex in module
+            boundary_ports = mod_vertices.to_vec();
+        }
+
         let mut all_paths: Vec<Vec<i32>> = Vec::new();
         let mut steps = 0;
 
-        for &start_v in mod_vertices {
-            let mut path = Vec::with_capacity(n);
-            let mut visited = HashSet::with_capacity(n);
-            path.push(start_v);
-            visited.insert(start_v);
+        for &start_v in &boundary_ports {
+            for &initial_virtual in &[false, true] {
+                let mut path = Vec::with_capacity(n);
+                let mut visited = HashSet::with_capacity(n);
+                path.push(start_v);
+                visited.insert(start_v);
 
-            Self::dfs_alternating(
-                start_v,
-                true, // next step is virtual
-                n,
-                &virtual_partner,
-                &real_adj,
-                &mut path,
-                &mut visited,
-                &mut all_paths,
-                &mut steps,
-            );
+                Self::dfs_alternating(
+                    start_v,
+                    initial_virtual,
+                    n,
+                    &virtual_partner,
+                    &real_adj,
+                    &mut path,
+                    &mut visited,
+                    &mut all_paths,
+                    &mut steps,
+                );
 
-            if all_paths.len() >= 4 || steps > 5000 {
+                if all_paths.len() >= 4 || steps > 20000 {
+                    break;
+                }
+            }
+            if all_paths.len() >= 4 || steps > 20000 {
                 break;
             }
         }
 
-        if all_paths.len() >= 2 {
-            // Pick two distinct paths as True and False
-            let t_path = all_paths[0].clone();
-            // Find a path that is not simply the reversal of t_path
-            let t_rev: Vec<i32> = t_path.iter().rev().copied().collect();
-            let f_path = all_paths
-                .iter()
-                .find(|p| *p != &t_path && *p != &t_rev)
-                .cloned()
-                .unwrap_or_else(|| all_paths[1].clone());
+        // Filter paths to find at least 2 paths with distinct UNDIRECTED edge sets
+        let mut distinct_paths: Vec<Vec<i32>> = Vec::new();
+        let mut seen_undirected_edge_sets: Vec<HashSet<(i32, i32)>> = Vec::new();
 
-            Some((t_path, f_path))
-        } else if all_paths.len() == 1 {
-            let t_path = all_paths[0].clone();
-            let f_path = t_path.iter().rev().copied().collect();
-            Some((t_path, f_path))
+        for p in all_paths {
+            let edge_set: HashSet<(i32, i32)> = p
+                .windows(2)
+                .map(|w| if w[0] < w[1] { (w[0], w[1]) } else { (w[1], w[0]) })
+                .collect();
+
+            if !seen_undirected_edge_sets.contains(&edge_set) {
+                seen_undirected_edge_sets.push(edge_set);
+                distinct_paths.push(p);
+                if distinct_paths.len() >= 2 {
+                    break;
+                }
+            }
+        }
+
+        if distinct_paths.len() >= 2 {
+            Some((distinct_paths[0].clone(), distinct_paths[1].clone()))
         } else {
             None
         }
@@ -118,7 +138,7 @@ impl ModuleDualPathExtractor {
         steps: &mut usize,
     ) {
         *steps += 1;
-        if *steps > 5000 || results.len() >= 10 {
+        if *steps > 20000 || results.len() >= 10 {
             return;
         }
 
@@ -135,7 +155,7 @@ impl ModuleDualPathExtractor {
                     path.push(nxt);
                     Self::dfs_alternating(
                         nxt,
-                        false, // next step must be real edge
+                        false,
                         target_len,
                         virtual_partner,
                         real_adj,
@@ -149,25 +169,38 @@ impl ModuleDualPathExtractor {
                 }
             }
         } else {
-            // Must take real edge
+            // Must take real edge - Warnsdorff heuristic: sort neighbors by unvisited degree
             if let Some(nbrs) = real_adj.get(&curr) {
+                let mut candidates: Vec<(usize, i32)> = Vec::new();
                 for &nxt in nbrs {
                     if !visited.contains(&nxt) {
-                        visited.insert(nxt);
-                        path.push(nxt);
-                        Self::dfs_alternating(
-                            nxt,
-                            true, // next step must be virtual edge
-                            target_len,
-                            virtual_partner,
-                            real_adj,
-                            path,
-                            visited,
-                            results,
-                            steps,
-                        );
-                        path.pop();
-                        visited.remove(&nxt);
+                        let unvisited_deg = real_adj
+                            .get(&nxt)
+                            .map_or(0, |adj| adj.iter().filter(|x| !visited.contains(x)).count());
+                        candidates.push((unvisited_deg, nxt));
+                    }
+                }
+                candidates.sort_by_key(|&(deg, _)| deg);
+
+                for (_, nxt) in candidates {
+                    visited.insert(nxt);
+                    path.push(nxt);
+                    Self::dfs_alternating(
+                        nxt,
+                        true,
+                        target_len,
+                        virtual_partner,
+                        real_adj,
+                        path,
+                        visited,
+                        results,
+                        steps,
+                    );
+                    path.pop();
+                    visited.remove(&nxt);
+
+                    if results.len() >= 10 || *steps > 20000 {
+                        return;
                     }
                 }
             }

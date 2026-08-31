@@ -333,14 +333,20 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
     }
 
     // Bipartite Module State Equivalence Encoder (Approach 2)
-    // For large graphs with degree-2 contracted modules (e.g. 44-vertex modules in 3-SAT reductions)
-    if g.adjacency_list.len() >= 44 && !contractor.chain_map.is_empty() {
+    // Only apply to pure modular reduction graphs without hubs (Hubs = 0) where modules are cleanly detected
+    if hub_registry.hub_vertices.is_empty() && g.adjacency_list.len() >= 44 && !contractor.chain_map.is_empty() {
         let bip_modules = BipartiteModuleDetector::detect_44_modules(&g, contractor);
         if !bip_modules.is_empty() {
-            let mut total_added_module_clauses = 0;
-            let mut synchronized_modules = 0;
+            let mut extracted = Vec::new();
             for m in &bip_modules {
                 if let Some((t_path, f_path)) = ModuleDualPathExtractor::extract_dual_paths(&m.vertices, &g, contractor) {
+                    extracted.push((m, t_path, f_path));
+                }
+            }
+            // Only inject when high coverage of modules is achieved (avoid partial module starvation)
+            if extracted.len() == bip_modules.len() && !extracted.is_empty() {
+                let mut total_added_module_clauses = 0;
+                for (m, t_path, f_path) in extracted {
                     let added = ModuleStateCnfEncoder::encode_module_dual_state(
                         &m.vertices,
                         &t_path,
@@ -350,13 +356,10 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
                         &mut cnf,
                     );
                     total_added_module_clauses += added;
-                    synchronized_modules += 1;
                 }
-            }
-            if synchronized_modules > 0 {
                 println!(
-                    "ModuleStateCnfEncoder: synchronized {}/{} 44-vertex modules, injected {} state-equivalence clauses at Round 0",
-                    synchronized_modules,
+                    "ModuleStateCnfEncoder: successfully synchronized {}/{} 44-vertex modules, injected {} state-equivalence clauses at Round 0",
+                    bip_modules.len(),
                     bip_modules.len(),
                     total_added_module_clauses
                 );
