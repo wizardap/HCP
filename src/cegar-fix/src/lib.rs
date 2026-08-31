@@ -54,3 +54,5 @@ pub mod twin_giant_splicer;
 pub mod macro_component_splicer;
 pub mod sat_macro_patcher;
 pub mod gadget_path_absorber;
+pub mod incremental_sat;
+pub mod macro_crossover_splicer;

@@ -773,6 +773,26 @@ fn cegar(
                         }
                     }
 
+                    // Attempt MacroCrossoverSplicer when 2 <= _active_cycles.len() <= 6 (parity-breaking k-opt for macro-cycles)
+                    if _active_cycles.len() >= 2 && _active_cycles.len() <= 6 {
+                        if let Some(spliced_tour) = crate::macro_crossover_splicer::MacroCrossoverSplicer::try_crossover_splice(&_active_cycles, &g, contractor) {
+                            println!("MacroCrossoverSplicer: successfully spliced {} macro-cycles into single tour via auxiliary SAT crossover", _active_cycles.len());
+                            let full_cycle = contractor.uncontract_cycle(&spliced_tour);
+                            let line = full_cycle.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                            let now = instant.elapsed();
+                            let time = now - previous_time;
+                            let add_block_clauses_time = now - previous_time - sat_solving_time;
+                            println!("number of added block clauses = {}", clause_count);
+                            println!("add block clauses time = {:?}", add_block_clauses_time);
+                            println!("increment time = {:?}", time);
+                            println!();
+                            println!("solution: ");
+                            println!("{}\n", line);
+                            println!("s SATISFIABLE");
+                            return (count, clause_count, Some(full_cycle));
+                        }
+                    }
+
                     // Attempt GadgetPathAbsorber satellite subcycle absorption
                     if _active_cycles.len() >= 2 {
                         let protected_edges: HashSet<(i32, i32)> = contractor.chain_map.keys().copied().collect();
