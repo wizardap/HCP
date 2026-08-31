@@ -8,17 +8,30 @@ use crate::encoder::Encoder;
 pub struct StaticCycleCutter;
 
 impl StaticCycleCutter {
-    /// Statically finds all induced 3-cycles (triangles) and 4-cycles (squares) in graph G
-    /// and generates directional subtour elimination clauses.
+    /// Statically finds small chordless cycles with an optional hub degree threshold
+    /// to avoid clause explosion and clause pollution near high-degree hub vertices.
     pub fn generate_static_small_cycle_cuts(
         g: &Graph,
         encoder: &Encoder,
+    ) -> Cnf {
+        Self::generate_selective_static_cycle_cuts(g, encoder, usize::MAX)
+    }
+
+    /// Statically finds all induced cycles with selective hub degree filtering.
+    pub fn generate_selective_static_cycle_cuts(
+        g: &Graph,
+        encoder: &Encoder,
+        hub_deg_threshold: usize,
     ) -> Cnf {
         let mut cnf = Cnf::new();
         let total_v = g.adjacency_list.len();
         if total_v <= 4 {
             return cnf; // Do not block full tour if graph itself is <= 4 vertices
         }
+
+        let is_hub = |v: i32| -> bool {
+            g.adjacency_list.get(&v).map_or(false, |nbrs| nbrs.len() >= hub_deg_threshold)
+        };
 
         // Build adjacency sets
         let adj_sets: HashMap<i32, HashSet<i32>> = g.adjacency_list
@@ -121,15 +134,16 @@ impl StaticCycleCutter {
             const MAX_6_CYCLE_CLAUSES: usize = 4000;
 
             'outer_6: for &u1 in &vertices {
+                if is_hub(u1) { continue; }
                 if let Some(u1_nbrs) = g.adjacency_list.get(&u1) {
-                    let mut sorted_nbrs: Vec<i32> = u1_nbrs.iter().copied().filter(|&x| x > u1).collect();
+                    let mut sorted_nbrs: Vec<i32> = u1_nbrs.iter().copied().filter(|&x| x > u1 && !is_hub(x)).collect();
                     sorted_nbrs.sort_unstable();
                     sorted_nbrs.dedup();
 
                     for i in 0..sorted_nbrs.len() {
                         let u2 = sorted_nbrs[i];
                         let u2_nbrs = if let Some(nbrs) = g.adjacency_list.get(&u2) {
-                            let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u2).collect();
+                            let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u2 && !is_hub(x)).collect();
                             s.sort_unstable();
                             s.dedup();
                             s
@@ -140,7 +154,7 @@ impl StaticCycleCutter {
                         for j in (i + 1)..sorted_nbrs.len() {
                             let u6 = sorted_nbrs[j]; // u2 < u6
                             let u6_nbrs = if let Some(nbrs) = g.adjacency_list.get(&u6) {
-                                let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u6).collect();
+                                let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u6 && !is_hub(x)).collect();
                                 s.sort_unstable();
                                 s.dedup();
                                 s
@@ -151,7 +165,7 @@ impl StaticCycleCutter {
                             for &u3 in &u2_nbrs {
                                 if u3 == u6 { continue; }
                                 let u3_nbrs = if let Some(nbrs) = g.adjacency_list.get(&u3) {
-                                    let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u3).collect();
+                                    let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u3 && !is_hub(x)).collect();
                                     s.sort_unstable();
                                     s.dedup();
                                     s
@@ -168,6 +182,7 @@ impl StaticCycleCutter {
 
                                     for &u4 in &u3_nbrs {
                                         if u4 == u2 || u4 == u6 || u4 == u5 { continue; }
+                                        if is_hub(u4) { continue; }
                                         if u5_set.contains(&u4) {
                                             // Ensure cycle is strictly induced (no chords)
                                             let u1_set = match adj_sets.get(&u1) { Some(s) => s, None => continue };
@@ -238,8 +253,9 @@ impl StaticCycleCutter {
         let mut seven_cycle_clauses = 0;
         if total_v > 7 {
             'outer_7: for &u1 in &vertices {
+                if is_hub(u1) { continue; }
                 let u1_nbrs = if let Some(nbrs) = g.adjacency_list.get(&u1) {
-                    let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1).collect();
+                    let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && !is_hub(x)).collect();
                     s.sort_unstable();
                     s.dedup();
                     s
@@ -250,7 +266,7 @@ impl StaticCycleCutter {
                 for i in 0..u1_nbrs.len() {
                     let u2 = u1_nbrs[i];
                     let u2_nbrs = if let Some(nbrs) = g.adjacency_list.get(&u2) {
-                        let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u2).collect();
+                        let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u2 && !is_hub(x)).collect();
                         s.sort_unstable();
                         s.dedup();
                         s
@@ -261,7 +277,7 @@ impl StaticCycleCutter {
                     for j in (i + 1)..u1_nbrs.len() {
                         let u7 = u1_nbrs[j];
                         let u7_nbrs = if let Some(nbrs) = g.adjacency_list.get(&u7) {
-                            let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u7 && x != u2).collect();
+                            let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u7 && x != u2 && !is_hub(x)).collect();
                             s.sort_unstable();
                             s.dedup();
                             s
@@ -272,7 +288,7 @@ impl StaticCycleCutter {
                         for &u3 in &u2_nbrs {
                             if u3 == u7 { continue; }
                             let u3_nbrs = if let Some(nbrs) = g.adjacency_list.get(&u3) {
-                                let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u3 && x != u2 && x != u7).collect();
+                                let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u3 && x != u2 && x != u7 && !is_hub(x)).collect();
                                 s.sort_unstable();
                                 s.dedup();
                                 s
@@ -283,7 +299,7 @@ impl StaticCycleCutter {
                             for &u6 in &u7_nbrs {
                                 if u6 == u2 || u6 == u3 { continue; }
                                 let u6_nbrs = if let Some(nbrs) = g.adjacency_list.get(&u6) {
-                                    let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u6 && x != u7 && x != u2 && x != u3).collect();
+                                    let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u6 && x != u7 && x != u2 && x != u3 && !is_hub(x)).collect();
                                     s.sort_unstable();
                                     s.dedup();
                                     s
@@ -295,6 +311,7 @@ impl StaticCycleCutter {
                                     if u4 == u7 || u4 == u6 { continue; }
                                     for &u5 in &u6_nbrs {
                                         if u5 == u2 || u5 == u3 || u5 == u4 { continue; }
+                                        if is_hub(u5) { continue; }
                                         let u5_set = match adj_sets.get(&u5) {
                                             Some(s) => s,
                                             None => continue,
@@ -374,8 +391,9 @@ impl StaticCycleCutter {
         let mut eight_cycle_clauses = 0;
         if total_v > 8 {
             'outer_8: for &u1 in &vertices {
+                if is_hub(u1) { continue; }
                 let u1_nbrs = if let Some(nbrs) = g.adjacency_list.get(&u1) {
-                    let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1).collect();
+                    let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && !is_hub(x)).collect();
                     s.sort_unstable();
                     s.dedup();
                     s
@@ -386,7 +404,7 @@ impl StaticCycleCutter {
                 for i in 0..u1_nbrs.len() {
                     let u2 = u1_nbrs[i];
                     let u2_nbrs = if let Some(nbrs) = g.adjacency_list.get(&u2) {
-                        let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u2).collect();
+                        let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u2 && !is_hub(x)).collect();
                         s.sort_unstable();
                         s.dedup();
                         s
@@ -397,7 +415,7 @@ impl StaticCycleCutter {
                     for j in (i + 1)..u1_nbrs.len() {
                         let u8 = u1_nbrs[j];
                         let u8_nbrs = if let Some(nbrs) = g.adjacency_list.get(&u8) {
-                            let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u8 && x != u2).collect();
+                            let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u8 && x != u2 && !is_hub(x)).collect();
                             s.sort_unstable();
                             s.dedup();
                             s
@@ -408,7 +426,7 @@ impl StaticCycleCutter {
                         for &u3 in &u2_nbrs {
                             if u3 == u8 { continue; }
                             let u3_nbrs = if let Some(nbrs) = g.adjacency_list.get(&u3) {
-                                let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u3 && x != u2 && x != u8).collect();
+                                let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u3 && x != u2 && x != u8 && !is_hub(x)).collect();
                                 s.sort_unstable();
                                 s.dedup();
                                 s
@@ -419,7 +437,7 @@ impl StaticCycleCutter {
                             for &u7 in &u8_nbrs {
                                 if u7 == u2 || u7 == u3 { continue; }
                                 let u7_nbrs = if let Some(nbrs) = g.adjacency_list.get(&u7) {
-                                    let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u7 && x != u8 && x != u2 && x != u3).collect();
+                                    let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u7 && x != u8 && x != u2 && x != u3 && !is_hub(x)).collect();
                                     s.sort_unstable();
                                     s.dedup();
                                     s
@@ -430,7 +448,7 @@ impl StaticCycleCutter {
                                 for &u4 in &u3_nbrs {
                                     if u4 == u8 || u4 == u7 { continue; }
                                     let u4_nbrs = if let Some(nbrs) = g.adjacency_list.get(&u4) {
-                                        let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u4 && x != u3 && x != u2 && x != u8 && x != u7).collect();
+                                        let mut s: Vec<i32> = nbrs.iter().copied().filter(|&x| x > u1 && x != u4 && x != u3 && x != u2 && x != u8 && x != u7 && !is_hub(x)).collect();
                                         s.sort_unstable();
                                         s.dedup();
                                         s
@@ -447,6 +465,7 @@ impl StaticCycleCutter {
 
                                         for &u5 in &u4_nbrs {
                                             if u5 == u8 || u5 == u7 || u5 == u6 { continue; }
+                                            if is_hub(u5) { continue; }
                                             if u6_set.contains(&u5) {
                                                 // Check induced chords for 8-cycle: u1 - u2 - u3 - u4 - u5 - u6 - u7 - u8 - u1
                                                 let u1_set = match adj_sets.get(&u1) { Some(s) => s, None => continue };
@@ -523,7 +542,8 @@ impl StaticCycleCutter {
             }
         }
         // 6. Generic static chordless cycle detection for lengths 9..=16
-        if total_v > 9 {
+        // Only run on non-hub graphs; when hub_deg_threshold is constrained, skip to avoid clause bloat
+        if total_v > 9 && hub_deg_threshold == usize::MAX {
             let n = vertices.len();
             let mut v_to_idx: HashMap<i32, usize> = HashMap::with_capacity(n);
             for (i, &v) in vertices.iter().enumerate() {
@@ -551,11 +571,14 @@ impl StaticCycleCutter {
                 }
             }
 
+            let hub_mask: Vec<bool> = vertices.iter().map(|&v| is_hub(v)).collect();
+
             let mut finder = ExtendedCycleFinder {
                 adj_bits: &adj_bits,
                 num_words,
                 adj_list: &indexed_adj,
                 vertices: &vertices,
+                hub_mask: &hub_mask,
                 encoder,
                 cnf: &mut cnf,
                 total_v,
@@ -584,6 +607,7 @@ struct ExtendedCycleFinder<'a> {
     num_words: usize,
     adj_list: &'a [Vec<usize>],
     vertices: &'a [i32],
+    hub_mask: &'a [bool],
     encoder: &'a Encoder,
     cnf: &'a mut Cnf,
     total_v: usize,
@@ -604,6 +628,9 @@ impl<'a> ExtendedCycleFinder<'a> {
 
     fn run(&mut self) {
         for u1_idx in 0..self.vertices.len() {
+            if self.hub_mask[u1_idx] {
+                continue;
+            }
             if self.total_extended_clauses >= MAX_EXTENDED_CYCLE_CLAUSES {
                 break;
             }
@@ -621,7 +648,7 @@ impl<'a> ExtendedCycleFinder<'a> {
                     continue;
                 }
                 for &nxt in &self.adj_list[curr] {
-                    if nxt > u1_idx && self.dist[nxt] == 255 {
+                    if nxt > u1_idx && !self.hub_mask[nxt] && self.dist[nxt] == 255 {
                         self.dist[nxt] = d + 1;
                         self.visited_nodes.push(nxt);
                     }
@@ -634,7 +661,7 @@ impl<'a> ExtendedCycleFinder<'a> {
 
             let nbrs = &self.adj_list[u1_idx];
             for &u2_idx in nbrs {
-                if u2_idx <= u1_idx {
+                if u2_idx <= u1_idx || self.hub_mask[u2_idx] {
                     continue;
                 }
                 self.path[1] = u2_idx;
@@ -671,7 +698,7 @@ impl<'a> ExtendedCycleFinder<'a> {
         let max_rem_dist = (16 - depth) as u8;
 
         for &v in &self.adj_list[u_prev] {
-            if v <= u1_idx {
+            if v <= u1_idx || self.hub_mask[v] {
                 continue;
             }
             if self.in_path[v] {

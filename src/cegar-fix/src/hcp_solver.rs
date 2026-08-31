@@ -37,6 +37,7 @@ use crate::cnf_subsumer::CnfSubsumer;
 use crate::twin_giant_splicer::TwinGiantSplicer;
 use crate::sat_macro_patcher::SatMacroPatcher;
 use crate::gadget_path_absorber::GadgetPathAbsorber;
+use crate::incremental_sat::IncrementalSatSolver;
 
 
 
@@ -295,10 +296,16 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
         }
     }
 
-    // Static Substructure Cycle Cutter: inject small (3..=8) and extended (9..=16) subtour elimination clauses
-    let static_cuts = StaticCycleCutter::generate_static_small_cycle_cuts(&g, &encoder);
+    // Static Substructure Cycle Cutter: inject small (3..=8) and extended (9..=16) subtour elimination clauses.
+    // If graph has hubs or vertices with degree >= 10, throttle long static cuts near hubs to prevent clause explosion.
+    let has_hubs = hub_registry.hub_vertices.len() > 0 || g.adjacency_list.values().any(|nbrs| nbrs.len() >= 10);
+    let static_cuts = if has_hubs {
+        StaticCycleCutter::generate_selective_static_cycle_cuts(&g, &encoder, 10)
+    } else {
+        StaticCycleCutter::generate_static_small_cycle_cuts(&g, &encoder)
+    };
     if !static_cuts.is_empty() {
-        println!("StaticCycleCutter: injected {} static cycle elimination clauses at Round 0", static_cuts.len());
+        println!("StaticCycleCutter: injected {} static cycle elimination clauses at Round 0 (hub_throttled: {})", static_cuts.len(), has_hubs);
         cnf.extend(static_cuts);
     }
 
@@ -428,10 +435,17 @@ fn cegar(
     }
 
     let mut working_cnf = base_cnf.clone();
+    let mut incremental_solver = IncrementalSatSolver::new(&base_cnf);
     let mut assumptions: Vec<Lit> = Vec::new();
     let mut phase_hints: Vec<Lit> = Vec::new();
     let mut accumulated_cut_cnfs: Vec<Cnf> = Vec::new();
-    let reseeder_opts = ReseederOptions::default();
+    let total_v = g.adjacency_list.len();
+    let mut reseeder_opts = ReseederOptions::default();
+    if total_v >= 500 {
+        reseeder_opts.max_sat_time_threshold_secs = 120.0;
+        reseeder_opts.periodic_interval_rounds = 20;
+    }
+    let inc_timeout = if total_v >= 500 { 180.0 } else { 15.0 };
     let mut backbone_tracker = EmpiricalBackboneTracker::new(10);
 
     loop {
@@ -440,8 +454,15 @@ fn cegar(
             return (count, clause_count, None);
         }
 
-        // SATソルバーで解を求める (3 concurrent CaDiCaL workers across Cores 0, 1, 2)
-        let port_res = ParallelSatPortfolio::solve_portfolio(&working_cnf, &assumptions, &phase_hints, 3, count as usize);
+        // SAT solve: First try persistent incremental solver to preserve learned CDCL state
+        // If incremental solve times out or is interrupted, escalate to 3-core diversified parallel portfolio
+        let port_res = match incremental_solver.solve_with_timeout(&assumptions, &phase_hints, inc_timeout) {
+            PortfolioResult::Sat(model_lits) => PortfolioResult::Sat(model_lits),
+            PortfolioResult::Unsat => PortfolioResult::Unsat,
+            PortfolioResult::Interrupted => {
+                ParallelSatPortfolio::solve_portfolio(&working_cnf, &assumptions, &phase_hints, 3, count as usize)
+            }
+        };
         let now = instant.elapsed();
         let sat_solving_time = now - previous_time;
 
@@ -792,7 +813,7 @@ fn cegar(
                         for &m_idx in &macro_indices {
                             let mut macro_cycle = _active_cycles[m_idx].clone();
                             for (c_idx, subcycle) in _active_cycles.iter().enumerate() {
-                                if c_idx != m_idx && subcycle.len() <= 32 {
+                                if c_idx != m_idx && subcycle.len() <= 16 {
                                     let gadget_res = GadgetInterfaceParityEngine::analyze_subcycle_gadget(
                                         subcycle,
                                         &g,
@@ -920,10 +941,11 @@ fn cegar(
 
                     if !round_cuts.is_empty() {
                         working_cnf.extend(round_cuts.clone());
-                        accumulated_cut_cnfs.push(round_cuts);
+                        accumulated_cut_cnfs.push(round_cuts.clone());
+                        incremental_solver.add_cuts(&round_cuts);
                     }
                     let max_cycle_len = _active_cycles.iter().map(|c| c.len()).max().unwrap_or(0);
-                    if _active_cycles.len() > 1 && (max_cycle_len >= total_v / 2 || _active_cycles.len() <= 25) {
+                    if _active_cycles.len() > 1 && total_v >= 100 && (max_cycle_len >= total_v / 2 || _active_cycles.len() <= 25) {
                         let freezer_opts = FreezerOptions::default();
                         assumptions = BackboneFreezer::select_adaptive_frozen_assumptions(
                             &_active_cycles,
@@ -941,7 +963,6 @@ fn cegar(
                         if count >= 3 && max_cycle_len >= total_v / 2 {
                             let frequent_edges = backbone_tracker.get_frequent_backbone_edges(0.85);
                             let mut added_empirical = 0;
-                            let mut assumption_set: HashSet<Lit> = assumptions.iter().copied().collect();
                             phase_hints.clear();
 
                             if let Some(giant_cycle) = _active_cycles.iter().find(|c| c.len() == max_cycle_len) {
@@ -954,16 +975,13 @@ fn cegar(
                                     if frequent_edges.contains(&(min_v, max_v)) {
                                         if let Some(&lit) = encoder.graph_lit_map.get(&(u, v)) {
                                             phase_hints.push(lit);
-                                            if assumption_set.insert(lit) {
-                                                assumptions.push(lit);
-                                                added_empirical += 1;
-                                            }
+                                            added_empirical += 1;
                                         }
                                     }
                                 }
                             }
                             if added_empirical > 0 {
-                                println!("EmpiricalBackboneTracker: augmented {} empirical backbone assumptions (freq >= 0.85)", added_empirical);
+                                println!("EmpiricalBackboneTracker: guided {} empirical backbone phase hints (freq >= 0.85)", added_empirical);
                             }
                         }
                     } else {
@@ -978,14 +996,21 @@ fn cegar(
                     println!("add block clauses time = {:?}", add_block_clauses_time);
                     println!("increment time = {:?}", time);
 
-                    if SolverReseeder::should_reseed(sat_solving_time.as_secs_f64(), count as usize, &reseeder_opts)
-                        || accumulated_cut_cnfs.len() >= 10 {
+                    let should_reseed = if total_v >= 500 {
+                        accumulated_cut_cnfs.len() >= 50 || sat_solving_time.as_secs_f64() >= 300.0
+                    } else {
+                        SolverReseeder::should_reseed(sat_solving_time.as_secs_f64(), count as usize, &reseeder_opts)
+                            || accumulated_cut_cnfs.len() >= 10
+                    };
+
+                    if should_reseed {
                         let pruned_cnf = CnfSubsumer::prune_and_subsume_cuts(&accumulated_cut_cnfs);
                         println!("SolverReseeder: compressed {} cut sets down to {} non-redundant clauses (round {}, last SAT time {:.2}s)",
                             accumulated_cut_cnfs.len(), pruned_cnf.len(), count, sat_solving_time.as_secs_f64());
                         working_cnf = base_cnf.clone();
                         working_cnf.extend(pruned_cnf.clone());
                         accumulated_cut_cnfs = vec![pruned_cnf];
+                        incremental_solver.reset_with_cnf(&working_cnf);
                     }
                 }
             }
@@ -1247,55 +1272,49 @@ fn swap_node(
     cycle2: &Vec<i32>,
     g: &Graph,
     contractor: &Degree2Contractor,
-    hub_registry: &HubRegistry,
+    _hub_registry: &HubRegistry,
 ) -> Option<Vec<i32>> {
+    let n2 = cycle2.len();
+    if cycle1.len() < 3 || n2 < 3 {
+        return None;
+    }
+
+    let mut cycle2_pos: HashMap<i32, usize> = HashMap::with_capacity(n2);
+    for (idx, &v) in cycle2.iter().enumerate() {
+        cycle2_pos.insert(v, idx);
+    }
+
+    let is_protected = |u: i32, v: i32| -> bool {
+        contractor.chain_map.contains_key(&(u, v)) || contractor.chain_map.contains_key(&(v, u))
+    };
+
+    let has_edge = |u: i32, v: i32| -> bool {
+        g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v))
+    };
+
     for i in 0..cycle1.len() {
         let u1 = cycle1[i];
         let v1 = cycle1[(i + 1) % cycle1.len()];
-        if contractor.chain_map.contains_key(&(u1, v1)) || contractor.chain_map.contains_key(&(v1, u1)) {
+        if is_protected(u1, v1) {
             continue;
         }
 
-        let u1_hub_set = hub_registry.hub_neighbors.get(&u1);
-        let v1_hub_set = hub_registry.hub_neighbors.get(&v1);
+        let adjs_of_left_head = match g.adjacency_list.get(&u1) {
+            Some(a) => a,
+            None => continue,
+        };
 
-        let adjs_of_left_head = g.adjacency_list.get(&u1).unwrap();
-        let adjs_of_left_tail = g.adjacency_list.get(&v1).unwrap();
+        for &u2 in adjs_of_left_head {
+            if let Some(&j) = cycle2_pos.get(&u2) {
+                let v2_fwd = cycle2[(j + 1) % n2];
+                let v2_rev = cycle2[(j + n2 - 1) % n2];
 
-        for j in 0..cycle2.len() {
-            let u2 = cycle2[j];
-            let v2_fwd = cycle2[(j + 1) % cycle2.len()];
-            let v2_rev = cycle2[(j + cycle2.len() - 1) % cycle2.len()];
-
-            let u1_connected_u2 = if let Some(hset) = u1_hub_set {
-                hset.contains(&u2)
-            } else {
-                adjs_of_left_head.contains(&u2)
-            };
-
-            if u1_connected_u2 {
-                let v1_connected_fwd = if let Some(hset) = v1_hub_set {
-                    hset.contains(&v2_fwd)
-                } else {
-                    adjs_of_left_tail.contains(&v2_fwd)
-                };
-
-                if v1_connected_fwd {
-                    if !contractor.chain_map.contains_key(&(u2, v2_fwd)) && !contractor.chain_map.contains_key(&(v2_fwd, u2)) {
-                        return cycle_join(&cycle1, &cycle2, i, j, true);
-                    }
+                if has_edge(v1, v2_fwd) && !is_protected(u2, v2_fwd) {
+                    return cycle_join(cycle1, cycle2, i, j, true);
                 }
 
-                let v1_connected_rev = if let Some(hset) = v1_hub_set {
-                    hset.contains(&v2_rev)
-                } else {
-                    adjs_of_left_tail.contains(&v2_rev)
-                };
-
-                if v1_connected_rev {
-                    if !contractor.chain_map.contains_key(&(u2, v2_rev)) && !contractor.chain_map.contains_key(&(v2_rev, u2)) {
-                        return cycle_join(&cycle1, &cycle2, i, j, false);
-                    }
+                if has_edge(v1, v2_rev) && !is_protected(u2, v2_rev) {
+                    return cycle_join(cycle1, cycle2, i, j, false);
                 }
             }
         }
@@ -1337,6 +1356,8 @@ fn cycle_join(cycle1:&Vec<i32>,cycle2:&Vec<i32>,i:usize,j:usize,reverse:bool) ->
 
 /// Try to merge three directed cycles by a 3-edge swap.
 /// Config A (0): C1 -> C2 -> C3 -> C1  (u1->v2, u2->v3, u3->v1)
+/// Try to merge three directed cycles by a 3-edge swap.
+/// Config A (0): C1 -> C2 -> C3 -> C1  (u1->v2, u2->v3, u3->v1)
 /// Config B (1): C1 -> C3 -> C2 -> C1  (u1->v3, u3->v2, u2->v1)
 fn swap_three_nodes(
     c1: &Vec<i32>,
@@ -1344,53 +1365,99 @@ fn swap_three_nodes(
     c3: &Vec<i32>,
     g: &Graph,
     contractor: &Degree2Contractor,
-    hub_registry: &HubRegistry,
+    _hub_registry: &HubRegistry,
 ) -> Option<Vec<i32>> {
+    let n2 = c2.len();
+    let n3 = c3.len();
+    if c1.len() < 3 || n2 < 3 || n3 < 3 {
+        return None;
+    }
+
+    let mut c2_pos: HashMap<i32, usize> = HashMap::with_capacity(n2);
+    for (idx, &v) in c2.iter().enumerate() {
+        c2_pos.insert(v, idx);
+    }
+
+    let mut c3_pos: HashMap<i32, usize> = HashMap::with_capacity(n3);
+    for (idx, &v) in c3.iter().enumerate() {
+        c3_pos.insert(v, idx);
+    }
+
+    let is_protected = |u: i32, v: i32| -> bool {
+        contractor.chain_map.contains_key(&(u, v)) || contractor.chain_map.contains_key(&(v, u))
+    };
+
+    let has_edge = |u: i32, v: i32| -> bool {
+        g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v))
+    };
+
     for i in 0..c1.len() {
         let u1 = c1[i];
         let v1 = c1[(i + 1) % c1.len()];
-        if contractor.chain_map.contains_key(&(u1, v1)) || contractor.chain_map.contains_key(&(v1, u1)) {
+        if is_protected(u1, v1) {
             continue;
         }
-        let u1_hub = hub_registry.hub_neighbors.get(&u1);
-        let adjs_u1 = g.adjacency_list.get(&u1).unwrap();
 
-        for j in 0..c2.len() {
-            let u2 = c2[j];
-            let v2 = c2[(j + 1) % c2.len()];
-            if contractor.chain_map.contains_key(&(u2, v2)) || contractor.chain_map.contains_key(&(v2, u2)) {
-                continue;
-            }
-            let u2_hub = hub_registry.hub_neighbors.get(&u2);
-            let adjs_u2 = g.adjacency_list.get(&u2).unwrap();
+        let adjs_u1 = match g.adjacency_list.get(&u1) {
+            Some(a) => a,
+            None => continue,
+        };
 
-            for k in 0..c3.len() {
-                let u3 = c3[k];
-                let v3 = c3[(k + 1) % c3.len()];
-                if contractor.chain_map.contains_key(&(u3, v3)) || contractor.chain_map.contains_key(&(v3, u3)) {
+        // Check Config A: u1 -> v2, u2 -> v3, u3 -> v1
+        for &v2 in adjs_u1 {
+            if let Some(&v2_idx) = c2_pos.get(&v2) {
+                let j = (v2_idx + n2 - 1) % n2;
+                let u2 = c2[j];
+                if is_protected(u2, v2) {
                     continue;
                 }
-                let u3_hub = hub_registry.hub_neighbors.get(&u3);
-                let adjs_u3 = g.adjacency_list.get(&u3).unwrap();
 
-                let u1_has_v2 = if let Some(h) = u1_hub { h.contains(&v2) } else { adjs_u1.contains(&v2) };
-                let u1_has_v3 = if let Some(h) = u1_hub { h.contains(&v3) } else { adjs_u1.contains(&v3) };
-                let u2_has_v3 = if let Some(h) = u2_hub { h.contains(&v3) } else { adjs_u2.contains(&v3) };
-                let u2_has_v1 = if let Some(h) = u2_hub { h.contains(&v1) } else { adjs_u2.contains(&v1) };
-                let u3_has_v1 = if let Some(h) = u3_hub { h.contains(&v1) } else { adjs_u3.contains(&v1) };
-                let u3_has_v2 = if let Some(h) = u3_hub { h.contains(&v2) } else { adjs_u3.contains(&v2) };
+                if let Some(adjs_u2) = g.adjacency_list.get(&u2) {
+                    for &v3 in adjs_u2 {
+                        if let Some(&v3_idx) = c3_pos.get(&v3) {
+                            let k = (v3_idx + n3 - 1) % n3;
+                            let u3 = c3[k];
+                            if is_protected(u3, v3) {
+                                continue;
+                            }
 
-                // Config A: u1->v2, u2->v3, u3->v1
-                if u1_has_v2 && u2_has_v3 && u3_has_v1 {
-                    return cycle_join_three(c1, c2, c3, i, j, k, 0);
+                            if has_edge(u3, v1) {
+                                return cycle_join_three(c1, c2, c3, i, j, k, 0);
+                            }
+                        }
+                    }
                 }
-                // Config B: u1->v3, u3->v2, u2->v1
-                if u1_has_v3 && u3_has_v2 && u2_has_v1 {
-                    return cycle_join_three(c1, c2, c3, i, j, k, 1);
+            }
+        }
+
+        // Check Config B: u1 -> v3, u3 -> v2, u2 -> v1
+        for &v3 in adjs_u1 {
+            if let Some(&v3_idx) = c3_pos.get(&v3) {
+                let k = (v3_idx + n3 - 1) % n3;
+                let u3 = c3[k];
+                if is_protected(u3, v3) {
+                    continue;
+                }
+
+                if let Some(adjs_u3) = g.adjacency_list.get(&u3) {
+                    for &v2 in adjs_u3 {
+                        if let Some(&v2_idx) = c2_pos.get(&v2) {
+                            let j = (v2_idx + n2 - 1) % n2;
+                            let u2 = c2[j];
+                            if is_protected(u2, v2) {
+                                continue;
+                            }
+
+                            if has_edge(u2, v1) {
+                                return cycle_join_three(c1, c2, c3, i, j, k, 1);
+                            }
+                        }
+                    }
                 }
             }
         }
     }
+
     None
 }
 
@@ -1572,7 +1639,13 @@ fn get_blocking_clauses(
     _balanced: i32,
 ) -> Vec<Clause> {
     let mut options = CutSelectorOptions::default();
-    if cycles.len() <= 50 {
+    if cycles.len() <= 20 {
+        options.base_max_cuts = 50;
+        options.max_cycle_len_threshold = usize::MAX;
+        options.tiny_cycle_boundary_len = usize::MAX;
+        options.enable_reverse_blocking = true;
+        options.enable_incoming_boundary_cuts = true;
+    } else if cycles.len() <= 50 {
         let total_v = g.adjacency_list.len();
         options.base_max_cuts = 40;
         options.max_cycle_len_threshold = if total_v > 0 { total_v / 2 } else { usize::MAX };
@@ -1583,7 +1656,7 @@ fn get_blocking_clauses(
         println!("CutSelector: selected {}/{} subcycles (generated {} budgeted clauses)", selected.len(), cycles.len(), clauses.len());
     }
 
-    if cycles.len() >= 2 && cycles.len() <= 4 {
+    if cycles.len() >= 2 && cycles.len() <= 16 {
         let hemi_cuts = HemisphereSplicer::generate_hemisphere_crossing_cuts(cycles, g, encoder);
         if !hemi_cuts.is_empty() {
             println!("HemisphereSplicer: generated {} bi-partition crossing cut clauses", hemi_cuts.len());
