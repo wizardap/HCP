@@ -57,3 +57,5 @@ pub mod gadget_path_absorber;
 pub mod incremental_sat;
 pub mod macro_crossover_splicer;
 pub mod quotient_block_cutter;
+pub mod bipartite_module_detector;
+pub mod module_dual_path_extractor;
