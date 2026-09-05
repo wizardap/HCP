@@ -1,4 +1,4 @@
-import collections, time, os, sys
+import collections, time, os, sys, pickle
 from pysat.solvers import Cadical195
 from pysat.card import CardEnc, EncType
 
@@ -71,3 +71,40 @@ def setup_stage1(G, degs):
                                     tri_cycle_mutexes.append([-e12, -e23, -e31])
                                     
     return blocks, node_to_block_end, edge_to_var, var_to_edge, var_cnt, adj_external, block_adj_all, two_cycle_mutexes, tri_cycle_mutexes
+
+def get_cycles_from_edges(edges, blocks, node_to_block_end):
+    port_nbr = {}
+    for (u, v) in edges:
+        p1 = node_to_block_end[u]; p2 = node_to_block_end[v]
+        port_nbr[p1] = (p2, (u, v)); port_nbr[p2] = (p1, (u, v))
+    visited = set(); cycs = []
+    for b in range(len(blocks)):
+        p = (b, 'u')
+        if p not in visited:
+            c_ports = []; curr = p
+            while curr not in visited:
+                visited.add(curr); c_ports.append(curr)
+                nxt_p, e = port_nbr[curr]
+                visited.add(nxt_p); c_ports.append(nxt_p)
+                curr = (nxt_p[0], 'w' if nxt_p[1] == 'u' else 'u')
+            cycs.append(c_ports)
+    return cycs, port_nbr
+
+def acquire_giant_backbone(blocks, node_to_block_end, cache_path='scratch/graph788_model_it15.pkl'):
+    with open(cache_path, 'rb') as f:
+        data = pickle.load(f)
+    edges = set(tuple(sorted(e)) for e in data['active_edges'])
+    
+    # Step 1 alternating 4-opt flip:
+    # Absorbs Subcycle 3 (218 blocks) and Subcycle 11 (2 blocks) into Giant
+    added = [(517, 2614), (798, 3487), (1051, 3597), (3317, 3940)]
+    removed = [(517, 798), (1051, 3487), (3597, 3940), (2614, 3317)]
+    edges = (edges - set(removed)) | set(added)
+    
+    cycs, port_nbr = get_cycles_from_edges(edges, blocks, node_to_block_end)
+    giant_idx = max(range(len(cycs)), key=lambda i: len(cycs[i]))
+    giant_len = len(cycs[giant_idx]) // 2
+    assert giant_len == 1432, f"Expected Giant to have 1432 blocks, got {giant_len}"
+    assert len(cycs) == 19, f"Expected 19 cycles, got {len(cycs)}"
+    return edges, cycs, port_nbr, giant_idx
+
