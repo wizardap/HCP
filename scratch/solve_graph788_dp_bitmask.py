@@ -108,3 +108,105 @@ def acquire_giant_backbone(blocks, node_to_block_end, cache_path='scratch/graph7
     assert len(cycs) == 19, f"Expected 19 cycles, got {len(cycs)}"
     return edges, cycs, port_nbr, giant_idx
 
+def decompose_subcycle_components(G, blocks, node_to_block_end, cycs, giant_idx):
+    rem_subs = [cycs[i] for i in range(len(cycs)) if i != giant_idx]
+    sub_blocks_map = {}
+    for i, sc in enumerate(rem_subs):
+        for p in sc: sub_blocks_map[p[0]] = i + 1
+
+    sub_adj = collections.defaultdict(set)
+    for b, s_id in sub_blocks_map.items():
+        for u in [blocks[b][1], blocks[b][3]]:
+            for v in G[u]:
+                if v in node_to_block_end:
+                    b2 = node_to_block_end[v][0]
+                    if b2 in sub_blocks_map and sub_blocks_map[b2] != s_id:
+                        sub_adj[s_id].add(sub_blocks_map[b2])
+
+    vis = set(); comps = []
+    for s_id in range(1, len(rem_subs) + 1):
+        if s_id not in vis:
+            comp = []; q = [s_id]; vis.add(s_id)
+            for x in q:
+                comp.append(x)
+                for y in sub_adj[x]:
+                    if y not in vis: vis.add(y); q.append(y)
+            comps.append(comp)
+    return comps
+
+def generate_component_routes(G, blocks, node_to_block_end, port_nbr, cycs, giant_idx, comps):
+    giant = cycs[giant_idx]
+    giant_order = [p[0] for p in giant[::2]]
+    giant_pos = {b: i for i, b in enumerate(giant_order)}
+    rem_subs = [cycs[i] for i in range(len(cycs)) if i != giant_idx]
+    
+    comp_routes = {}
+    for c_id, comp in enumerate(comps):
+        comp_blocks = set()
+        for s_id in comp:
+            for p in rem_subs[s_id-1]: comp_blocks.add(p[0])
+            
+        old_comp_edges = set()
+        for p_nxt, edge_raw in port_nbr.values():
+            e = tuple(sorted(edge_raw))
+            b1 = node_to_block_end[e[0]][0]; b2 = node_to_block_end[e[1]][0]
+            if b1 in comp_blocks and b2 in comp_blocks:
+                old_comp_edges.add(e)
+                
+        local_adj = collections.defaultdict(list)
+        for b in comp_blocks:
+            for u_type in ['u', 'w']:
+                u = blocks[b][1] if u_type == 'u' else blocks[b][3]
+                p1 = (b, u_type)
+                for v in G[u]:
+                    if v in node_to_block_end:
+                        p2 = node_to_block_end[v]
+                        if p2[0] in comp_blocks and p2[0] != b:
+                            local_adj[p1].append((p2, tuple(sorted((u, v)))))
+                            
+        hp_pairs = []
+        for start_b in comp_blocks:
+            for start_port in [(start_b, 'u'), (start_b, 'w')]:
+                def dfs(curr_port, visited_b, path):
+                    curr_b = curr_port[0]
+                    other_p = (curr_b, 'w' if curr_port[1] == 'u' else 'u')
+                    if len(visited_b) == len(comp_blocks):
+                        hp_pairs.append((start_port, other_p, path))
+                        return
+                    for nxt_p, e in local_adj[other_p]:
+                        if nxt_p[0] not in visited_b:
+                            dfs(nxt_p, visited_b | {nxt_p[0]}, path + [e])
+                dfs(start_port, {start_b}, [])
+                
+        routes = []
+        for p_start, p_end, path in hp_pairs:
+            u_s = blocks[p_start[0]][1] if p_start[1] == 'u' else blocks[p_start[0]][3]
+            u_e = blocks[p_end[0]][1] if p_end[1] == 'u' else blocks[p_end[0]][3]
+            for v1 in G[u_s]:
+                if v1 in node_to_block_end:
+                    pg1 = node_to_block_end[v1]
+                    if pg1[0] not in giant_pos: continue
+                    p_prime1, rem_e1 = port_nbr[pg1]
+                    for v2 in G[u_e]:
+                        if v2 in node_to_block_end:
+                            pg2 = node_to_block_end[v2]
+                            if pg2[0] not in giant_pos or pg2 == pg1: continue
+                            p_prime2, rem_e2 = port_nbr[pg2]
+                            u_p1 = blocks[p_prime1[0]][1] if p_prime1[1] == 'u' else blocks[p_prime1[0]][3]
+                            u_p2 = blocks[p_prime2[0]][1] if p_prime2[1] == 'u' else blocks[p_prime2[0]][3]
+                            if u_p2 in G[u_p1]:
+                                reconnect_e = tuple(sorted((u_p1, u_p2)))
+                                e_in = tuple(sorted((u_s, v1)))
+                                e_out = tuple(sorted((u_e, v2)))
+                                added = set(path) | {e_in, e_out, reconnect_e}
+                                removed = old_comp_edges | {rem_e1, rem_e2}
+                                routes.append({
+                                    'c_id': c_id,
+                                    'added': added,
+                                    'removed': removed,
+                                    'ports_used': {pg1, pg2, p_prime1, p_prime2}
+                                })
+        comp_routes[c_id] = routes
+    return comp_routes
+
+
