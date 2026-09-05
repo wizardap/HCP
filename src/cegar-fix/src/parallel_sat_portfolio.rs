@@ -42,10 +42,13 @@ impl ParallelSatPortfolio {
                         0 => {} // Worker 0: Deterministic default CaDiCaL
                         1 => {
                             let _ = solver.set_option("seed", 42 + (round as i32) * 17);
+                            let _ = solver.set_option("restartint", 100);
+                            let _ = solver.set_option("chrono", 1);
                         }
                         2 => {
                             let _ = solver.set_option("seed", 1337 + (round as i32) * 31);
                             let _ = solver.set_option("phase", 0);
+                            let _ = solver.set_option("walk", 1);
                         }
                         w => {
                             let _ = solver.set_option("seed", (w as i32) * 1000 + 42 + (round as i32) * 17);

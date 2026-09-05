@@ -57,10 +57,16 @@ impl TwinGiantSplicer {
         cycles: &[Vec<i32>],
         g: &Graph,
         total_v: usize,
+        protected_edges: &HashSet<(i32, i32)>,
     ) -> Option<Vec<Vec<i32>>> {
         if cycles.len() < 2 {
             return None;
         }
+
+        let canonical_protected: HashSet<(i32, i32)> = protected_edges
+            .iter()
+            .map(|&(u, v)| min_max(u, v))
+            .collect();
 
         // Validate minimum cycle lengths
         for c in cycles {
@@ -75,66 +81,76 @@ impl TwinGiantSplicer {
 
         let idx1 = indexed[0].0;
         let c1 = indexed[0].1;
-        let idx2 = indexed[1].0;
-        let c2 = indexed[1].1;
 
         // Threshold check: both |C1|, |C2| >= max(10, total_v / 5)
+        // If C1 is already a dominant giant cycle (|C1| >= total_v / 2),
+        // allow absorbing any subcycle C2 (|C2| >= 3) into C1.
         let threshold = 10.max(total_v / 5);
-        if c1.len() < threshold || c2.len() < threshold {
+        let is_dominant_giant = c1.len() >= total_v / 2;
+        let c2_threshold = if is_dominant_giant { 3 } else { threshold };
+        if c1.len() < threshold {
             return None;
         }
 
-        // 1. Direct 2-Opt between C1 and C2
-        let direct_bridges = find_bridges_between_cycles(c1, c2, g);
-        for b in &direct_bridges {
-            if let Some(merged) = reconstruct_merged_cycle(&[c1, c2], std::slice::from_ref(b), g) {
-                let mut new_cycles = Vec::with_capacity(cycles.len() - 1);
-                for (idx, c) in cycles.iter().enumerate() {
-                    if idx != idx1 && idx != idx2 {
-                        new_cycles.push(c.clone());
-                    }
-                }
-                new_cycles.push(merged);
-                return Some(new_cycles);
-            }
-        }
-
-        // 2. Intermediate 3-Way Bridge via Ck
-        for (k_idx, ck) in cycles.iter().enumerate() {
-            if k_idx == idx1 || k_idx == idx2 || ck.len() < 3 {
+        for cand_idx in 1..indexed.len() {
+            let idx2 = indexed[cand_idx].0;
+            let c2 = indexed[cand_idx].1;
+            if c2.len() < c2_threshold {
                 continue;
             }
 
-            let bridges_1k = find_bridges_between_cycles(c1, ck, g);
-            if bridges_1k.is_empty() {
-                continue;
-            }
-
-            let bridges_k2 = find_bridges_between_cycles(ck, c2, g);
-            if bridges_k2.is_empty() {
-                continue;
-            }
-
-            for b1 in &bridges_1k {
-                let e_k1 = b1.e_b;
-                for b2 in &bridges_k2 {
-                    let e_k2 = b2.e_a;
-                    // Disjoint bridge check on Ck
-                    if e_k1 == e_k2 {
-                        continue;
-                    }
-
-                    if let Some(merged) =
-                        reconstruct_merged_cycle(&[c1, ck, c2], &[b1.clone(), b2.clone()], g)
-                    {
-                        let mut new_cycles = Vec::with_capacity(cycles.len() - 2);
-                        for (idx, c) in cycles.iter().enumerate() {
-                            if idx != idx1 && idx != idx2 && idx != k_idx {
-                                new_cycles.push(c.clone());
-                            }
+            // 1. Direct 2-Opt between C1 and C2
+            let direct_bridges = find_bridges_between_cycles(c1, c2, g, &canonical_protected);
+            for b in &direct_bridges {
+                if let Some(merged) = reconstruct_merged_cycle(&[c1, c2], std::slice::from_ref(b), g) {
+                    let mut new_cycles = Vec::with_capacity(cycles.len() - 1);
+                    for (idx, c) in cycles.iter().enumerate() {
+                        if idx != idx1 && idx != idx2 {
+                            new_cycles.push(c.clone());
                         }
-                        new_cycles.push(merged);
-                        return Some(new_cycles);
+                    }
+                    new_cycles.push(merged);
+                    return Some(new_cycles);
+                }
+            }
+
+            // 2. Intermediate 3-Way Bridge via Ck
+            for (k_idx, ck) in cycles.iter().enumerate() {
+                if k_idx == idx1 || k_idx == idx2 || ck.len() < 3 {
+                    continue;
+                }
+
+                let bridges_1k = find_bridges_between_cycles(c1, ck, g, &canonical_protected);
+                if bridges_1k.is_empty() {
+                    continue;
+                }
+
+                let bridges_k2 = find_bridges_between_cycles(ck, c2, g, &canonical_protected);
+                if bridges_k2.is_empty() {
+                    continue;
+                }
+
+                for b1 in &bridges_1k {
+                    let e_k1 = b1.e_b;
+                    for b2 in &bridges_k2 {
+                        let e_k2 = b2.e_a;
+                        // Disjoint bridge check on Ck
+                        if e_k1 == e_k2 {
+                            continue;
+                        }
+
+                        if let Some(merged) =
+                            reconstruct_merged_cycle(&[c1, ck, c2], &[b1.clone(), b2.clone()], g)
+                        {
+                            let mut new_cycles = Vec::with_capacity(cycles.len() - 2);
+                            for (idx, c) in cycles.iter().enumerate() {
+                                if idx != idx1 && idx != idx2 && idx != k_idx {
+                                    new_cycles.push(c.clone());
+                                }
+                            }
+                            new_cycles.push(merged);
+                            return Some(new_cycles);
+                        }
                     }
                 }
             }
@@ -203,7 +219,12 @@ impl TwinGiantSplicer {
 }
 
 /// Finds all candidate 2-opt bridges between cycle Ca and cycle Cb.
-fn find_bridges_between_cycles(ca: &[i32], cb: &[i32], g: &Graph) -> Vec<Bridge2Opt> {
+fn find_bridges_between_cycles(
+    ca: &[i32],
+    cb: &[i32],
+    g: &Graph,
+    protected_edges: &HashSet<(i32, i32)>,
+) -> Vec<Bridge2Opt> {
     let n = ca.len();
     let m = cb.len();
     if n < 3 || m < 3 {
@@ -222,6 +243,9 @@ fn find_bridges_between_cycles(ca: &[i32], cb: &[i32], g: &Graph) -> Vec<Bridge2
         let u1 = ca[i];
         let u2 = ca[(i + 1) % n];
         let e_a = min_max(u1, u2);
+        if protected_edges.contains(&e_a) {
+            continue;
+        }
 
         if let Some(nbrs) = g.adjacency_list.get(&u1) {
             for &v1 in nbrs {
@@ -230,24 +254,24 @@ fn find_bridges_between_cycles(ca: &[i32], cb: &[i32], g: &Graph) -> Vec<Bridge2
                     let v_prev = cb[(j + m - 1) % m];
 
                     // Candidate 1: Case A (u1 -> v1, u2 -> v_next)
-                    if is_edge_in_graph(g, u2, v_next) {
-                        let e_b = min_max(v1, v_next);
+                    let e_b1 = min_max(v1, v_next);
+                    if !protected_edges.contains(&e_b1) && is_edge_in_graph(g, u2, v_next) {
                         let x1 = min_max(u1, v1);
                         let x2 = min_max(u2, v_next);
-                        let key = (e_a, e_b, x1, x2);
+                        let key = (e_a, e_b1, x1, x2);
                         if seen.insert(key) {
-                            bridges.push(Bridge2Opt { e_a, e_b, x1, x2 });
+                            bridges.push(Bridge2Opt { e_a, e_b: e_b1, x1, x2 });
                         }
                     }
 
                     // Candidate 2: Case B (u1 -> v1, u2 -> v_prev)
-                    if is_edge_in_graph(g, u2, v_prev) {
-                        let e_b = min_max(v1, v_prev);
+                    let e_b2 = min_max(v1, v_prev);
+                    if !protected_edges.contains(&e_b2) && is_edge_in_graph(g, u2, v_prev) {
                         let x1 = min_max(u1, v1);
                         let x2 = min_max(u2, v_prev);
-                        let key = (e_a, e_b, x1, x2);
+                        let key = (e_a, e_b2, x1, x2);
                         if seen.insert(key) {
-                            bridges.push(Bridge2Opt { e_a, e_b, x1, x2 });
+                            bridges.push(Bridge2Opt { e_a, e_b: e_b2, x1, x2 });
                         }
                     }
                 }

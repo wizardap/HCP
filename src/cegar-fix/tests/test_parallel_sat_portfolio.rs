@@ -107,3 +107,52 @@ fn test_portfolio_with_assumptions() {
         other => panic!("Expected fallback to find Sat, got {:?}", other),
     }
 }
+
+#[test]
+fn test_incremental_sat_solver() {
+    use cegar_fix::incremental_sat::IncrementalSatSolver;
+
+    let lit_a = Lit::positive(0);
+    let lit_not_a = Lit::negative(0);
+    let lit_b = Lit::positive(1);
+    let lit_not_b = Lit::negative(1);
+
+    // Initial CNF: (a or b)
+    let mut base_cnf = Cnf::new();
+    base_cnf.add_clause(Clause::from_iter([lit_a, lit_b]));
+
+    let mut solver = IncrementalSatSolver::new(&base_cnf);
+    let res1 = solver.solve_with_timeout(&[], &[], 5.0);
+    match res1 {
+        PortfolioResult::Sat(model) => {
+            assert!(verify_model_satisfies_cnf(&base_cnf, &model));
+        }
+        other => panic!("Expected Sat on base CNF, got {:?}", other),
+    }
+
+    // Incrementally add cut: (~a or ~b) and (b) -> forces a=false, b=true
+    let mut cuts = Cnf::new();
+    cuts.add_clause(Clause::from_iter([lit_not_a, lit_not_b]));
+    cuts.add_clause(Clause::from_iter([lit_b]));
+    solver.add_cuts(&cuts);
+
+    let res2 = solver.solve_with_timeout(&[], &[], 5.0);
+    match res2 {
+        PortfolioResult::Sat(model) => {
+            let model_set: HashSet<Lit> = model.into_iter().collect();
+            assert!(model_set.contains(&lit_not_a));
+            assert!(model_set.contains(&lit_b));
+        }
+        other => panic!("Expected Sat after incremental cuts, got {:?}", other),
+    }
+
+    // Reset with contradictory formula: (a) and (~a)
+    let mut unsat_cnf = Cnf::new();
+    unsat_cnf.add_clause(Clause::from_iter([lit_a]));
+    unsat_cnf.add_clause(Clause::from_iter([lit_not_a]));
+    solver.reset_with_cnf(&unsat_cnf);
+
+    let res3 = solver.solve_with_timeout(&[], &[], 5.0);
+    assert_eq!(res3, PortfolioResult::Unsat);
+}
+

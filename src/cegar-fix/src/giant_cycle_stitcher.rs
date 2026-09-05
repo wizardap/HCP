@@ -948,7 +948,7 @@ impl GiantCycleStitcher {
 
             // 8. Twin Giant Splicing: direct 2-opt or 3-opt intermediate splicing between two giant cycles
             let total_v = g.adjacency_list.len();
-            if let Some(twin_spliced) = TwinGiantSplicer::try_splice_twin_giants(&current_cycles, g, total_v) {
+            if let Some(twin_spliced) = TwinGiantSplicer::try_splice_twin_giants(&current_cycles, g, total_v, protected_edges) {
                 if twin_spliced.len() < current_cycles.len() {
                     current_cycles = twin_spliced;
                     if current_cycles.len() <= 1 {

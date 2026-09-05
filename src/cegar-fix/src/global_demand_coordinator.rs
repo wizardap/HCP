@@ -2,6 +2,8 @@ use std::collections::{HashMap, HashSet};
 use crate::graph::Graph;
 use crate::two_tier_decomposer::DecompositionResult;
 use crate::macro_mtz_encoder::MacroMtzEncoder;
+use crate::macro_lfsr_encoder::MacroLfsrEncoder;
+use crate::macro_crt_encoder::MacroCrtEncoder;
 use rustsat::clause;
 use rustsat::solvers::{Solve, SolverResult};
 use rustsat::types::{Clause, Lit, TernaryVal, Var};
@@ -16,6 +18,8 @@ pub struct GlobalDemandCoordinator<'a> {
     pub var_d2: HashMap<(usize, i32), Lit>,
     pub next_var_id: u32,
     pub mtz_encoder: Option<MacroMtzEncoder>,
+    pub lfsr_encoder: Option<MacroLfsrEncoder>,
+    pub crt_encoder: Option<MacroCrtEncoder>,
 }
 
 impl<'a> GlobalDemandCoordinator<'a> {
@@ -149,8 +153,8 @@ impl<'a> GlobalDemandCoordinator<'a> {
             }
         }
 
-        let mtz_encoder = if enable_mtz && decomp.all_hubs.len() >= 2 {
-            Some(MacroMtzEncoder::encode(
+        let crt_encoder = if enable_mtz && decomp.all_hubs.len() >= 2 {
+            Some(MacroCrtEncoder::encode(
                 &mut solver,
                 &mut next_var_id,
                 decomp,
@@ -161,6 +165,9 @@ impl<'a> GlobalDemandCoordinator<'a> {
             None
         };
 
+        let lfsr_encoder = None;
+        let mtz_encoder = None;
+
         Self {
             g,
             decomp,
@@ -170,6 +177,8 @@ impl<'a> GlobalDemandCoordinator<'a> {
             var_d2,
             next_var_id,
             mtz_encoder,
+            lfsr_encoder,
+            crt_encoder,
         }
     }
 

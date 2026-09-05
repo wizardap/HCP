@@ -11,6 +11,8 @@ pub struct CutSelectorOptions {
     pub tiny_cycle_boundary_len: usize, // Default: 8
     pub high_volume_cycle_len: usize,   // Default: 16
     pub high_volume_threshold: usize,   // Default: 30
+    pub enable_reverse_blocking: bool,  // Default: false
+    pub enable_incoming_boundary_cuts: bool, // Default: false
 }
 
 impl Default for CutSelectorOptions {
@@ -22,6 +24,8 @@ impl Default for CutSelectorOptions {
             tiny_cycle_boundary_len: 8,
             high_volume_cycle_len: 16,
             high_volume_threshold: 30,
+            enable_reverse_blocking: false,
+            enable_incoming_boundary_cuts: false,
         }
     }
 }
@@ -98,9 +102,28 @@ impl CutSelector {
                 if all_exist && !direct_lits.is_empty() {
                     clauses.push(Clause::from_iter(direct_lits));
                 }
+
+                // Reverse cycle blocking clause (when enabled): ¬x_{c1->c0} ∨ ¬x_{c2->c1} ∨ ... ∨ ¬x_{c0->ck-1}
+                if options.enable_reverse_blocking {
+                    let mut rev_lits = Vec::with_capacity(k);
+                    let mut all_rev_exist = true;
+                    for i in 0..k {
+                        let u = cycle[(i + 1) % k];
+                        let v = cycle[i];
+                        if let Some(&lit) = encoder.graph_lit_map.get(&(u, v)) {
+                            rev_lits.push(!lit);
+                        } else {
+                            all_rev_exist = false;
+                            break;
+                        }
+                    }
+                    if all_rev_exist && !rev_lits.is_empty() {
+                        clauses.push(Clause::from_iter(rev_lits));
+                    }
+                }
             }
 
-            // Boundary cut for tiny cycles: at least one outgoing edge from the cycle must be traversed
+            // Boundary cut for tiny cycles: at least one outgoing (and incoming) edge from the cycle must be traversed
             if options.tiny_cycle_boundary_len > 0 && cycle.len() <= options.tiny_cycle_boundary_len {
                 let cycle_set: HashSet<i32> = cycle.iter().copied().collect();
                 let mut cut_edges = Vec::new();
@@ -118,13 +141,25 @@ impl CutSelector {
 
                 if !cut_edges.is_empty() {
                     let mut boundary_lits = Vec::new();
-                    for edge in cut_edges {
-                        if let Some(&lit) = encoder.graph_lit_map.get(&edge) {
+                    for edge in &cut_edges {
+                        if let Some(&lit) = encoder.graph_lit_map.get(edge) {
                             boundary_lits.push(lit);
                         }
                     }
                     if !boundary_lits.is_empty() {
                         clauses.push(Clause::from_iter(boundary_lits));
+                    }
+
+                    if options.enable_incoming_boundary_cuts {
+                        let mut in_lits = Vec::new();
+                        for &(u, v) in &cut_edges {
+                            if let Some(&lit) = encoder.graph_lit_map.get(&(v, u)) {
+                                in_lits.push(lit);
+                            }
+                        }
+                        if !in_lits.is_empty() {
+                            clauses.push(Clause::from_iter(in_lits));
+                        }
                     }
                 }
             }

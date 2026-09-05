@@ -43,6 +43,8 @@ pub mod metagraph_router;
 pub mod parallel_sat_portfolio;
 pub mod macro_cycle_stitcher;
 pub mod giant_cycle_stitcher;
+pub mod macro_crt_encoder;
+pub mod macro_lfsr_encoder;
 pub mod transitive_macro_splicer;
 pub mod interface_port_synchronizer;
 pub mod inverse_3sat_synthesizer;
@@ -60,6 +62,8 @@ pub mod quotient_block_cutter;
 pub mod bipartite_module_detector;
 pub mod module_dual_path_extractor;
 pub mod module_state_cnf_encoder;
+pub mod balanced_pair_cutset;
+pub mod localized_sat_repair;
 
 
 use contraction::Degree2Contractor;

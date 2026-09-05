@@ -378,3 +378,39 @@ fn test_cut_selector_fallback_when_all_cycles_exceed_max_len() {
     assert_eq!(clauses.len(), 1);
 }
 
+#[test]
+fn test_cut_selector_reverse_and_incoming_cuts() {
+    let mut g = Graph::new();
+    // Cycle: 1 - 2 - 3 - 4 - 1
+    g.add_edge(1, 2);
+    g.add_edge(2, 3);
+    g.add_edge(3, 4);
+    g.add_edge(4, 1);
+    // External node 5 connected to 2 and 3
+    g.add_edge(2, 5);
+    g.add_edge(3, 5);
+
+    let mut enc = Encoder::new();
+    let _ = enc.encode(&g, 0, 0, 0, 0, 0, 0);
+
+    let opts = CutSelectorOptions {
+        max_cycle_len_threshold: usize::MAX,
+        tiny_cycle_boundary_len: usize::MAX,
+        enable_reverse_blocking: true,
+        enable_incoming_boundary_cuts: true,
+        ..CutSelectorOptions::default()
+    };
+
+    let cycles = vec![vec![1, 2, 3, 4]];
+    let (clauses, selected) = CutSelector::select_and_generate_cuts(&cycles, &g, &enc, &opts);
+
+    assert_eq!(selected.len(), 1);
+    // Clauses generated:
+    // 1. Forward direct cycle blocking
+    // 2. Reverse direct cycle blocking
+    // 3. Outgoing boundary cut: edges (2, 5) and (3, 5)
+    // 4. Incoming boundary cut: edges (5, 2) and (5, 3)
+    assert_eq!(clauses.len(), 4);
+}
+
+

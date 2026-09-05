@@ -207,17 +207,37 @@ impl SubcycleAbsorber {
 
             for &u1 in start_nbrs {
                 if let Some(&p1) = giant_pos.get(&u1) {
+                    // Check forward edge (p1, p1+1)
                     let p2 = (p1 + 1) % n_giant;
                     let u2 = giant[p2];
 
                     if !is_protected_edge.contains(&(u1, u2)) && end_nbrs.contains(&u2) {
-                        // Splicing forward path small[rot..] + small[..rot] between p1 and p1+1
                         let mut new_giant = Vec::with_capacity(n_giant + m);
                         new_giant.extend_from_slice(&giant[0..=p1]);
                         for offset in 0..m {
                             new_giant.push(small[(rot + offset) % m]);
                         }
                         new_giant.extend_from_slice(&giant[(p1 + 1)..n_giant]);
+                        return Some(new_giant);
+                    }
+
+                    // Check reverse edge (p0, p1) where p0 = p1 - 1
+                    let p0 = (p1 + n_giant - 1) % n_giant;
+                    let u0 = giant[p0];
+                    if !is_protected_edge.contains(&(u0, u1)) && end_nbrs.contains(&u0) {
+                        let mut new_giant = Vec::with_capacity(n_giant + m);
+                        if p0 < p1 {
+                            new_giant.extend_from_slice(&giant[0..=p0]);
+                            for offset in (0..m).rev() {
+                                new_giant.push(small[(rot + offset) % m]);
+                            }
+                            new_giant.extend_from_slice(&giant[p1..n_giant]);
+                        } else {
+                            for offset in (0..m).rev() {
+                                new_giant.push(small[(rot + offset) % m]);
+                            }
+                            new_giant.extend_from_slice(&giant[0..n_giant]);
+                        }
                         return Some(new_giant);
                     }
                 }
@@ -242,13 +262,31 @@ impl SubcycleAbsorber {
                     let u2 = giant[p2];
 
                     if !is_protected_edge.contains(&(u1, u2)) && end_nbrs.contains(&u2) {
-                        // Splicing reverse path between p1 and p1+1
                         let mut new_giant = Vec::with_capacity(n_giant + m);
                         new_giant.extend_from_slice(&giant[0..=p1]);
                         for offset in 0..m {
                             new_giant.push(small[(rot + m - (offset % m)) % m]);
                         }
                         new_giant.extend_from_slice(&giant[(p1 + 1)..n_giant]);
+                        return Some(new_giant);
+                    }
+
+                    let p0 = (p1 + n_giant - 1) % n_giant;
+                    let u0 = giant[p0];
+                    if !is_protected_edge.contains(&(u0, u1)) && end_nbrs.contains(&u0) {
+                        let mut new_giant = Vec::with_capacity(n_giant + m);
+                        if p0 < p1 {
+                            new_giant.extend_from_slice(&giant[0..=p0]);
+                            for offset in 0..m {
+                                new_giant.push(small[(rot + offset + 1) % m]);
+                            }
+                            new_giant.extend_from_slice(&giant[p1..n_giant]);
+                        } else {
+                            for offset in 0..m {
+                                new_giant.push(small[(rot + offset + 1) % m]);
+                            }
+                            new_giant.extend_from_slice(&giant[0..n_giant]);
+                        }
                         return Some(new_giant);
                     }
                 }

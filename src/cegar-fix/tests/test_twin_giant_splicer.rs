@@ -51,7 +51,7 @@ fn test_direct_twin_giant_2opt_splice() {
     let c2: Vec<i32> = (51..=100).collect();
     let cycles = vec![c1, c2];
 
-    let result = TwinGiantSplicer::try_splice_twin_giants(&cycles, &g, 100);
+    let result = TwinGiantSplicer::try_splice_twin_giants(&cycles, &g, 100, &HashSet::new());
     assert!(result.is_some(), "Direct twin giant splice should succeed");
 
     let merged_cycles = result.unwrap();
@@ -85,7 +85,7 @@ fn test_direct_twin_giant_2opt_splice_case_b() {
     let c2: Vec<i32> = (51..=100).collect();
     let cycles = vec![c1, c2];
 
-    let result = TwinGiantSplicer::try_splice_twin_giants(&cycles, &g, 100);
+    let result = TwinGiantSplicer::try_splice_twin_giants(&cycles, &g, 100, &HashSet::new());
     assert!(result.is_some(), "Direct twin giant splice (Case B) should succeed");
 
     let merged_cycles = result.unwrap();
@@ -131,7 +131,7 @@ fn test_3way_intermediate_bridge_splice() {
     let c3: Vec<i32> = (81..=86).collect();
     let cycles = vec![c1, c2, c3];
 
-    let result = TwinGiantSplicer::try_splice_twin_giants(&cycles, &g, 86);
+    let result = TwinGiantSplicer::try_splice_twin_giants(&cycles, &g, 86, &HashSet::new());
     assert!(result.is_some(), "3-way intermediate bridge splice should succeed");
 
     let merged_cycles = result.unwrap();
@@ -183,7 +183,7 @@ fn test_3way_intermediate_with_remaining_cycles() {
     let c4: Vec<i32> = (46..=50).collect();
     let cycles = vec![c1, c2, c3, c4];
 
-    let result = TwinGiantSplicer::try_splice_twin_giants(&cycles, &g, 50);
+    let result = TwinGiantSplicer::try_splice_twin_giants(&cycles, &g, 50, &HashSet::new());
     assert!(result.is_some(), "3-way splice with leftover cycle should succeed");
 
     let merged_cycles = result.unwrap();
@@ -222,12 +222,39 @@ fn test_threshold_rejection() {
     let cycles = vec![vec![1, 2, 3, 4, 5], vec![6, 7, 8, 9, 10]];
 
     // total_v = 100 -> threshold = max(10, 20) = 20 > 5 -> must return None
-    let result = TwinGiantSplicer::try_splice_twin_giants(&cycles, &g, 100);
+    let result = TwinGiantSplicer::try_splice_twin_giants(&cycles, &g, 100, &HashSet::new());
     assert!(result.is_none(), "Should reject cycles smaller than threshold");
 
     // total_v = 10 -> threshold = max(10, 2) = 10 > 5 -> must return None
-    let result = TwinGiantSplicer::try_splice_twin_giants(&cycles, &g, 10);
+    let result = TwinGiantSplicer::try_splice_twin_giants(&cycles, &g, 10, &HashSet::new());
     assert!(result.is_none(), "Should reject cycles smaller than min threshold 10");
+}
+
+#[test]
+fn test_twin_giant_respects_protected_edges() {
+    let mut g = Graph::new();
+    for i in 1..=50 {
+        let next = if i == 50 { 1 } else { i + 1 };
+        g.add_edge(i, next);
+    }
+    for i in 51..=100 {
+        let next = if i == 100 { 51 } else { i + 1 };
+        g.add_edge(i, next);
+    }
+    // Only 2-opt bridge uses edge (1, 2) in C1 and (51, 52) in C2
+    g.add_edge(1, 51);
+    g.add_edge(2, 52);
+
+    let c1: Vec<i32> = (1..=50).collect();
+    let c2: Vec<i32> = (51..=100).collect();
+    let cycles = vec![c1, c2];
+
+    // If edge (1, 2) is protected:
+    let mut protected = HashSet::new();
+    protected.insert((1, 2));
+
+    let result = TwinGiantSplicer::try_splice_twin_giants(&cycles, &g, 100, &protected);
+    assert!(result.is_none(), "Must reject 2-opt bridge that removes protected edge (1, 2)");
 }
 
 #[test]

@@ -1,6 +1,8 @@
 use crate::component_meta_graph::ComponentMetaGraph;
 use crate::graph::Graph;
 use crate::two_tier_decomposer::DecompositionResult;
+use crate::transitive_macro_splicer::TransitiveMacroSplicer;
+use crate::multi_opt_sat_splicer::MultiOptSatSplicer;
 use std::collections::{HashMap, HashSet};
 
 /// Independent Raw Graph Tour Verifier.
@@ -416,9 +418,23 @@ pub fn splice_macro_tour(
             .then_with(|| a.iter().min().cmp(&b.iter().min()))
     });
 
-    // 6. Optional 2-opt cycle patching
+    // 6. Multi-tier macro cycle patching (2-opt, transitive multi-cycle bridges, 3-opt SAT)
     if enable_patching && cycles.len() > 1 {
+        // Pass A: Direct 2-opt swaps
         cycles = patch_cycles_2opt(cycles, g);
+
+        // Pass B: Transitive multi-cycle bridging
+        if cycles.len() > 1 {
+            let protected = HashSet::new();
+            cycles = TransitiveMacroSplicer::splice_transitive_macro_graph(&cycles, g, &protected);
+        }
+
+        // Pass C: 3-opt and multi-opt SAT spanning forest splicing
+        if cycles.len() > 1 {
+            let protected = HashSet::new();
+            cycles = MultiOptSatSplicer::splice_multi_opt_cycles(&cycles, g, &protected);
+        }
+
         cycles.sort_by(|a, b| {
             b.len()
                 .cmp(&a.len())

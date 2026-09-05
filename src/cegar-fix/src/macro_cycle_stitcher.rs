@@ -155,7 +155,7 @@ impl MacroCycleStitcher {
             let _ = solver.limit_conflicts(Some(2000));
             if solver.add_cnf_ref(&cnf).is_ok() {
                 let mut attempts = 0;
-                while attempts < 15 {
+                while attempts < 4 {
                     attempts += 1;
                     match solver.solve() {
                         Ok(SolverResult::Sat) => {

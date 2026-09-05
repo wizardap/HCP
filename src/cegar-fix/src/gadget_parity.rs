@@ -30,7 +30,7 @@ impl GadgetInterfaceParityEngine {
         };
 
         let k = gadget.len();
-        if k < 3 || k > 32 {
+        if k < 3 || k > 16 {
             return result;
         }
 
@@ -181,8 +181,10 @@ impl GadgetInterfaceParityEngine {
         visited.insert(start);
         let mut path = Vec::with_capacity(k);
         path.push(start);
+        let mut steps = 0;
+        const MAX_DFS_STEPS: usize = 2_000;
 
-        if Self::dfs_hamiltonian_path(start, end, k, &mut visited, &mut path, g, gadget_set) {
+        if Self::dfs_hamiltonian_path(start, end, k, &mut visited, &mut path, g, gadget_set, &mut steps, MAX_DFS_STEPS) {
             Some(path)
         } else {
             None
@@ -197,7 +199,14 @@ impl GadgetInterfaceParityEngine {
         path: &mut Vec<i32>,
         g: &Graph,
         gadget_set: &HashSet<i32>,
+        steps: &mut usize,
+        max_steps: usize,
     ) -> bool {
+        *steps += 1;
+        if *steps > max_steps {
+            return false;
+        }
+
         if path.len() == total_k {
             return curr == target;
         }
@@ -213,7 +222,7 @@ impl GadgetInterfaceParityEngine {
                     visited.insert(next);
                     path.push(next);
 
-                    if Self::dfs_hamiltonian_path(next, target, total_k, visited, path, g, gadget_set) {
+                    if Self::dfs_hamiltonian_path(next, target, total_k, visited, path, g, gadget_set, steps, max_steps) {
                         return true;
                     }
 

@@ -43,6 +43,8 @@ use crate::quotient_block_cutter::QuotientBlockCutter;
 use crate::bipartite_module_detector::BipartiteModuleDetector;
 use crate::module_dual_path_extractor::ModuleDualPathExtractor;
 use crate::module_state_cnf_encoder::ModuleStateCnfEncoder;
+use crate::balanced_pair_cutset::BalancedPairCutset;
+use crate::localized_sat_repair::LocalizedSatRepair;
 
 
 
@@ -314,6 +316,7 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
         cnf.extend(static_cuts);
     }
 
+    /*
     // Global Supernode MTZ Potential Encoding
     if g.adjacency_list.len() >= 50 {
         let target_k = 16;
@@ -324,6 +327,7 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
             MetagraphRouter::encode_supernode_mtz(&modules, &g, &mut encoder, &mut cnf);
         }
     }
+    */
 
     // Interface Port Truth Assignment & Flow Synchronizer
     let dual_paths = InterfacePortSynchronizer::extract_gadget_dual_paths(&g, 32);
@@ -488,11 +492,8 @@ fn cegar(
     let inc_timeout = if total_v >= 500 { 180.0 } else { 15.0 };
     let mut backbone_tracker = EmpiricalBackboneTracker::new(10);
 
-    // Modular Quotient Block Pre-computation for blocking module-partition subcycles
-    let modular_blocks = QuotientBlockCutter::detect_modular_blocks(&g, contractor);
-    if !modular_blocks.is_empty() {
-        println!("QuotientBlockCutter: detected {} modular block clusters", modular_blocks.len());
-    }
+    // Modular Quotient Block Pre-computation disabled
+    let modular_blocks: Vec<std::collections::HashSet<i32>> = Vec::new();
 
     loop {
         if instant.elapsed().as_secs_f64() >= timeout_secs {
@@ -864,6 +865,26 @@ fn cegar(
                         }
                     }
 
+                    // Attempt Localized SAT Repair (LNS via backbone freezing) to eliminate last-mile thrashing
+                    if _active_cycles.len() >= 2 {
+                        if let Some(repaired_tour) = LocalizedSatRepair::try_repair(&_active_cycles, &g, &working_cnf, encoder, 5) {
+                            println!("LocalizedSatRepair: successfully synthesized full Hamiltonian tour via Localized SAT LNS!");
+                            let full_cycle = contractor.uncontract_cycle(&repaired_tour);
+                            let line = full_cycle.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                            let now = instant.elapsed();
+                            let time = now - previous_time;
+                            let add_block_clauses_time = now - previous_time - sat_solving_time;
+                            println!("number of added block clauses = {}", clause_count);
+                            println!("add block clauses time = {:?}", add_block_clauses_time);
+                            println!("increment time = {:?}", time);
+                            println!();
+                            println!("solution: ");
+                            println!("{}\n", line);
+                            println!("s SATISFIABLE");
+                            return (count, clause_count, Some(full_cycle));
+                        }
+                    }
+
                     let mut round_cuts = Cnf::new();
                     // Gadget Interface Parity & Direct Splicing Check
                     if _active_cycles.len() >= 2 {
@@ -1005,7 +1026,8 @@ fn cegar(
                         }
                     }
 
-                    // Inject modular quotient cuts if subcycles partition modular blocks
+                    // QuotientBlockCutter disabled to prevent unsound cut over-constraining
+                    /*
                     if !modular_blocks.is_empty() && sol_cycles.len() >= 2 {
                         let q_cuts = QuotientBlockCutter::generate_quotient_sec_clauses(&sol_cycles, &modular_blocks, &g, encoder);
                         if !q_cuts.is_empty() {
@@ -1016,6 +1038,18 @@ fn cegar(
                             }
                         }
                     }
+                    */
+
+                    // BalancedPairCutset disabled to maintain fast increment velocity (avoiding deep CNF overhead)
+                    /*
+                    if sol_cycles.len() >= 3 {
+                        let balanced_cuts = BalancedPairCutset::generate_balanced_cutset_clauses(&sol_cycles, &g, &encoder.graph_lit_map);
+                        for cl in balanced_cuts {
+                            clause_count += 1;
+                            round_cuts.add_clause(cl);
+                        }
+                    }
+                    */
 
                     if !round_cuts.is_empty() {
                         working_cnf.extend(round_cuts.clone());
@@ -1093,6 +1127,11 @@ fn cegar(
                 }
             }
             PortfolioResult::Unsat => {
+                if !assumptions.is_empty() {
+                    println!("Assumptions UNSAT (speculative backbone invalid) -> clearing {} assumptions and resuming base search", assumptions.len());
+                    assumptions.clear();
+                    continue;
+                }
                 println!("s UNSATISFIABLE");
                 return (count, clause_count, None);
             }
