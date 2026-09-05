@@ -209,4 +209,27 @@ def generate_component_routes(G, blocks, node_to_block_end, port_nbr, cycs, gian
         comp_routes[c_id] = routes
     return comp_routes
 
-
+def run_dp_bitmask_splicer(initial_edges, blocks, node_to_block_end, comps, comp_routes):
+    dp = {0: (set(), set(), set())}  # mask -> (added_edges, removed_edges, ports_used)
+    
+    for c_id in range(len(comps)):
+        routes = comp_routes.get(c_id, [])
+        next_dp = dict(dp)
+        bit = (1 << c_id)
+        for mask, (added, removed, ports) in dp.items():
+            if not (mask & bit):
+                for r in routes:
+                    if not (r['ports_used'] & ports) and not (r['removed'] & added) and not (r['added'] & removed):
+                        new_mask = mask | bit
+                        candidate = (added | r['added'], removed | r['removed'], ports | r['ports_used'])
+                        if new_mask not in next_dp:
+                            next_dp[new_mask] = candidate
+        dp = next_dp
+        print(f"  DP Bitmask Step {c_id+1}/{len(comps)}: {len(dp)} active mask states.")
+        
+    goal_mask = max(dp.keys())
+    print(f"Highest bitmask reached: {bin(goal_mask)} ({goal_mask}/{(1<<len(comps))-1})")
+    added_all, removed_all, _ = dp[goal_mask]
+    final_edges = (initial_edges - removed_all) | added_all
+    assert len(final_edges) == len(initial_edges), f"Edge count mismatch: {len(final_edges)} vs {len(initial_edges)}"
+    return final_edges
