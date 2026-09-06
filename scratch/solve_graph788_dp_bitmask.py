@@ -233,3 +233,51 @@ def run_dp_bitmask_splicer(initial_edges, blocks, node_to_block_end, comps, comp
     final_edges = (initial_edges - removed_all) | added_all
     assert len(final_edges) == len(initial_edges), f"Edge count mismatch: {len(final_edges)} vs {len(initial_edges)}"
     return final_edges
+
+def reconstruct_and_export_tour(final_edges, blocks, node_to_block_end, out_path='scratch/graph788/found_tour_graph788.hcp'):
+    port_nbr = {}
+    for (u, v) in final_edges:
+        p1 = node_to_block_end[u]; p2 = node_to_block_end[v]
+        port_nbr[p1] = p2; port_nbr[p2] = p1
+        
+    start_port = (0, 'u')
+    visited_ports = set()
+    block_seq = []
+    curr = start_port
+    while curr not in visited_ports:
+        visited_ports.add(curr)
+        b, end_type = curr
+        other_end = 'w' if end_type == 'u' else 'u'
+        block_seq.append((b, end_type, other_end))
+        exit_port = (b, other_end)
+        visited_ports.add(exit_port)
+        nxt_port = port_nbr[exit_port]
+        curr = nxt_port
+        
+    assert len(block_seq) == len(blocks), f"Expected {len(blocks)} blocks in tour, got {len(block_seq)}"
+    
+    raw_tour = []
+    for (b_id, entry_type, exit_type) in block_seq:
+        _, u, v, w = blocks[b_id]
+        if entry_type == 'u':
+            raw_tour.extend([u, v, w])
+        else:
+            raw_tour.extend([w, v, u])
+            
+    assert len(raw_tour) == 4620, f"Raw tour must have 4620 vertices, got {len(raw_tour)}"
+    assert len(set(raw_tour)) == 4620, f"Raw tour vertices must be unique, got {len(set(raw_tour))}"
+    
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    with open(out_path, 'w') as f:
+        f.write(f"NAME : graph788\n")
+        f.write(f"TYPE : TOUR\n")
+        f.write(f"DIMENSION : {len(raw_tour)}\n")
+        f.write(f"TOUR_SECTION\n")
+        for v in raw_tour:
+            f.write(f"{v}\n")
+        f.write(f"-1\n")
+        f.write(f"EOF\n")
+        
+    print(f"Exported certified tour to {out_path}!")
+    return raw_tour
+
