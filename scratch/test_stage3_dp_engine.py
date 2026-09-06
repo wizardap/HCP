@@ -18,8 +18,10 @@ def test_dp_engine():
     comps = decompose_subcycle_components(G, blocks, node_to_block_end, cycs, giant_idx)
     comp_routes = generate_component_routes(G, blocks, node_to_block_end, port_nbr, cycs, giant_idx, comps)
     final_edges = run_dp_bitmask_splicer(edges, blocks, node_to_block_end, comps, comp_routes)
-    assert len(final_edges) == 1540, f"Expected 1540 edges, got {len(final_edges)}"
-    print("Stage 3 DP Bitmask test PASSED: 1540 edges generated.")
+    final_cycs, _ = get_cycles_from_edges(final_edges, blocks, node_to_block_end)
+    assert len(final_cycs) == 1, f"Expected 1 cycle, got {len(final_cycs)}"
+    assert len(final_cycs[0]) // 2 == 1540, f"Expected 1540 blocks, got {len(final_cycs[0]) // 2}"
+    print("Stage 3 DP Bitmask test PASSED: 1540 edges generated and exactly 1 Hamiltonian cycle verified.")
 
 if __name__ == '__main__':
     test_dp_engine()
