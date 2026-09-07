@@ -44,3 +44,31 @@ def acquire_giant_backbone(blocks, node_to_block_end, edges):
     cycs, port_nbr = get_cycles_from_edges(edges, blocks, node_to_block_end)
     giant_idx = max(range(len(cycs)), key=lambda i: len(cycs[i]))
     return edges, cycs, port_nbr, giant_idx
+
+def decompose_subcycle_components(G, blocks, node_to_block_end, cycs, giant_idx):
+    rem_subs = [cycs[i] for i in range(len(cycs)) if i != giant_idx]
+    sub_blocks_map = {}
+    for i, sc in enumerate(rem_subs):
+        for p in sc:
+            sub_blocks_map[p[0]] = i + 1
+
+    sub_adj = collections.defaultdict(set)
+    for b, s_id in sub_blocks_map.items():
+        for u in [blocks[b][1], blocks[b][3]]:
+            for v in G[u]:
+                if v in node_to_block_end:
+                    b2 = node_to_block_end[v][0]
+                    if b2 in sub_blocks_map and sub_blocks_map[b2] != s_id:
+                        sub_adj[s_id].add(sub_blocks_map[b2])
+
+    vis = set(); comps = []
+    for s_id in range(1, len(rem_subs) + 1):
+        if s_id not in vis:
+            comp = []; q = [s_id]; vis.add(s_id)
+            for x in q:
+                comp.append(x)
+                for y in sub_adj[x]:
+                    if y not in vis:
+                        vis.add(y); q.append(y)
+            comps.append(comp)
+    return comps
