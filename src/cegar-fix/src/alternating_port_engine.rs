@@ -362,6 +362,7 @@ impl AlternatingPortEngine {
 
         // Smallest-Cycle-First: sort cycles by length ascending
         cur_cycs.sort_by_key(|c| c.len());
+        let cur_giant_len = cur_cycs.last().map_or(0, |c| c.len());
 
         let mut port_to_cyc = vec![usize::MAX; n_blocks * 2];
         for (cid, c) in cur_cycs.iter().enumerate() {
@@ -481,7 +482,7 @@ impl AlternatingPortEngine {
                                 for e in &rem { cand.remove(e); }
                                 for e in &add { cand.insert(*e); }
                                 let (cand_cycs, _) = Self::get_cycles(&cand, node_to_port, port_to_node, n_blocks);
-                                if cand_cycs.len() < cur_cycs.len() || (cand_cycs.len() == cur_cycs.len() && cand_cycs[0].len() > cur_cycs[0].len()) {
+                                if cand_cycs.len() < cur_cycs.len() || (cand_cycs.len() == cur_cycs.len() && cand_cycs[0].len() > cur_giant_len) {
                                     *current_edges = cand;
                                     return true;
                                 }
@@ -576,7 +577,7 @@ impl AlternatingPortEngine {
                                     for e in &rem { cand.remove(e); }
                                     for e in &add { cand.insert(*e); }
                                     let (cand_cycs, _) = Self::get_cycles(&cand, node_to_port, port_to_node, n_blocks);
-                                    if cand_cycs.len() < cur_cycs.len() || (cand_cycs.len() == cur_cycs.len() && cand_cycs[0].len() > cur_cycs[0].len()) {
+                                    if cand_cycs.len() < cur_cycs.len() || (cand_cycs.len() == cur_cycs.len() && cand_cycs[0].len() > cur_giant_len) {
                                         *current_edges = cand;
                                         return true;
                                     }
@@ -638,11 +639,6 @@ impl AlternatingPortEngine {
         // 2. Run Tier 2 bounded multi-hop bidirectional BFS if multiple cycles remain
         loop {
             if t_start.elapsed().as_millis() as u64 >= timeout_ms.saturating_sub(50) {
-                break;
-            }
-
-            let (cur_cycs, _) = Self::get_cycles(&current_edges, &node_to_port, &port_to_node, n_blocks);
-            if cur_cycs.len() <= 1 {
                 break;
             }
 
