@@ -128,4 +128,53 @@ impl BackboneFreezer {
         };
         Self::select_adaptive_frozen_assumptions(cycles, g, encoder, &contractor, &opts, 0.0)
     }
+
+    /// Selects assumptions guaranteed to satisfy the topological upper bound:
+    /// N_frozen <= L_giant - 2 * C_peripheral
+    /// Only edges strictly internal to non-boundary segments are candidates.
+    pub fn select_topologically_bounded_assumptions(
+        cycles: &[Vec<i32>],
+        g: &Graph,
+        encoder: &Encoder,
+        last_sat_time_secs: f64,
+    ) -> Vec<Lit> {
+        if cycles.len() < 2 {
+            return Vec::new();
+        }
+
+        // Find giant cycle
+        let (_giant_idx, giant_len) = cycles
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, c)| c.len())
+            .map(|(i, c)| (i, c.len()))
+            .unwrap_or((0, 0));
+
+        let peripheral_count = cycles.len() - 1;
+        // Strict topological limit preventing false UNSAT:
+        let max_allowed_freeze = if giant_len > (2 * peripheral_count + 2) {
+            giant_len - (2 * peripheral_count)
+        } else {
+            0
+        };
+
+        if max_allowed_freeze == 0 {
+            return Vec::new();
+        }
+
+        let mut opts = FreezerOptions::default();
+        opts.ratio_threshold = 0.5;
+        opts.max_frozen_edges = max_allowed_freeze;
+        opts.adaptive_relax_time_secs = 15.0;
+
+        let contractor = Degree2Contractor::new();
+        Self::select_adaptive_frozen_assumptions(
+            cycles,
+            g,
+            encoder,
+            &contractor,
+            &opts,
+            last_sat_time_secs,
+        )
+    }
 }
