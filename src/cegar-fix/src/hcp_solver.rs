@@ -556,7 +556,7 @@ fn cegar(
 
                     // Attempt Alternating Port Engine Cycle Compression
                     let sol_cycles = if alternating_engine != 0 && !contractor.chain_map.is_empty() && sol_cycles.len() > 1 {
-                        let repaired = AlternatingPortEngine::repair(&sol_cycles, &g, contractor, 4, 1000);
+                        let repaired = AlternatingPortEngine::repair(&sol_cycles, &g, contractor, 5, 2000);
                         if repaired.len() < sol_cycles.len() {
                             println!("AlternatingPortEngine: compressed subcycles from {} down to {} cycles", sol_cycles.len(), repaired.len());
                         }

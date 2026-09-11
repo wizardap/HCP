@@ -59,7 +59,7 @@ fn test_graph868_snapshot_reduction() {
     println!("input_cycles.len = {}", input_cycles.len());
 
     let t0 = std::time::Instant::now();
-    let repaired = AlternatingPortEngine::repair(&input_cycles, &g, &contractor, 4, 1000);
+    let repaired = AlternatingPortEngine::repair(&input_cycles, &g, &contractor, 5, 1000);
     let elapsed = t0.elapsed();
     println!("repaired.len = {}, elapsed = {:?}", repaired.len(), elapsed);
 
