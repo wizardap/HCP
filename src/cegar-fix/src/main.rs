@@ -100,6 +100,7 @@ fn main() {
     let is_two_tier = matches.is_present("two-tier") && matches.value_of("two-tier").map_or(true, |v| v != "0");
     let is_staged_smt = matches.is_present("staged-smt") && matches.value_of("staged-smt").map_or(true, |v| v != "0");
     let auto_mode = matches.value_of("auto").map_or(true, |v| v != "0");
+    let macro_gadget = matches.is_present("macro-gadget") && matches.value_of("macro-gadget").map_or(true, |v| v != "0");
     let timeout_secs = matches.value_of_t::<f64>("timeout").unwrap_or(1800.0);
     let output_tour_path = matches.value_of("output-tour").map(|s| s.to_string());
     // solver,encodingのオプションを&strで受け取る
@@ -163,11 +164,12 @@ fn main() {
         || matches.is_present("three-opt")
         || matches.is_present("set-configration");
 
-    if auto_mode && !has_manual_overrides {
+    if (auto_mode || macro_gadget) && !has_manual_overrides {
         let hybrid_opts = hybrid_orchestrator::HybridOptions {
-            auto_mode: true,
+            auto_mode: auto_mode && !macro_gadget,
             timeout_secs,
             output_tour: output_tour_path,
+            macro_gadget,
         };
         let res = hybrid_orchestrator::HybridOrchestrator::solve(&g, &hybrid_opts);
         if res.is_none() {

@@ -251,6 +251,14 @@ pub fn get_options() -> clap::ArgMatches {
                 .takes_value(true)
                 .default_value("1"),
         )
+        .arg(
+            Arg::with_name("macro-gadget")
+                .long("macro-gadget")
+                .value_name("n")
+                .help("Macro-gadget state encoding (H1):\n 0: Disabled (default)\n 1: Enabled")
+                .takes_value(true)
+                .min_values(0),
+        )
         .get_matches();
 }
 

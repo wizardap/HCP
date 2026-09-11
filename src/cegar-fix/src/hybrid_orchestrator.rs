@@ -12,6 +12,7 @@ pub struct HybridOptions {
     pub auto_mode: bool,
     pub timeout_secs: f64,
     pub output_tour: Option<String>,
+    pub macro_gadget: bool,
 }
 
 impl Default for HybridOptions {
@@ -20,6 +21,7 @@ impl Default for HybridOptions {
             auto_mode: true,
             timeout_secs: 1800.0,
             output_tour: None,
+            macro_gadget: false,
         }
     }
 }
@@ -29,7 +31,9 @@ pub struct HybridOrchestrator;
 impl HybridOrchestrator {
     pub fn solve(g: &Graph, options: &HybridOptions) -> Option<Vec<i32>> {
         let features = AutoTopologyClassifier::extract_features(g);
-        let track = if options.auto_mode {
+        let track = if options.macro_gadget {
+            TargetTrack::GadgetInterfaceParity
+        } else if options.auto_mode {
             AutoTopologyClassifier::classify(&features)
         } else {
             TargetTrack::GadgetInterfaceParity
