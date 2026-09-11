@@ -38,7 +38,8 @@ pub fn get_options() -> clap::ArgMatches {
                 .long("input")
                 .value_name("FILE NAME")
                 .help("Input file (Required)")
-                .takes_value(true),
+                .takes_value(true)
+                .index(1),
         )
         .arg(
             Arg::with_name("output")
@@ -273,6 +274,20 @@ pub fn get_options() -> clap::ArgMatches {
                 .value_name("n")
                 .help("Ablation matrix experimental condition:\n 0: Baseline (C0)\n 1: Baseline + H2-Refined (C1)\n 2: Baseline + H1 (C2)\n 3: Full Hybrid H1+H2 (C3)")
                 .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("alternating-engine")
+                .long("alternating-engine")
+                .value_name("n")
+                .help("Alternating Port Engine for cycle compression:\n 0: Disabled\n 1: Enabled (default)")
+                .takes_value(true)
+                .min_values(0),
+        )
+        .arg(
+            Arg::with_name("no-alternating-engine")
+                .long("no-alternating-engine")
+                .help("Disable Alternating Port Engine")
+                .takes_value(false),
         )
         .get_matches();
 }

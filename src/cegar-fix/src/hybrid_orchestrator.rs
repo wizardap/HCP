@@ -14,6 +14,7 @@ pub struct HybridOptions {
     pub output_tour: Option<String>,
     pub macro_gadget: bool,
     pub bounded_freezer: bool,
+    pub alternating_engine: bool,
 }
 
 impl Default for HybridOptions {
@@ -24,6 +25,7 @@ impl Default for HybridOptions {
             output_tour: None,
             macro_gadget: false,
             bounded_freezer: false,
+            alternating_engine: true,
         }
     }
 }
@@ -160,6 +162,7 @@ impl HybridOrchestrator {
         let start = Instant::now();
         let mg = if options.macro_gadget { 1 } else { 0 };
         let bf = if options.bounded_freezer { 1 } else { 0 };
+        let alt = if options.alternating_engine { 1 } else { 0 };
         match track {
             TargetTrack::SnarkKeyBridge => {
                 // CaDiCaL encoding: -e 0 -b 3 -l 1 --three-opt 1 --set-configration 1
@@ -173,6 +176,7 @@ impl HybridOrchestrator {
                     "",
                     mg,
                     bf,
+                    alt,
                 )
             }
             TargetTrack::GadgetInterfaceParity | TargetTrack::B2SinzChainSMT => {
@@ -187,6 +191,7 @@ impl HybridOrchestrator {
                     "",
                     mg,
                     bf,
+                    alt,
                 )
             }
             _ => {
@@ -201,6 +206,7 @@ impl HybridOrchestrator {
                     "",
                     mg,
                     bf,
+                    alt,
                 )
             }
         }

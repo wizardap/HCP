@@ -64,6 +64,7 @@ pub mod module_dual_path_extractor;
 pub mod module_state_cnf_encoder;
 pub mod balanced_pair_cutset;
 pub mod localized_sat_repair;
+pub mod alternating_port_engine;
 
 
 use contraction::Degree2Contractor;
@@ -102,6 +103,13 @@ fn main() {
     let auto_mode = matches.value_of("auto").map_or(true, |v| v != "0");
     let macro_gadget = matches.is_present("macro-gadget") && matches.value_of("macro-gadget").map_or(true, |v| v != "0");
     let bounded_freezer = matches.is_present("bounded-freezer") && matches.value_of("bounded-freezer").map_or(true, |v| v != "0");
+    let alternating_engine = if matches.is_present("no-alternating-engine") {
+        false
+    } else if matches.is_present("alternating-engine") {
+        matches.value_of("alternating-engine").map_or(true, |v| v != "0")
+    } else {
+        true
+    };
     let timeout_secs = matches.value_of_t::<f64>("timeout").unwrap_or(1800.0);
     let output_tour_path = matches.value_of("output-tour").map(|s| s.to_string());
     // solver,encodingのオプションを&strで受け取る
@@ -171,6 +179,7 @@ fn main() {
         output_tour: output_tour_path.clone(),
         macro_gadget,
         bounded_freezer,
+        alternating_engine,
     };
     if let Some(abl_str) = matches.value_of("ablation") {
         if let Ok(mode) = abl_str.parse::<usize>() {
@@ -239,7 +248,7 @@ fn main() {
     // println!("solver={},encoding={}",solver,encoding);
     // println!("{:?}",g);
     println!("file input time = {:?}", time1);
-    let tour = hcp_solver::solve_hamilton(contracted_g, &contractor, &hub_registry, solver, encoding, blocking, symmetry, two_opt, loop_prohibition, cnf_normalize, balanced, de_arcify,config,degree_order,arcs_order,three_opt,cegar_fallback,mtz_stall,adaptive_escalation,sub_hcp_timeout,max_cluster_size,timeout_secs,instant,output_foldername, if hybrid_opts.macro_gadget { 1 } else { 0 }, if hybrid_opts.bounded_freezer { 1 } else { 0 });
+    let tour = hcp_solver::solve_hamilton(contracted_g, &contractor, &hub_registry, solver, encoding, blocking, symmetry, two_opt, loop_prohibition, cnf_normalize, balanced, de_arcify,config,degree_order,arcs_order,three_opt,cegar_fallback,mtz_stall,adaptive_escalation,sub_hcp_timeout,max_cluster_size,timeout_secs,instant,output_foldername, if hybrid_opts.macro_gadget { 1 } else { 0 }, if hybrid_opts.bounded_freezer { 1 } else { 0 }, if hybrid_opts.alternating_engine { 1 } else { 0 });
     if let Some(ref t) = tour {
         if let Some(ref out_path) = output_tour_path {
             if let Err(e) = tour_verifier::TourVerifier::write_tsplib_hcp(t, "tour", out_path) {

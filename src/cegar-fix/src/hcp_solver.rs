@@ -45,6 +45,7 @@ use crate::module_dual_path_extractor::ModuleDualPathExtractor;
 use crate::module_state_cnf_encoder::ModuleStateCnfEncoder;
 use crate::balanced_pair_cutset::BalancedPairCutset;
 use crate::localized_sat_repair::LocalizedSatRepair;
+use crate::alternating_port_engine::AlternatingPortEngine;
 
 
 
@@ -262,7 +263,7 @@ pub fn add_cluster_cut_constraints(
     added_clauses
 }
 
-pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &HubRegistry, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, _cegar_fallback:i32, _mtz_stall:i32, _adaptive_escalation:i32, _sub_hcp_timeout: u64, _max_cluster_size: usize, timeout_secs: f64, instant:Instant,output_folder:&str, macro_gadget: i32, bounded_freezer: i32) -> Option<Vec<i32>> {
+pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &HubRegistry, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, _cegar_fallback:i32, _mtz_stall:i32, _adaptive_escalation:i32, _sub_hcp_timeout: u64, _max_cluster_size: usize, timeout_secs: f64, instant:Instant,output_folder:&str, macro_gadget: i32, bounded_freezer: i32, alternating_engine: i32) -> Option<Vec<i32>> {
     let now = instant.elapsed();
 
     // Fast Track: Inverse 3-SAT De-reduction & Tour Synthesis
@@ -415,6 +416,7 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
         base_cnf,
         cadical_config,
         bounded_freezer,
+        alternating_engine,
     );
     println!("overall incremented number = {}", increment);
     println!("overall number of added block clauses = {}", block);
@@ -450,6 +452,7 @@ fn cegar(
     base_cnf: Cnf,
     _cadical_config: i32,
     bounded_freezer: i32,
+    alternating_engine: i32,
 ) -> (i32, i32, Option<Vec<i32>>) {
     // Attempt Modular Macro-Decomposition when dense hubs are detected
     if hub_registry.hub_vertices.len() >= 5 {
@@ -550,6 +553,37 @@ fn cegar(
                 } else {
                     println!("number of subcycles found = {}", sol_cycles.len());
                     println!("sat solution cycle lengths map (length:number) = {:?}", map_cycle_lengths(&sol_cycles));
+
+                    // Attempt Alternating Port Engine Cycle Compression
+                    let sol_cycles = if alternating_engine != 0 && !contractor.chain_map.is_empty() && sol_cycles.len() > 1 {
+                        let repaired = AlternatingPortEngine::repair(&sol_cycles, &g, contractor, 4, 1000);
+                        if repaired.len() < sol_cycles.len() {
+                            println!("AlternatingPortEngine: compressed subcycles from {} down to {} cycles", sol_cycles.len(), repaired.len());
+                        }
+                        if repaired.len() == 1 && (repaired[0].len() == g.adjacency_list.len() || repaired[0].len() == contractor.original_vertices_count) {
+                            println!("*** 100% HAMILTONIAN TOUR FOUND VIA ALTERNATING PORT ENGINE! ***");
+                            let flat: Vec<i32> = repaired.into_iter().flatten().collect();
+                            let final_tour = if flat.len() == contractor.original_vertices_count {
+                                flat
+                            } else {
+                                contractor.uncontract_cycle(&flat)
+                            };
+                            let line = final_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                            let time = now - previous_time;
+                            let add_block_clauses_time = now - previous_time - sat_solving_time;
+                            println!("number of added block clauses = {}", clause_count);
+                            println!("add block clauses time = {:?}", add_block_clauses_time);
+                            println!("increment time = {:?}", time);
+                            println!();
+                            println!("solution: ");
+                            println!("{}\n", line);
+                            println!("s SATISFIABLE");
+                            return (count, clause_count, Some(final_tour));
+                        }
+                        repaired
+                    } else {
+                        sol_cycles
+                    };
 
                     // Attempt Multi-Subcycle Hub Patching
                     let sol_cycles = if sol_cycles.len() > 1 && !hub_registry.hub_vertices.is_empty() {
