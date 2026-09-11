@@ -64,3 +64,4 @@ pub mod module_dual_path_extractor;
 pub mod module_state_cnf_encoder;
 pub mod balanced_pair_cutset;
 pub mod localized_sat_repair;
+pub mod alternating_port_engine;
