@@ -166,7 +166,17 @@ impl<'a> GlobalDemandCoordinator<'a> {
         };
 
         let lfsr_encoder = None;
-        let mtz_encoder = None;
+        let mtz_encoder = if enable_mtz && decomp.all_hubs.len() >= 2 {
+            Some(MacroMtzEncoder::encode(
+                &mut solver,
+                &mut next_var_id,
+                decomp,
+                &var_hh,
+                &var_d1,
+            ))
+        } else {
+            None
+        };
 
         Self {
             g,
