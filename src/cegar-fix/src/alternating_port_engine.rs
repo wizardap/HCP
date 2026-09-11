@@ -189,7 +189,7 @@ impl AlternatingPortEngine {
                     if let Some(nbrs) = g.adjacency_list.get(&raw_u) {
                         for &raw_v in nbrs {
                             if let Some(&inact_p) = node_to_port.get(&raw_v) {
-                                if inact_p != act_nbr {
+                                if inact_p != act_nbr && inact_p.block != p.block {
                                     inactive_partner.insert(p, inact_p);
                                     break;
                                 }
@@ -339,6 +339,276 @@ impl AlternatingPortEngine {
         }
     }
 
+
+    pub fn repair_tier2_bidirectional_bfs(
+        current_edges: &mut HashSet<(i32, i32)>,
+        g: &Graph,
+        node_to_port: &HashMap<i32, Port>,
+        port_to_node: &HashMap<Port, i32>,
+        n_blocks: usize,
+        max_depth_per_dir: usize,
+        timeout_ms: u64,
+        t_start: std::time::Instant,
+    ) -> bool {
+        let deadline_ms = timeout_ms.saturating_sub(50);
+        if t_start.elapsed().as_millis() as u64 >= deadline_ms {
+            return false;
+        }
+
+        let (mut cur_cycs, port_nbr) = Self::get_cycles(current_edges, node_to_port, port_to_node, n_blocks);
+        if cur_cycs.len() <= 1 {
+            return false;
+        }
+
+        // Smallest-Cycle-First: sort cycles by length ascending
+        cur_cycs.sort_by_key(|c| c.len());
+
+        let mut port_to_cyc = vec![usize::MAX; n_blocks * 2];
+        for (cid, c) in cur_cycs.iter().enumerate() {
+            for &p in c {
+                port_to_cyc[p.idx()] = cid;
+            }
+        }
+
+        let mut inactive_adj: HashMap<Port, Vec<Port>> = HashMap::new();
+        for b in 0..n_blocks {
+            for end in 0..=1 {
+                let p = Port { block: b, end };
+                if let (Some(&raw_u), Some(&act_nbr)) = (port_to_node.get(&p), port_nbr.get(&p)) {
+                    if let Some(nbrs) = g.adjacency_list.get(&raw_u) {
+                        for &raw_v in nbrs {
+                            if let Some(&inact_p) = node_to_port.get(&raw_v) {
+                                if inact_p != act_nbr && inact_p.block != p.block {
+                                    inactive_adj.entry(p).or_default().push(inact_p);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let search_cycles_count = if cur_cycs.len() > 1 { cur_cycs.len() - 1 } else { 1 };
+
+        for target_cycle_id in 0..search_cycles_count {
+            if t_start.elapsed().as_millis() as u64 >= deadline_ms {
+                return false;
+            }
+            let target_ports = &cur_cycs[target_cycle_id];
+            for &p0 in target_ports {
+                if t_start.elapsed().as_millis() as u64 >= deadline_ms {
+                    return false;
+                }
+                let p_goal = match port_nbr.get(&p0) {
+                    Some(&pg) => pg,
+                    None => continue,
+                };
+
+                // Forward BFS from p0
+                // Queue: (curr_port, depth)
+                // parent_fwd: nxt -> (prev_curr, inact)
+                let mut queue_fwd = VecDeque::new();
+                let mut parent_fwd: HashMap<Port, (Port, Port)> = HashMap::new();
+                let mut visited_fwd = HashSet::new();
+
+                visited_fwd.insert(p0);
+                queue_fwd.push_back((p0, 0));
+
+                let mut forward_direct_sol = None;
+
+                while let Some((curr, depth)) = queue_fwd.pop_front() {
+                    if depth >= max_depth_per_dir {
+                        continue;
+                    }
+                    if let Some(inacts) = inactive_adj.get(&curr) {
+                        for &inact in inacts {
+                            if inact == p_goal && depth >= 1 {
+                                forward_direct_sol = Some((curr, inact));
+                                break;
+                            }
+                            let nxt = match port_nbr.get(&inact) {
+                                Some(&n) => n,
+                                None => continue,
+                            };
+                            if !visited_fwd.contains(&nxt) {
+                                visited_fwd.insert(nxt);
+                                parent_fwd.insert(nxt, (curr, inact));
+                                queue_fwd.push_back((nxt, depth + 1));
+                            }
+                        }
+                    }
+                    if forward_direct_sol.is_some() {
+                        break;
+                    }
+                }
+
+                // Check forward direct closure at p_goal
+                if let Some((last_curr, last_inact)) = forward_direct_sol {
+                    let mut path = Vec::new();
+                    let mut c_ptr = last_curr;
+                    path.push((c_ptr, last_inact, p0));
+                    while c_ptr != p0 {
+                        if let Some(&(prev_curr, prev_inact)) = parent_fwd.get(&c_ptr) {
+                            path.push((prev_curr, prev_inact, c_ptr));
+                            c_ptr = prev_curr;
+                        } else {
+                            break;
+                        }
+                    }
+                    if c_ptr == p0 {
+                        let mut cycle_ports = HashSet::new();
+                        for &(c, i, _) in &path {
+                            cycle_ports.insert(c);
+                            cycle_ports.insert(i);
+                        }
+                        if cycle_ports.len() == path.len() * 2 {
+                            let start_cid = port_to_cyc[p0.idx()];
+                            if !cycle_ports.iter().any(|p| port_to_cyc[p.idx()] != start_cid) {
+                                continue;
+                            }
+                            let mut rem = HashSet::new();
+                            let mut add = HashSet::new();
+                            for &(c, i, n2) in &path {
+                                add.insert(min_max(port_to_node[&c], port_to_node[&i]));
+                                rem.insert(min_max(port_to_node[&i], port_to_node[&n2]));
+                            }
+                            let valid_edges = add.iter().all(|&(u, v)| {
+                                g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v))
+                            });
+                            let valid_rem = rem.iter().all(|e| current_edges.contains(e));
+                            if valid_edges && valid_rem {
+                                let mut cand = current_edges.clone();
+                                for e in &rem { cand.remove(e); }
+                                for e in &add { cand.insert(*e); }
+                                let (cand_cycs, _) = Self::get_cycles(&cand, node_to_port, port_to_node, n_blocks);
+                                if cand_cycs.len() < cur_cycs.len() || (cand_cycs.len() == cur_cycs.len() && cand_cycs[0].len() > cur_cycs[0].len()) {
+                                    *current_edges = cand;
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Backward BFS from p_goal
+                // Queue: (curr_port, depth)
+                // parent_bwd: prev_port -> (next_port, act_hop_port)
+                let mut queue_bwd = VecDeque::new();
+                let mut parent_bwd: HashMap<Port, (Port, Port)> = HashMap::new();
+                let mut visited_bwd = HashSet::new();
+
+                if let Some(inacts) = inactive_adj.get(&p_goal) {
+                    for &w in inacts {
+                        if !visited_bwd.contains(&w) {
+                            visited_bwd.insert(w);
+                            parent_bwd.insert(w, (p_goal, p_goal));
+                            queue_bwd.push_back((w, 1));
+                        }
+                    }
+                }
+
+                // Expand backward frontier and check collisions with forward frontier
+                while let Some((curr, depth)) = queue_bwd.pop_front() {
+                    if visited_fwd.contains(&curr) {
+                        let p_mid = curr;
+                        let mut fwd_hops = Vec::new();
+                        let mut c_ptr = p_mid;
+                        while c_ptr != p0 {
+                            if let Some(&(prev_curr, inact)) = parent_fwd.get(&c_ptr) {
+                                fwd_hops.push((prev_curr, inact, c_ptr));
+                                c_ptr = prev_curr;
+                            } else {
+                                break;
+                            }
+                        }
+                        if c_ptr == p0 {
+                            fwd_hops.reverse();
+
+                            let mut add = HashSet::new();
+                            let mut rem = HashSet::new();
+                            let mut cycle_ports = HashSet::new();
+
+                            cycle_ports.insert(p0);
+                            cycle_ports.insert(p_goal);
+                            rem.insert(min_max(port_to_node[&p_goal], port_to_node[&p0]));
+
+                            for &(u, i, v) in &fwd_hops {
+                                cycle_ports.insert(u);
+                                cycle_ports.insert(i);
+                                cycle_ports.insert(v);
+                                add.insert(min_max(port_to_node[&u], port_to_node[&i]));
+                                rem.insert(min_max(port_to_node[&i], port_to_node[&v]));
+                            }
+
+                            let mut b_curr = p_mid;
+                            let mut b_valid = true;
+                            while b_curr != p_goal {
+                                if let Some(&(next_curr, act)) = parent_bwd.get(&b_curr) {
+                                    if next_curr == p_goal {
+                                        cycle_ports.insert(b_curr);
+                                        add.insert(min_max(port_to_node[&b_curr], port_to_node[&p_goal]));
+                                        break;
+                                    } else {
+                                        cycle_ports.insert(b_curr);
+                                        cycle_ports.insert(act);
+                                        cycle_ports.insert(next_curr);
+                                        add.insert(min_max(port_to_node[&b_curr], port_to_node[&act]));
+                                        rem.insert(min_max(port_to_node[&act], port_to_node[&next_curr]));
+                                        b_curr = next_curr;
+                                    }
+                                } else {
+                                    b_valid = false;
+                                    break;
+                                }
+                            }
+
+                            if b_valid && add.len() == rem.len() && cycle_ports.len() == add.len() * 2 {
+                                let start_cid = port_to_cyc[p0.idx()];
+                                if !cycle_ports.iter().any(|p| port_to_cyc[p.idx()] != start_cid) {
+                                    continue;
+                                }
+                                let valid_edges = add.iter().all(|&(u, v)| {
+                                    g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v))
+                                });
+                                let valid_rem = rem.iter().all(|e| current_edges.contains(e));
+                                if valid_edges && valid_rem {
+                                    let mut cand = current_edges.clone();
+                                    for e in &rem { cand.remove(e); }
+                                    for e in &add { cand.insert(*e); }
+                                    let (cand_cycs, _) = Self::get_cycles(&cand, node_to_port, port_to_node, n_blocks);
+                                    if cand_cycs.len() < cur_cycs.len() || (cand_cycs.len() == cur_cycs.len() && cand_cycs[0].len() > cur_cycs[0].len()) {
+                                        *current_edges = cand;
+                                        return true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if depth >= max_depth_per_dir {
+                        continue;
+                    }
+
+                    let act = match port_nbr.get(&curr) {
+                        Some(&a) => a,
+                        None => continue,
+                    };
+                    if let Some(inacts) = inactive_adj.get(&act) {
+                        for &prev in inacts {
+                            if !visited_bwd.contains(&prev) {
+                                visited_bwd.insert(prev);
+                                parent_bwd.insert(prev, (curr, act));
+                                queue_bwd.push_back((prev, depth + 1));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        false
+    }
+
     pub fn repair(
         cycles: &[Vec<i32>],
         g: &Graph,
@@ -365,152 +635,30 @@ impl AlternatingPortEngine {
         // 1. Run Tier 1 greedy flips
         Self::repair_tier1_edges(&mut current_edges, g, &node_to_port, &port_to_node, n_blocks);
 
-        // 2. Run Tier 2 bounded multi-hop BFS if multiple cycles remain
+        // 2. Run Tier 2 bounded multi-hop bidirectional BFS if multiple cycles remain
         loop {
-            if t_start.elapsed().as_millis() as u64 >= timeout_ms {
+            if t_start.elapsed().as_millis() as u64 >= timeout_ms.saturating_sub(50) {
                 break;
             }
 
-            let (cur_cycs, port_nbr) = Self::get_cycles(&current_edges, &node_to_port, &port_to_node, n_blocks);
+            let (cur_cycs, _) = Self::get_cycles(&current_edges, &node_to_port, &port_to_node, n_blocks);
             if cur_cycs.len() <= 1 {
                 break;
             }
 
-            let mut inactive_adj: HashMap<Port, Vec<Port>> = HashMap::new();
-            for b in 0..n_blocks {
-                for end in 0..=1 {
-                    let p = Port { block: b, end };
-                    if let (Some(&raw_u), Some(&act_nbr)) = (port_to_node.get(&p), port_nbr.get(&p)) {
-                        if let Some(nbrs) = g.adjacency_list.get(&raw_u) {
-                            for &raw_v in nbrs {
-                                if let Some(&inact_p) = node_to_port.get(&raw_v) {
-                                    if inact_p != act_nbr && inact_p.block != p.block {
-                                        inactive_adj.entry(p).or_default().push(inact_p);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            let improved = Self::repair_tier2_bidirectional_bfs(
+                &mut current_edges,
+                g,
+                &node_to_port,
+                &port_to_node,
+                n_blocks,
+                max_depth,
+                timeout_ms,
+                t_start,
+            );
 
-            let mut found_improvement = false;
-
-            // Search from smaller cycles (index 1..cur_cycs.len())
-            for target_cycle_id in 1..cur_cycs.len() {
-                if t_start.elapsed().as_millis() as u64 >= timeout_ms {
-                    break;
-                }
-                let target_ports = &cur_cycs[target_cycle_id];
-                for &p0 in target_ports {
-                    if t_start.elapsed().as_millis() as u64 >= timeout_ms {
-                        break;
-                    }
-                    let p_goal = match port_nbr.get(&p0) {
-                        Some(&pg) => pg,
-                        None => continue,
-                    };
-
-                    let mut queue = VecDeque::new();
-                    let mut parent: HashMap<Port, (Port, Port)> = HashMap::new();
-                    let mut visited = HashSet::new();
-
-                    visited.insert(p0);
-                    queue.push_back((p0, 0));
-
-                    while let Some((curr, depth)) = queue.pop_front() {
-                        if depth >= max_depth {
-                            continue;
-                        }
-                        if let Some(inacts) = inactive_adj.get(&curr) {
-                            for &inact in inacts {
-                                let nxt2 = match port_nbr.get(&inact) {
-                                    Some(&n) => n,
-                                    None => continue,
-                                };
-
-                                if inact == p_goal && depth >= 1 {
-                                    let mut path = Vec::new();
-                                    let mut c_ptr = curr;
-                                    let mut i_ptr = inact;
-                                    path.push((c_ptr, i_ptr, p0));
-                                    while c_ptr != p0 {
-                                        if let Some(&(prev_curr, prev_inact)) = parent.get(&c_ptr) {
-                                            path.push((prev_curr, prev_inact, c_ptr));
-                                            c_ptr = prev_curr;
-                                        } else {
-                                            break;
-                                        }
-                                    }
-                                    if c_ptr != p0 {
-                                        continue;
-                                    }
-                                    path.reverse();
-
-                                    // Verify cycle simplicity: exactly 2 distinct ports per hop
-                                    let mut cycle_ports = HashSet::new();
-                                    for &(c, i, _) in &path {
-                                        cycle_ports.insert(c);
-                                        cycle_ports.insert(i);
-                                    }
-                                    if cycle_ports.len() != path.len() * 2 {
-                                        continue;
-                                    }
-
-                                    let mut rem = HashSet::new();
-                                    let mut add = HashSet::new();
-                                    for &(c, i, n2) in &path {
-                                        add.insert(min_max(port_to_node[&c], port_to_node[&i]));
-                                        rem.insert(min_max(port_to_node[&i], port_to_node[&n2]));
-                                    }
-
-                                    // Guard: all edges in add must exist in g
-                                    let valid_edges = add.iter().all(|&(u, v)| {
-                                        g.adjacency_list.get(&u).map_or(false, |nbrs| nbrs.contains(&v))
-                                    });
-                                    if !valid_edges {
-                                        continue;
-                                    }
-
-                                    // Guard: all edges in rem must exist in current_edges
-                                    let valid_rem = rem.iter().all(|e| current_edges.contains(e));
-                                    if !valid_rem {
-                                        continue;
-                                    }
-
-                                    let mut cand = current_edges.clone();
-                                    for e in &rem { cand.remove(e); }
-                                    for e in &add { cand.insert(*e); }
-
-                                    let (cand_cycs, _) = Self::get_cycles(&cand, &node_to_port, &port_to_node, n_blocks);
-                                    if cand_cycs.len() < cur_cycs.len() {
-                                        current_edges = cand;
-                                        found_improvement = true;
-                                        break;
-                                    }
-                                }
-
-                                if !visited.contains(&nxt2) {
-                                    visited.insert(nxt2);
-                                    parent.insert(nxt2, (curr, inact));
-                                    queue.push_back((nxt2, depth + 1));
-                                }
-                            }
-                        }
-                        if found_improvement {
-                            break;
-                        }
-                    }
-                    if found_improvement {
-                        break;
-                    }
-                }
-                if found_improvement {
-                    break;
-                }
-            }
-
-            if found_improvement {
+            if improved {
+                // Call repair_tier1_edges immediately whenever an improvement is found
                 Self::repair_tier1_edges(&mut current_edges, g, &node_to_port, &port_to_node, n_blocks);
             } else {
                 break;
