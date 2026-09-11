@@ -131,7 +131,7 @@ fn test_cegar_adaptive_backbone_freezing_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "output"
-    , 0);
+    , 0, 0);
     assert!(tour.is_some(), "Graph must be solvable with CEGAR and adaptive freezing");
     let t = tour.unwrap();
     assert_eq!(t.len(), 20);
@@ -164,7 +164,7 @@ fn test_cegar_solver_reseeder_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
-    , 0);
+    , 0, 0);
     assert!(tour.is_some(), "Graph must be solved with CEGAR and solver reseeder wired");
     let t = tour.unwrap();
     assert_eq!(t.len(), 30);
@@ -224,7 +224,7 @@ fn test_cegar_hemisphere_splicer_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
-    , 0);
+    , 0, 0);
     assert!(tour.is_some(), "Graph with two hemispheres must be solved via HemisphereSplicer/CEGAR");
     let t = tour.unwrap();
     assert_eq!(t.len(), 20);
@@ -290,7 +290,7 @@ fn test_cegar_static_cycle_cutter_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
-    , 0);
+    , 0, 0);
     assert!(tour.is_some(), "Graph must be solved with CEGAR and static cycle cutter wired");
     let t = tour.unwrap();
     assert_eq!(t.len(), 8);
@@ -355,7 +355,7 @@ fn test_cegar_boundary_alternating_patcher_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
-    , 0);
+    , 0, 0);
     assert!(tour.is_some(), "Graph with two macro-hemispheres must be solved via BoundaryAlternatingPatcher/CEGAR");
     let t = tour.unwrap();
     assert_eq!(t.len(), 12);
@@ -406,7 +406,7 @@ fn test_fast_fail_assumptions_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
-    , 0);
+    , 0, 0);
     assert!(tour.is_some(), "Graph must be solved with fast-fail assumption conflict limiting");
     let t = tour.unwrap();
     assert_eq!(t.len(), 24);
@@ -475,7 +475,7 @@ fn test_cegar_metagraph_router_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
-    , 0);
+    , 0, 0);
     assert!(tour.is_some(), "Graph with 4 gadget modules must be solved via MetagraphRouter and CEGAR");
     let t = tour.unwrap();
     assert_eq!(t.len(), 16);
@@ -556,7 +556,7 @@ fn test_cegar_dual_channel_router_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 30.0, start, "default"
-    , 0);
+    , 0, 0);
     assert!(tour.is_some(), "Graph with dual-channel modules must be solved via DualChannelRouter and CEGAR");
     let t = tour.unwrap();
     assert_eq!(t.len(), 42);
@@ -625,7 +625,7 @@ fn test_cegar_parallel_sat_portfolio_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
-    , 0);
+    , 0, 0);
     assert!(tour.is_some(), "Graph must be solved with ParallelSatPortfolio in CEGAR loop");
     let t = tour.unwrap();
     assert_eq!(t.len(), 30);
@@ -705,7 +705,7 @@ fn test_cegar_macro_cycle_stitcher_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
-    , 0);
+    , 0, 0);
     assert!(tour.is_some(), "Graph must be solved with MacroCycleStitcher in CEGAR loop");
     let t = tour.unwrap();
     assert_eq!(t.len(), 24);
@@ -800,7 +800,7 @@ fn test_cegar_giant_cycle_stitcher_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
-    , 0);
+    , 0, 0);
     assert!(tour.is_some(), "Graph must be solved with GiantCycleStitcher in CEGAR loop");
     let t = tour.unwrap();
     assert_eq!(t.len(), 28);
@@ -863,7 +863,7 @@ fn test_cegar_extended_static_cycle_cutter_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
-    , 0);
+    , 0, 0);
     assert!(tour.is_some(), "Graph must be solved with CEGAR and extended static cuts wired");
     let t = tour.unwrap();
     assert_eq!(t.len(), 32);
@@ -981,7 +981,7 @@ fn test_cegar_multi_swap_stitcher_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
-    , 0);
+    , 0, 0);
     assert!(tour.is_some(), "Graph with 60-vertex giant ring and three 8-vertex satellites must be solved via multi-swap CEGAR stitcher");
     let t = tour.unwrap();
     assert_eq!(t.len(), 84, "Tour length must equal total vertices (60 + 8 * 3 = 84)");
@@ -1066,7 +1066,7 @@ fn test_cegar_global_supernode_mtz_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
-    , 0);
+    , 0, 0);
 
     assert!(tour.is_some(), "64-vertex 8-module cycle-of-ladders must be solved via GlobalSupernodeMTZ and CEGAR");
     let t = tour.unwrap();
@@ -1178,7 +1178,7 @@ fn test_cegar_transitive_macro_splicer_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
-    , 0);
+    , 0, 0);
 
     assert!(tour.is_some(), "Graph with transitive 4-cycle chain must be solved via CEGAR with TransitiveMacroSplicer");
     let t = tour.unwrap();
@@ -1268,7 +1268,7 @@ fn test_cegar_interface_port_synchronizer_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
-    , 0);
+    , 0, 0);
 
     assert!(tour.is_some(), "32-vertex 4-gadget ring graph must be solved via InterfacePortSynchronizer and CEGAR");
     let t = tour.unwrap();
@@ -1359,7 +1359,7 @@ fn test_cegar_inverse_3sat_synthesizer_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
-    , 0);
+    , 0, 0);
 
     assert!(tour.is_some(), "14-vertex 2-variable 3-SAT reduction graph must be solved via Inverse3SatSynthesizer");
     let t = tour.unwrap();
@@ -1465,7 +1465,7 @@ fn test_cegar_hub_hierarchical_decomposer_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
-    , 0);
+    , 0, 0);
 
     assert!(tour.is_some(), "27-vertex multi-hub graph must be solved via HubHierarchicalDecomposer and expanded via Degree2Contractor");
     let t = tour.unwrap();
@@ -1578,7 +1578,7 @@ fn test_cegar_multi_opt_sat_splicer_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
-    , 0);
+    , 0, 0);
 
     assert!(tour.is_some(), "Graph with 3-cycle triangle configuration must be solved via CEGAR with MultiOptSatSplicer");
     let t = tour.unwrap();
@@ -1664,7 +1664,7 @@ fn test_cegar_empirical_backbone_cutter_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
-    , 0);
+    , 0, 0);
 
     assert!(tour.is_some(), "Graph must be solved with EmpiricalBackboneCutter wired into CEGAR loop");
     let t = tour.unwrap();
@@ -1767,7 +1767,7 @@ fn test_cegar_cnf_subsumer_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
-    , 0);
+    , 0, 0);
 
     assert!(tour.is_some(), "Graph must be solved with CnfSubsumer wired into CEGAR loop");
     let t = tour.unwrap();
@@ -1863,7 +1863,7 @@ fn test_cegar_twin_giant_splicer_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
-    , 0);
+    , 0, 0);
 
     assert!(tour.is_some(), "Graph must be solved with TwinGiantSplicer wired into CEGAR loop");
     let t = tour.unwrap();
@@ -1962,7 +1962,7 @@ fn test_cegar_macro_component_splicer_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
-    , 0);
+    , 0, 0);
 
     assert!(tour.is_some(), "Graph must be solved with MacroComponentSplicer wired into CEGAR loop");
     let t = tour.unwrap();
@@ -2069,7 +2069,7 @@ fn test_cegar_sat_macro_patcher_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
-    , 0);
+    , 0, 0);
 
     assert!(tour.is_some(), "Graph must be solved with SatMacroPatcher wired into CEGAR loop");
     let t = tour.unwrap();
@@ -2181,7 +2181,7 @@ fn test_cegar_sat_macro_patcher_components_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
-    , 0);
+    , 0, 0);
 
     assert!(tour.is_some(), "Graph must be solved with SatMacroPatcher component-wise patching wired into CEGAR loop");
     let t = tour.unwrap();
@@ -2261,7 +2261,7 @@ fn test_cegar_gadget_path_absorber_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
-    , 0);
+    , 0, 0);
 
     assert!(tour.is_some(), "Graph must be solved with GadgetPathAbsorber wired into CEGAR loop");
     let t = tour.unwrap();
@@ -2380,7 +2380,7 @@ fn test_cegar_multi_macro_gadget_integration() {
         &contractor,
         &hub_reg,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 100, 10.0, start, "default"
-    , 0);
+    , 0, 0);
 
     assert!(tour.is_some(), "Multi-macro gadget graph must be solved via CEGAR");
     let t = tour.unwrap();

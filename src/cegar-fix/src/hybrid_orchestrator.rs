@@ -13,6 +13,7 @@ pub struct HybridOptions {
     pub timeout_secs: f64,
     pub output_tour: Option<String>,
     pub macro_gadget: bool,
+    pub bounded_freezer: bool,
 }
 
 impl Default for HybridOptions {
@@ -22,6 +23,31 @@ impl Default for HybridOptions {
             timeout_secs: 1800.0,
             output_tour: None,
             macro_gadget: false,
+            bounded_freezer: false,
+        }
+    }
+}
+
+impl HybridOptions {
+    pub fn apply_ablation_mode(&mut self, mode: usize) {
+        match mode {
+            0 => {
+                self.macro_gadget = false;
+                self.bounded_freezer = false;
+            }
+            1 => {
+                self.macro_gadget = false;
+                self.bounded_freezer = true;
+            }
+            2 => {
+                self.macro_gadget = true;
+                self.bounded_freezer = false;
+            }
+            3 => {
+                self.macro_gadget = true;
+                self.bounded_freezer = true;
+            }
+            _ => {}
         }
     }
 }
@@ -31,7 +57,7 @@ pub struct HybridOrchestrator;
 impl HybridOrchestrator {
     pub fn solve(g: &Graph, options: &HybridOptions) -> Option<Vec<i32>> {
         let features = AutoTopologyClassifier::extract_features(g);
-        let track = if options.macro_gadget {
+        let track = if options.macro_gadget || options.bounded_freezer {
             TargetTrack::GadgetInterfaceParity
         } else if options.auto_mode {
             AutoTopologyClassifier::classify(&features)
@@ -133,6 +159,7 @@ impl HybridOrchestrator {
 
         let start = Instant::now();
         let mg = if options.macro_gadget { 1 } else { 0 };
+        let bf = if options.bounded_freezer { 1 } else { 0 };
         match track {
             TargetTrack::SnarkKeyBridge => {
                 // CaDiCaL encoding: -e 0 -b 3 -l 1 --three-opt 1 --set-configration 1
@@ -145,6 +172,7 @@ impl HybridOrchestrator {
                     start,
                     "",
                     mg,
+                    bf,
                 )
             }
             TargetTrack::GadgetInterfaceParity | TargetTrack::B2SinzChainSMT => {
@@ -158,6 +186,7 @@ impl HybridOrchestrator {
                     start,
                     "",
                     mg,
+                    bf,
                 )
             }
             _ => {
@@ -171,6 +200,7 @@ impl HybridOrchestrator {
                     start,
                     "",
                     mg,
+                    bf,
                 )
             }
         }

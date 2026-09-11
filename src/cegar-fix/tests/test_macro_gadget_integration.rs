@@ -78,6 +78,7 @@ fn test_solve_hamilton_macro_gadget_parameter_gating() {
         start0,
         "",
         0, // macro_gadget = 0
+        0, // bounded_freezer = 0
     );
     assert!(tour_gated_off.is_some(), "Direct solve_hamilton with macro_gadget=0 must find tour");
     let t0 = tour_gated_off.unwrap();
@@ -94,6 +95,7 @@ fn test_solve_hamilton_macro_gadget_parameter_gating() {
         start1,
         "",
         1, // macro_gadget = 1
+        0, // bounded_freezer = 0
     );
     assert!(tour_gated_on.is_some(), "Direct solve_hamilton with macro_gadget=1 must find tour");
     let t1 = tour_gated_on.unwrap();

@@ -16,6 +16,7 @@ fn test_hybrid_orchestrator_synthetic_solve() {
         timeout_secs: 10.0,
         output_tour: None,
         macro_gadget: false,
+        bounded_freezer: false,
     };
 
     let tour = HybridOrchestrator::solve(&g, &opts);
@@ -44,6 +45,7 @@ fn test_hybrid_orchestrator_b2_sinz_route_and_output() {
         timeout_secs: 10.0,
         output_tour: Some(out_file.to_string()),
         macro_gadget: false,
+        bounded_freezer: false,
     };
 
     let tour = HybridOrchestrator::solve(&g, &opts);
@@ -69,6 +71,7 @@ fn test_hybrid_orchestrator_infeasible_graph() {
         timeout_secs: 5.0,
         output_tour: None,
         macro_gadget: false,
+        bounded_freezer: false,
     };
 
     let tour = HybridOrchestrator::solve(&g, &opts);
@@ -106,6 +109,7 @@ fn test_hybrid_orchestrator_b1_ladder_synthetic() {
         timeout_secs: 10.0,
         output_tour: None,
         macro_gadget: false,
+        bounded_freezer: false,
     };
 
     // Features should classify as B1LadderTwoTier
@@ -161,6 +165,7 @@ fn test_hybrid_orchestrator_snark_bridge_solve() {
         timeout_secs: 10.0,
         output_tour: None,
         macro_gadget: false,
+        bounded_freezer: false,
     };
 
     let tour = HybridOrchestrator::solve(&g, &opts);
@@ -187,6 +192,7 @@ fn test_hybrid_orchestrator_gadget_parity_solve() {
         timeout_secs: 10.0,
         output_tour: None,
         macro_gadget: false,
+        bounded_freezer: false,
     };
 
     let tour = HybridOrchestrator::solve(&g, &opts);

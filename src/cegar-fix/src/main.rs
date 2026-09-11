@@ -101,6 +101,7 @@ fn main() {
     let is_staged_smt = matches.is_present("staged-smt") && matches.value_of("staged-smt").map_or(true, |v| v != "0");
     let auto_mode = matches.value_of("auto").map_or(true, |v| v != "0");
     let macro_gadget = matches.is_present("macro-gadget") && matches.value_of("macro-gadget").map_or(true, |v| v != "0");
+    let bounded_freezer = matches.is_present("bounded-freezer") && matches.value_of("bounded-freezer").map_or(true, |v| v != "0");
     let timeout_secs = matches.value_of_t::<f64>("timeout").unwrap_or(1800.0);
     let output_tour_path = matches.value_of("output-tour").map(|s| s.to_string());
     // solver,encodingのオプションを&strで受け取る
@@ -164,13 +165,21 @@ fn main() {
         || matches.is_present("three-opt")
         || matches.is_present("set-configration");
 
-    if (auto_mode || macro_gadget) && !has_manual_overrides {
-        let hybrid_opts = hybrid_orchestrator::HybridOptions {
-            auto_mode: auto_mode && !macro_gadget,
-            timeout_secs,
-            output_tour: output_tour_path,
-            macro_gadget,
-        };
+    let mut hybrid_opts = hybrid_orchestrator::HybridOptions {
+        auto_mode: auto_mode && !macro_gadget && !bounded_freezer && !matches.is_present("ablation"),
+        timeout_secs,
+        output_tour: output_tour_path.clone(),
+        macro_gadget,
+        bounded_freezer,
+    };
+    if let Some(abl_str) = matches.value_of("ablation") {
+        if let Ok(mode) = abl_str.parse::<usize>() {
+            hybrid_opts.apply_ablation_mode(mode);
+            println!("Ablation mode active: C{} (macro_gadget={}, bounded_freezer={})", mode, hybrid_opts.macro_gadget, hybrid_opts.bounded_freezer);
+        }
+    }
+
+    if (auto_mode || matches.is_present("ablation") || hybrid_opts.macro_gadget || hybrid_opts.bounded_freezer) && !has_manual_overrides {
         let res = hybrid_orchestrator::HybridOrchestrator::solve(&g, &hybrid_opts);
         if res.is_none() {
             println!("s UNSATISFIABLE");
@@ -230,7 +239,7 @@ fn main() {
     // println!("solver={},encoding={}",solver,encoding);
     // println!("{:?}",g);
     println!("file input time = {:?}", time1);
-    let tour = hcp_solver::solve_hamilton(contracted_g, &contractor, &hub_registry, solver, encoding, blocking, symmetry, two_opt, loop_prohibition, cnf_normalize, balanced, de_arcify,config,degree_order,arcs_order,three_opt,cegar_fallback,mtz_stall,adaptive_escalation,sub_hcp_timeout,max_cluster_size,timeout_secs,instant,output_foldername, if macro_gadget { 1 } else { 0 });
+    let tour = hcp_solver::solve_hamilton(contracted_g, &contractor, &hub_registry, solver, encoding, blocking, symmetry, two_opt, loop_prohibition, cnf_normalize, balanced, de_arcify,config,degree_order,arcs_order,three_opt,cegar_fallback,mtz_stall,adaptive_escalation,sub_hcp_timeout,max_cluster_size,timeout_secs,instant,output_foldername, if hybrid_opts.macro_gadget { 1 } else { 0 }, if hybrid_opts.bounded_freezer { 1 } else { 0 });
     if let Some(ref t) = tour {
         if let Some(ref out_path) = output_tour_path {
             if let Err(e) = tour_verifier::TourVerifier::write_tsplib_hcp(t, "tour", out_path) {

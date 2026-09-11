@@ -259,6 +259,21 @@ pub fn get_options() -> clap::ArgMatches {
                 .takes_value(true)
                 .min_values(0),
         )
+        .arg(
+            Arg::with_name("bounded-freezer")
+                .long("bounded-freezer")
+                .value_name("n")
+                .help("Topologically bounded backbone freezing (H2-Refined):\n 0: Disabled (default)\n 1: Enabled")
+                .takes_value(true)
+                .min_values(0),
+        )
+        .arg(
+            Arg::with_name("ablation")
+                .long("ablation")
+                .value_name("n")
+                .help("Ablation matrix experimental condition:\n 0: Baseline (C0)\n 1: Baseline + H2-Refined (C1)\n 2: Baseline + H1 (C2)\n 3: Full Hybrid H1+H2 (C3)")
+                .takes_value(true),
+        )
         .get_matches();
 }
 

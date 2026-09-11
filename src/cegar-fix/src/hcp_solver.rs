@@ -18,7 +18,7 @@ use crate::hub_sub_hcp::HubPartitionedSolver;
 use crate::modular_solver::ModularSolver;
 use crate::subcycle_absorber::SubcycleAbsorber;
 use crate::cycle_chain_absorber::CycleChainAbsorber;
-use crate::backbone_freezer::{BackboneFreezer, FreezerOptions};
+use crate::backbone_freezer::BackboneFreezer;
 use crate::snark_bridge::SnarkBridgeEngine;
 use crate::gadget_parity::GadgetInterfaceParityEngine;
 use crate::cut_selector::{CutSelector, CutSelectorOptions};
@@ -262,7 +262,7 @@ pub fn add_cluster_cut_constraints(
     added_clauses
 }
 
-pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &HubRegistry, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, _cegar_fallback:i32, _mtz_stall:i32, _adaptive_escalation:i32, _sub_hcp_timeout: u64, _max_cluster_size: usize, timeout_secs: f64, instant:Instant,output_folder:&str, macro_gadget: i32) -> Option<Vec<i32>> {
+pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &HubRegistry, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, _cegar_fallback:i32, _mtz_stall:i32, _adaptive_escalation:i32, _sub_hcp_timeout: u64, _max_cluster_size: usize, timeout_secs: f64, instant:Instant,output_folder:&str, macro_gadget: i32, bounded_freezer: i32) -> Option<Vec<i32>> {
     let now = instant.elapsed();
 
     // Fast Track: Inverse 3-SAT De-reduction & Tour Synthesis
@@ -414,6 +414,7 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
         output_folder,
         base_cnf,
         cadical_config,
+        bounded_freezer,
     );
     println!("overall incremented number = {}", increment);
     println!("overall number of added block clauses = {}", block);
@@ -448,6 +449,7 @@ fn cegar(
     output_folder: &str,
     base_cnf: Cnf,
     _cadical_config: i32,
+    bounded_freezer: i32,
 ) -> (i32, i32, Option<Vec<i32>>) {
     // Attempt Modular Macro-Decomposition when dense hubs are detected
     if hub_registry.hub_vertices.len() >= 5 {
@@ -1057,44 +1059,15 @@ fn cegar(
                         incremental_solver.add_cuts(&round_cuts);
                     }
                     let max_cycle_len = _active_cycles.iter().map(|c| c.len()).max().unwrap_or(0);
-                    if _active_cycles.len() > 1 && total_v >= 100 && (max_cycle_len >= total_v / 2 || _active_cycles.len() <= 25) {
-                        let freezer_opts = FreezerOptions::default();
-                        assumptions = BackboneFreezer::select_adaptive_frozen_assumptions(
+                    if bounded_freezer != 0 && _active_cycles.len() > 1 && total_v >= 100 && (max_cycle_len >= total_v / 2 || _active_cycles.len() <= 25) {
+                        assumptions = BackboneFreezer::select_topologically_bounded_assumptions(
                             &_active_cycles,
                             &g,
                             encoder,
-                            contractor,
-                            &freezer_opts,
                             sat_solving_time.as_secs_f64(),
                         );
                         if !assumptions.is_empty() {
-                            println!("BackboneFreezer: locked {} internal backbone edges (giant cycle len {})", assumptions.len(), max_cycle_len);
-                        }
-
-                        // Augment assumptions with high-frequency empirical edges (f(e) >= 0.85) when count >= 3 and giant cycle exists
-                        if count >= 3 && max_cycle_len >= total_v / 2 {
-                            let frequent_edges = backbone_tracker.get_frequent_backbone_edges(0.85);
-                            let mut added_empirical = 0;
-                            phase_hints.clear();
-
-                            if let Some(giant_cycle) = _active_cycles.iter().find(|c| c.len() == max_cycle_len) {
-                                let n_g = giant_cycle.len();
-                                for i in 0..n_g {
-                                    let u = giant_cycle[i];
-                                    let v = giant_cycle[(i + 1) % n_g];
-                                    let min_v = u.min(v);
-                                    let max_v = u.max(v);
-                                    if frequent_edges.contains(&(min_v, max_v)) {
-                                        if let Some(&lit) = encoder.graph_lit_map.get(&(u, v)) {
-                                            phase_hints.push(lit);
-                                            added_empirical += 1;
-                                        }
-                                    }
-                                }
-                            }
-                            if added_empirical > 0 {
-                                println!("EmpiricalBackboneTracker: guided {} empirical backbone phase hints (freq >= 0.85)", added_empirical);
-                            }
+                            println!("BackboneFreezer (H2-Refined): locked {} bounded backbone edges (giant cycle len {})", assumptions.len(), max_cycle_len);
                         }
                     } else {
                         assumptions.clear();
