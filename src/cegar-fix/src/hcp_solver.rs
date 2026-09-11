@@ -509,7 +509,15 @@ fn cegar(
             PortfolioResult::Sat(model_lits) => PortfolioResult::Sat(model_lits),
             PortfolioResult::Unsat => PortfolioResult::Unsat,
             PortfolioResult::Interrupted => {
-                ParallelSatPortfolio::solve_portfolio(&working_cnf, &assumptions, &phase_hints, 3, count as usize)
+                ParallelSatPortfolio::solve_portfolio_with_timeout(
+                    &working_cnf,
+                    &assumptions,
+                    &phase_hints,
+                    3,
+                    count as usize,
+                    instant,
+                    timeout_secs,
+                )
             }
         };
         let now = instant.elapsed();

@@ -5,6 +5,7 @@ use rustsat_cadical::CaDiCaL;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::thread;
+use std::time::Instant;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PortfolioResult {
@@ -25,6 +26,19 @@ impl ParallelSatPortfolio {
         phase_hints: &[Lit],
         num_workers: usize,
         round: usize,
+    ) -> PortfolioResult {
+        Self::solve_portfolio_with_timeout(cnf, assumptions, phase_hints, num_workers, round, Instant::now(), 1e9)
+    }
+
+    /// Solves CNF across `num_workers` parallel threads with explicit global timeout checking.
+    pub fn solve_portfolio_with_timeout(
+        cnf: &Cnf,
+        assumptions: &[Lit],
+        phase_hints: &[Lit],
+        num_workers: usize,
+        round: usize,
+        start_instant: Instant,
+        timeout_secs: f64,
     ) -> PortfolioResult {
         let num_workers = num_workers.max(1);
         let cancelled = AtomicBool::new(false);
@@ -65,7 +79,7 @@ impl ParallelSatPortfolio {
                     }
 
                     solver.attach_terminator(move || {
-                        if cancelled_ref.load(Ordering::Relaxed) {
+                        if cancelled_ref.load(Ordering::Relaxed) || start_instant.elapsed().as_secs_f64() >= timeout_secs {
                             ControlSignal::Terminate
                         } else {
                             ControlSignal::Continue
