@@ -132,6 +132,7 @@ impl HybridOrchestrator {
         }
 
         let start = Instant::now();
+        let mg = if options.macro_gadget { 1 } else { 0 };
         match track {
             TargetTrack::SnarkKeyBridge => {
                 // CaDiCaL encoding: -e 0 -b 3 -l 1 --three-opt 1 --set-configration 1
@@ -143,6 +144,7 @@ impl HybridOrchestrator {
                     options.timeout_secs,
                     start,
                     "",
+                    mg,
                 )
             }
             TargetTrack::GadgetInterfaceParity | TargetTrack::B2SinzChainSMT => {
@@ -155,6 +157,7 @@ impl HybridOrchestrator {
                     options.timeout_secs,
                     start,
                     "",
+                    mg,
                 )
             }
             _ => {
@@ -167,6 +170,7 @@ impl HybridOrchestrator {
                     options.timeout_secs,
                     start,
                     "",
+                    mg,
                 )
             }
         }

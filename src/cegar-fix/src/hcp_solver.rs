@@ -262,7 +262,7 @@ pub fn add_cluster_cut_constraints(
     added_clauses
 }
 
-pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &HubRegistry, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, _cegar_fallback:i32, _mtz_stall:i32, _adaptive_escalation:i32, _sub_hcp_timeout: u64, _max_cluster_size: usize, timeout_secs: f64, instant:Instant,output_folder:&str) -> Option<Vec<i32>> {
+pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &HubRegistry, _s:i32, encode_method:i32, block_method: i32,symmetry: i32 ,opt:i32,loop_prohibition: i32,cnf_normalize:i32,balanced:i32,dearcify:i32, cadical_config:i32, degree_order:i32, arcs_order:i32, three_opt:i32, _cegar_fallback:i32, _mtz_stall:i32, _adaptive_escalation:i32, _sub_hcp_timeout: u64, _max_cluster_size: usize, timeout_secs: f64, instant:Instant,output_folder:&str, macro_gadget: i32) -> Option<Vec<i32>> {
     let now = instant.elapsed();
 
     // Fast Track: Inverse 3-SAT De-reduction & Tour Synthesis
@@ -337,8 +337,8 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
     }
 
     // Bipartite Module State Equivalence Encoder (Approach 2)
-    // Only apply to pure modular reduction graphs without hubs (Hubs = 0) where modules are cleanly detected
-    if hub_registry.hub_vertices.is_empty() && g.adjacency_list.len() >= 44 && !contractor.chain_map.is_empty() {
+    // Only apply to pure modular reduction graphs without hubs (Hubs = 0) where modules are cleanly detected and macro_gadget is enabled
+    if macro_gadget != 0 && hub_registry.hub_vertices.is_empty() && g.adjacency_list.len() >= 44 && !contractor.chain_map.is_empty() {
         let bip_modules = BipartiteModuleDetector::detect_44_modules(&g, contractor);
         if !bip_modules.is_empty() {
             let mut extracted = Vec::new();
