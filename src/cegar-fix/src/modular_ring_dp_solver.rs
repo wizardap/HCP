@@ -537,3 +537,123 @@ impl ModularRingDecomposer {
         Ok(modules)
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct ModulePathConfig {
+    pub port_in: i32,
+    pub port_out: i32,
+    pub internal_real_edges: Vec<(i32, i32)>,
+}
+
+pub struct ModulePathCatalogExtractor;
+
+impl ModulePathCatalogExtractor {
+    pub fn extract_catalog(
+        m: &Module42,
+        g: &Graph,
+        _contractor: &Degree2Contractor,
+    ) -> Vec<ModulePathConfig> {
+        let m_set: HashSet<i32> = m.vertices.iter().copied().collect();
+        let mut v_partner = HashMap::new();
+        for &(u, w) in &m.virtual_edges {
+            v_partner.insert(u, w);
+            v_partner.insert(w, u);
+        }
+
+        let mut internal_real = Vec::new();
+        for &u in &m.vertices {
+            if let Some(nbrs) = g.adjacency_list.get(&u) {
+                for &v in nbrs {
+                    if u < v && m_set.contains(&v) && v_partner.get(&u) != Some(&v) {
+                        internal_real.push((u, v));
+                    }
+                }
+            }
+        }
+
+        let edge_vars: HashMap<(i32, i32), u32> = internal_real
+            .iter()
+            .enumerate()
+            .map(|(i, &e)| (e, i as u32))
+            .collect();
+
+        let mut catalog = Vec::new();
+
+        for &pin in &m.ports_in {
+            for &pout in &m.ports_out {
+                if pin == pout { continue; }
+
+                let mut solver = CaDiCaL::default();
+                for &u in &m.vertices {
+                    let mut inc = Vec::new();
+                    if let Some(nbrs) = g.adjacency_list.get(&u) {
+                        for &v in nbrs {
+                            if m_set.contains(&v) && v_partner.get(&u) != Some(&v) {
+                                let e = (u.min(v), u.max(v));
+                                inc.push(Lit::new(edge_vars[&e], false));
+                            }
+                        }
+                    }
+                    for i in 0..inc.len() {
+                        for j in (i + 1)..inc.len() {
+                            let _ = solver.add_clause(Clause::from_iter(vec![!inc[i], !inc[j]]));
+                        }
+                    }
+                    if u == pin || u == pout {
+                        for var in inc {
+                            let _ = solver.add_clause(Clause::from_iter(vec![!var]));
+                        }
+                    } else {
+                        let _ = solver.add_clause(Clause::from_iter(inc));
+                    }
+                }
+
+                while solver.solve().unwrap_or(SolverResult::Unsat) == SolverResult::Sat {
+                    let sol = match solver.full_solution() {
+                        Ok(s) => s,
+                        Err(_) => break,
+                    };
+                    let active_edges: Vec<(i32, i32)> = internal_real
+                        .iter()
+                        .copied()
+                        .filter(|e| sol.lit_value(Lit::new(edge_vars[e], false)) == TernaryVal::True)
+                        .collect();
+
+                    let mut p_adj: HashMap<i32, Vec<i32>> = HashMap::new();
+                    for &u in &m.vertices {
+                        p_adj.entry(u).or_default().push(v_partner[&u]);
+                    }
+                    for &(u, v) in &active_edges {
+                        p_adj.entry(u).or_default().push(v);
+                        p_adj.entry(v).or_default().push(u);
+                    }
+
+                    let mut visited_p = HashSet::new();
+                    visited_p.insert(pin);
+                    let mut curr = pin;
+                    while let Some(nxt) = p_adj.get(&curr).and_then(|nbrs| nbrs.iter().find(|x| !visited_p.contains(x))) {
+                        curr = *nxt;
+                        visited_p.insert(curr);
+                    }
+
+                    if visited_p.len() == m.vertices.len() && curr == pout {
+                        catalog.push(ModulePathConfig {
+                            port_in: pin,
+                            port_out: pout,
+                            internal_real_edges: active_edges,
+                        });
+                        break;
+                    } else {
+                        let cut_lits: Vec<Lit> = active_edges
+                            .iter()
+                            .map(|e| !Lit::new(edge_vars[e], false))
+                            .collect();
+                        let _ = solver.add_clause(Clause::from_iter(cut_lits));
+                    }
+                }
+            }
+        }
+
+        catalog
+    }
+}
