@@ -65,7 +65,7 @@ impl PortCorridorLns {
         let mut dock_positions: Vec<usize> = docking.iter().map(|p| giant_pos[p.idx()]).collect();
         dock_positions.sort();
 
-        // Find the shortest circular interval covering all docking positions (or densest cluster within max_span)
+        // Find the shortest circular interval covering all docking positions
         let mut best_start = dock_positions[0];
         let mut best_len = n_giant_ports;
 
@@ -83,12 +83,38 @@ impl PortCorridorLns {
             }
         }
 
-        // If best_len in blocks exceeds max_span * 2, clamp to max_span * 2
-        let span_len = std::cmp::min(best_len, max_span * 2);
+        // Align boundaries to complete blocks to preserve bipartite parity:
+        // In AlternatingPortEngine cycles, external edges connect index 2k to 2k+1,
+        // and internal degree-2 chains connect 2k+1 to (2k+2) % 2L.
+        // Therefore, entry_idx MUST be odd (2k+1) and exit_idx MUST be even (2m),
+        // cutting strictly external edges and keeping all blocks complete.
+        let aligned_start = if best_start % 2 == 0 {
+            (best_start + n_giant_ports - 1) % n_giant_ports
+        } else {
+            best_start
+        };
 
-        // Add buffer
+        let raw_end = (best_start + best_len - 1) % n_giant_ports;
+        let aligned_end = if raw_end % 2 != 0 {
+            (raw_end + 1) % n_giant_ports
+        } else {
+            raw_end
+        };
+
+        let mut aligned_len = if aligned_end >= aligned_start {
+            aligned_end - aligned_start + 1
+        } else {
+            (n_giant_ports - aligned_start) + aligned_end + 1
+        };
+        if aligned_len > n_giant_ports {
+            aligned_len = n_giant_ports;
+        }
+
+        let span_len = std::cmp::min(aligned_len, max_span * 2);
+
+        // Add buffer blocks with underflow protection
         let buf_ports = buffer * 2;
-        let entry_idx = (best_start + n_giant_ports - buf_ports) % n_giant_ports;
+        let entry_idx = (aligned_start + n_giant_ports - (buf_ports % n_giant_ports)) % n_giant_ports;
         let total_subpath_ports = std::cmp::min(span_len + buf_ports * 2, n_giant_ports);
         let exit_idx = (entry_idx + total_subpath_ports - 1) % n_giant_ports;
 

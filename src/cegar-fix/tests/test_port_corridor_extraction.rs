@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use cegar_fix::graph::Graph;
 use cegar_fix::contraction::Degree2Contractor;
-use cegar_fix::alternating_port_engine::{AlternatingPortEngine, min_max};
+use cegar_fix::alternating_port_engine::{AlternatingPortEngine, min_max, Port};
 use cegar_fix::port_corridor_lns::PortCorridorLns;
 
 #[test]
@@ -59,4 +59,81 @@ fn test_port_coordinate_mapping_and_corridor_extraction() {
     assert!(corridor.unfrozen_blocks.contains(&4));
     assert!(corridor.unfrozen_blocks.contains(&5));
     assert!(corridor.unfrozen_blocks.len() >= 4, "Must unfreeze satellite blocks + giant subpath blocks");
+
+    // Parity and complete block assertions:
+    let entry_pos = giant_pos[corridor.entry_port.idx()];
+    let exit_pos = giant_pos[corridor.exit_port.idx()];
+    assert_eq!(entry_pos % 2, 1, "Entry port index must be odd (preceding edge is external)");
+    assert_eq!(exit_pos % 2, 0, "Exit port index must be even (succeeding edge is external)");
+
+    // Assert that for every block in corridor.giant_subpath_blocks, both ports are present in the corridor
+    let corridor_ports: HashSet<Port> = {
+        let n_giant = giant.len();
+        let total_ports = if exit_pos >= entry_pos {
+            exit_pos - entry_pos + 1
+        } else {
+            (n_giant - entry_pos) + exit_pos + 1
+        };
+        assert_eq!(total_ports % 2, 0, "Total subpath ports must be even");
+        (0..total_ports).map(|step| giant[(entry_pos + step) % n_giant]).collect()
+    };
+
+    for &b in &corridor.giant_subpath_blocks {
+        let p0 = Port { block: b, end: 0 };
+        let p1 = Port { block: b, end: 1 };
+        assert!(corridor_ports.contains(&p0), "Block {} port 0 must be in corridor", b);
+        assert!(corridor_ports.contains(&p1), "Block {} port 1 must be in corridor", b);
+    }
+}
+
+#[test]
+fn test_corridor_underflow_protection_and_zero_buffer() {
+    let mut g = Graph::new();
+    let mut contractor = Degree2Contractor::new();
+
+    for b in 0..6 {
+        let u = (b * 2) as i32;
+        let w = (b * 2 + 1) as i32;
+        contractor.chain_map.insert((u, w), vec![]);
+        contractor.chain_map.insert((w, u), vec![]);
+        g.add_edge(u, w);
+    }
+
+    let mut edges = HashSet::new();
+    edges.insert(min_max(1, 2));
+    edges.insert(min_max(3, 4));
+    edges.insert(min_max(5, 6));
+    edges.insert(min_max(7, 0));
+    edges.insert(min_max(9, 10));
+    edges.insert(min_max(11, 8));
+
+    for &e in &edges {
+        g.add_edge(e.0, e.1);
+    }
+
+    // Single docking edge
+    g.add_edge(9, 2);
+
+    let (n_blocks, node_to_port, port_to_node) = AlternatingPortEngine::setup_ports(&contractor);
+    let (cycs, _) = AlternatingPortEngine::get_cycles(&edges, &node_to_port, &port_to_node, n_blocks);
+
+    let giant = &cycs[0];
+    let sat = &cycs[1];
+    let giant_pos = PortCorridorLns::map_giant_coordinates(giant, n_blocks);
+
+    // Test buffer = 0
+    let corridor_b0 = PortCorridorLns::build_subpath_corridor(sat, giant, &giant_pos, &g, &node_to_port, &port_to_node, 10, 0)
+        .expect("Must build corridor with buffer 0");
+    let entry_pos0 = giant_pos[corridor_b0.entry_port.idx()];
+    let exit_pos0 = giant_pos[corridor_b0.exit_port.idx()];
+    assert_eq!(entry_pos0 % 2, 1, "Entry port must be odd with buffer 0");
+    assert_eq!(exit_pos0 % 2, 0, "Exit port must be even with buffer 0");
+
+    // Test large buffer > n_giant_ports (underflow protection)
+    let corridor_large_buf = PortCorridorLns::build_subpath_corridor(sat, giant, &giant_pos, &g, &node_to_port, &port_to_node, 10, 50)
+        .expect("Must build corridor with large buffer without panic");
+    let entry_pos_l = giant_pos[corridor_large_buf.entry_port.idx()];
+    let exit_pos_l = giant_pos[corridor_large_buf.exit_port.idx()];
+    assert_eq!(entry_pos_l % 2, 1, "Entry port must be odd with large buffer");
+    assert_eq!(exit_pos_l % 2, 0, "Exit port must be even with large buffer");
 }
