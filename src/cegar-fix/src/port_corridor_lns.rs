@@ -3,9 +3,10 @@ use crate::graph::Graph;
 use crate::contraction::Degree2Contractor;
 use crate::alternating_port_engine::{AlternatingPortEngine, min_max, Port};
 use crate::encoder::Encoder;
+use rustsat::clause;
 use rustsat::instances::Cnf;
 use rustsat::solvers::{Solve, SolveIncremental, SolverResult};
-use rustsat::types::{Clause, Lit, TernaryVal};
+use rustsat::types::{Clause, Lit, TernaryVal, Var};
 use rustsat_cadical::CaDiCaL;
 
 #[derive(Debug, Clone)]
@@ -296,6 +297,111 @@ impl PortCorridorLns {
             exit_port,
             unfrozen_blocks,
         })
+    }
+
+    pub fn inject_unary_mtz_ordering(
+        solver: &mut CaDiCaL,
+        corridor: &PortSubpathCorridor,
+        encoder: &Encoder,
+        g: &Graph,
+        node_to_port: &HashMap<i32, Port>,
+        port_to_node: &HashMap<Port, i32>,
+        next_free_var: &mut i32,
+    ) -> (HashMap<(usize, usize), Lit>, usize) {
+        let k = corridor.unfrozen_blocks.len();
+        if k < 2 {
+            return (HashMap::new(), 0);
+        }
+
+        let b_entry = corridor.entry_port.block;
+        let b_exit = corridor.exit_port.block;
+
+        let mut order_vars: HashMap<(usize, usize), Lit> = HashMap::new();
+        let mut clause_count = 0;
+
+        // 1. Allocate O_{b, t} variables for all b in Omega, t in 1..K
+        for &b in &corridor.unfrozen_blocks {
+            for t in 1..k {
+                let var_id = *next_free_var;
+                *next_free_var += 1;
+                let lit = Var::new(var_id as u32).pos_lit();
+                order_vars.insert((b, t), lit);
+            }
+        }
+
+        // 2. Ladder consistency clauses: O_{b, t} => O_{b, t-1} (!O_{b, t} \/ O_{b, t-1}) for t in 2..K
+        for &b in &corridor.unfrozen_blocks {
+            for t in 2..k {
+                let o_curr = order_vars[&(b, t)];
+                let o_prev = order_vars[&(b, t - 1)];
+                let _ = solver.add_clause(clause![!o_curr, o_prev]);
+                clause_count += 1;
+            }
+        }
+
+        // 3. Boundary clauses:
+        // !O_{b_entry, 1}
+        if let Some(&o_entry_1) = order_vars.get(&(b_entry, 1)) {
+            let _ = solver.add_clause(clause![!o_entry_1]);
+            clause_count += 1;
+        }
+
+        // O_{b_exit, K-1}
+        if let Some(&o_exit_k_minus_1) = order_vars.get(&(b_exit, k - 1)) {
+            let _ = solver.add_clause(clause![o_exit_k_minus_1]);
+            clause_count += 1;
+        }
+
+        // For all b != b_exit: !O_{b, K-1}
+        for &b in &corridor.unfrozen_blocks {
+            if b != b_exit {
+                if let Some(&o_b_k_minus_1) = order_vars.get(&(b, k - 1)) {
+                    let _ = solver.add_clause(clause![!o_b_k_minus_1]);
+                    clause_count += 1;
+                }
+            }
+        }
+
+        // 4. Candidate external edges inside Omega transitions
+        for &b1 in &corridor.unfrozen_blocks {
+            for end in 0..2 {
+                let p1 = Port { block: b1, end };
+                let u = match port_to_node.get(&p1) {
+                    Some(&node) => node,
+                    None => continue,
+                };
+                if let Some(nbrs) = g.adjacency_list.get(&u) {
+                    for &v in nbrs {
+                        if let Some(&p2) = node_to_port.get(&v) {
+                            let b2 = p2.block;
+                            if b1 != b2 && corridor.unfrozen_blocks.contains(&b2) {
+                                if let Some(&x_uv) = encoder.graph_lit_map.get(&(u, v)) {
+                                    // Step 0: x_{u->v} => O_{b2, 1} (!x_{u->v} \/ O_{b2, 1})
+                                    if let Some(&o_b2_1) = order_vars.get(&(b2, 1)) {
+                                        let _ = solver.add_clause(clause![!x_uv, o_b2_1]);
+                                        clause_count += 1;
+                                    }
+
+                                    // Step t in 1..(K-1): x_{u->v} /\ O_{b1, t} => O_{b2, t+1}
+                                    // (!x_{u->v} \/ !O_{b1, t} \/ O_{b2, t+1})
+                                    for t in 1..(k - 1) {
+                                        if let (Some(&o_b1_t), Some(&o_b2_t_plus_1)) = (
+                                            order_vars.get(&(b1, t)),
+                                            order_vars.get(&(b2, t + 1)),
+                                        ) {
+                                            let _ = solver.add_clause(clause![!x_uv, !o_b1_t, o_b2_t_plus_1]);
+                                            clause_count += 1;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        (order_vars, clause_count)
     }
 
     pub fn try_absorb_single_cycle(
