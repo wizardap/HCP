@@ -657,3 +657,313 @@ impl ModulePathCatalogExtractor {
         catalog
     }
 }
+
+pub struct RingDpSolver;
+
+impl RingDpSolver {
+    pub fn solve(raw_g: &Graph) -> Option<Vec<i32>> {
+        let (g, contractor) = Degree2Contractor::contract(raw_g);
+        Self::solve_contracted(&g, &contractor)
+    }
+
+    pub fn solve_contracted(g: &Graph, contractor: &Degree2Contractor) -> Option<Vec<i32>> {
+        let gadgets = match ModularRingDecomposer::extract_elementary_gadgets(g, contractor) {
+            Ok(g_list) => g_list,
+            Err(_) => return None,
+        };
+        let num_gadgets = gadgets.len();
+        if num_gadgets == 0 {
+            return None;
+        }
+
+        let mut node_to_gadget: HashMap<i32, usize> = HashMap::new();
+        for g_elem in &gadgets {
+            for &v in &g_elem.vertices {
+                node_to_gadget.insert(v, g_elem.id);
+            }
+        }
+
+        struct GadgetPathInfo {
+            gadget_id: usize,
+            port_in: i32,
+            port_out: i32,
+            path: Vec<i32>,
+        }
+
+        let mut options: Vec<GadgetPathInfo> = Vec::new();
+        let mut gadget_options: Vec<Vec<usize>> = vec![Vec::new(); num_gadgets];
+        let mut port_as_in_options: HashMap<i32, Vec<usize>> = HashMap::new();
+        let mut port_as_out_options: HashMap<i32, Vec<usize>> = HashMap::new();
+
+        for (g_id, elem) in gadgets.iter().enumerate() {
+            let mut v_partner = HashMap::new();
+            for &(u, w) in &elem.virtual_edges {
+                v_partner.insert(u, w);
+                v_partner.insert(w, u);
+            }
+            let vert_set: HashSet<i32> = elem.vertices.iter().copied().collect();
+            let mut real_nbrs: HashMap<i32, Vec<i32>> = HashMap::new();
+            for &u in &elem.vertices {
+                if let Some(nbrs) = g.adjacency_list.get(&u) {
+                    for &v in nbrs {
+                        if vert_set.contains(&v) && v_partner.get(&u) != Some(&v) {
+                            real_nbrs.entry(u).or_default().push(v);
+                        }
+                    }
+                }
+            }
+
+            let mut paths: Vec<Vec<i32>> = Vec::new();
+            let target_len = elem.vertices.len();
+
+            fn dfs(
+                curr: i32,
+                path: &mut Vec<i32>,
+                vis: &mut HashSet<i32>,
+                v_partner: &HashMap<i32, i32>,
+                real_nbrs: &HashMap<i32, Vec<i32>>,
+                paths: &mut Vec<Vec<i32>>,
+                target_len: usize,
+            ) {
+                if path.len() == target_len {
+                    paths.push(path.clone());
+                    return;
+                }
+                if path.len() % 2 == 1 {
+                    let nxt = v_partner[&curr];
+                    if !vis.contains(&nxt) {
+                        vis.insert(nxt);
+                        path.push(nxt);
+                        dfs(nxt, path, vis, v_partner, real_nbrs, paths, target_len);
+                        path.pop();
+                        vis.remove(&nxt);
+                    }
+                } else if let Some(nbrs) = real_nbrs.get(&curr) {
+                    for &nxt in nbrs {
+                        if !vis.contains(&nxt) {
+                            vis.insert(nxt);
+                            path.push(nxt);
+                            dfs(nxt, path, vis, v_partner, real_nbrs, paths, target_len);
+                            path.pop();
+                            vis.remove(&nxt);
+                        }
+                    }
+                }
+            }
+
+            for &start in &elem.vertices {
+                let mut vis = HashSet::new();
+                vis.insert(start);
+                let mut path = vec![start];
+                dfs(start, &mut path, &mut vis, &v_partner, &real_nbrs, &mut paths, target_len);
+            }
+
+            if paths.is_empty() {
+                return None;
+            }
+
+            let mut seen_pairs = HashSet::new();
+            for p in paths {
+                let a = p[0];
+                let b = *p.last().unwrap();
+                if seen_pairs.insert((a, b)) {
+                    let opt = options.len();
+                    options.push(GadgetPathInfo {
+                        gadget_id: g_id,
+                        port_in: a,
+                        port_out: b,
+                        path: p,
+                    });
+                    gadget_options[g_id].push(opt);
+                    port_as_in_options.entry(a).or_default().push(opt);
+                    port_as_out_options.entry(b).or_default().push(opt);
+                }
+            }
+        }
+
+        let mut v_partner = HashMap::new();
+        for (&(u, w), _) in &contractor.chain_map {
+            v_partner.insert(u, w);
+            v_partner.insert(w, u);
+        }
+
+        let mut ext_edges: Vec<(i32, i32)> = Vec::new();
+        let mut in_edges: HashMap<i32, Vec<usize>> = HashMap::new();
+        let mut out_edges: HashMap<i32, Vec<usize>> = HashMap::new();
+
+        for g1 in 0..num_gadgets {
+            for &u in &gadgets[g1].ports {
+                if let Some(nbrs) = g.adjacency_list.get(&u) {
+                    for &v in nbrs {
+                        if let Some(&g2) = node_to_gadget.get(&v) {
+                            if g1 != g2 && v_partner.get(&u) != Some(&v) && gadgets[g2].ports.contains(&v) {
+                                let e_id = ext_edges.len();
+                                ext_edges.push((u, v));
+                                out_edges.entry(u).or_default().push(e_id);
+                                in_edges.entry(v).or_default().push(e_id);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let n_opt = options.len();
+        let var_opt = |opt: usize| Lit::new(opt as u32, false);
+        let var_ext = |e: usize| Lit::new((n_opt + e) as u32, false);
+
+        let mut solver = CaDiCaL::default();
+
+        for g_id in 0..num_gadgets {
+            let opts = &gadget_options[g_id];
+            let lits: Vec<Lit> = opts.iter().map(|&o| var_opt(o)).collect();
+            if solver.add_clause(Clause::from_iter(lits.clone())).is_err() {
+                return None;
+            }
+            for i in 0..lits.len() {
+                for j in (i + 1)..lits.len() {
+                    let _ = solver.add_clause(Clause::from_iter(vec![!lits[i], !lits[j]]));
+                }
+            }
+        }
+
+        for (&u, in_e_list) in &in_edges {
+            let in_opt_lits: Vec<Lit> = port_as_in_options
+                .get(&u)
+                .unwrap_or(&Vec::new())
+                .iter()
+                .map(|&o| var_opt(o))
+                .collect();
+            let in_e_lits: Vec<Lit> = in_e_list.iter().map(|&e| var_ext(e)).collect();
+
+            for &e_lit in &in_e_lits {
+                let mut cl = vec![!e_lit];
+                cl.extend_from_slice(&in_opt_lits);
+                let _ = solver.add_clause(Clause::from_iter(cl));
+            }
+
+            for i in 0..in_e_lits.len() {
+                for j in (i + 1)..in_e_lits.len() {
+                    let _ = solver.add_clause(Clause::from_iter(vec![!in_e_lits[i], !in_e_lits[j]]));
+                }
+            }
+
+            for &opt_lit in &in_opt_lits {
+                let mut cl = vec![!opt_lit];
+                cl.extend_from_slice(&in_e_lits);
+                let _ = solver.add_clause(Clause::from_iter(cl));
+            }
+        }
+
+        for (&u, out_e_list) in &out_edges {
+            let out_opt_lits: Vec<Lit> = port_as_out_options
+                .get(&u)
+                .unwrap_or(&Vec::new())
+                .iter()
+                .map(|&o| var_opt(o))
+                .collect();
+            let out_e_lits: Vec<Lit> = out_e_list.iter().map(|&e| var_ext(e)).collect();
+
+            for &e_lit in &out_e_lits {
+                let mut cl = vec![!e_lit];
+                cl.extend_from_slice(&out_opt_lits);
+                let _ = solver.add_clause(Clause::from_iter(cl));
+            }
+
+            for i in 0..out_e_lits.len() {
+                for j in (i + 1)..out_e_lits.len() {
+                    let _ = solver.add_clause(Clause::from_iter(vec![!out_e_lits[i], !out_e_lits[j]]));
+                }
+            }
+
+            for &opt_lit in &out_opt_lits {
+                let mut cl = vec![!opt_lit];
+                cl.extend_from_slice(&out_e_lits);
+                let _ = solver.add_clause(Clause::from_iter(cl));
+            }
+        }
+
+        let mut max_iters = 1000;
+        while max_iters > 0 && solver.solve().unwrap_or(SolverResult::Unsat) == SolverResult::Sat {
+            max_iters -= 1;
+            let sol = match solver.full_solution() {
+                Ok(s) => s,
+                Err(_) => return None,
+            };
+
+            let mut chosen_opt_by_gadget = vec![usize::MAX; num_gadgets];
+            for (opt_idx, opt) in options.iter().enumerate() {
+                if sol.lit_value(var_opt(opt_idx)) == TernaryVal::True {
+                    chosen_opt_by_gadget[opt.gadget_id] = opt_idx;
+                }
+            }
+
+            let mut succ_gadget = vec![usize::MAX; num_gadgets];
+            let mut active_ext_by_g = vec![usize::MAX; num_gadgets];
+            for (e_idx, &(u, v)) in ext_edges.iter().enumerate() {
+                if sol.lit_value(var_ext(e_idx)) == TernaryVal::True {
+                    let g1 = node_to_gadget[&u];
+                    let g2 = node_to_gadget[&v];
+                    succ_gadget[g1] = g2;
+                    active_ext_by_g[g1] = e_idx;
+                }
+            }
+
+            let mut visited = vec![false; num_gadgets];
+            let mut cycles = Vec::new();
+
+            for i in 0..num_gadgets {
+                if !visited[i] {
+                    let mut c = Vec::new();
+                    let mut curr = i;
+                    while curr != usize::MAX && !visited[curr] {
+                        visited[curr] = true;
+                        c.push(curr);
+                        curr = succ_gadget[curr];
+                    }
+                    if curr == i {
+                        cycles.push(c);
+                    }
+                }
+            }
+
+            if cycles.len() == 1 && cycles[0].len() == num_gadgets {
+                let cycle = &cycles[0];
+                let mut contracted_cycle = Vec::with_capacity(g.adjacency_list.len());
+                for &g_idx in cycle {
+                    let opt_idx = chosen_opt_by_gadget[g_idx];
+                    let p = &options[opt_idx].path;
+                    contracted_cycle.extend_from_slice(p);
+                }
+
+                if contracted_cycle.len() != g.adjacency_list.len() {
+                    return None;
+                }
+
+                let raw_tour = contractor.uncontract_cycle(&contracted_cycle);
+                if raw_tour.len() == contractor.original_vertices_count {
+                    return Some(raw_tour);
+                } else {
+                    return None;
+                }
+            }
+
+            for c in cycles {
+                if c.len() < num_gadgets {
+                    let cut_lits: Vec<Lit> = c
+                        .iter()
+                        .filter(|&&g_idx| active_ext_by_g[g_idx] != usize::MAX)
+                        .map(|&g_idx| {
+                            let e_id = active_ext_by_g[g_idx];
+                            !var_ext(e_id)
+                        })
+                        .collect();
+                    let _ = solver.add_clause(Clause::from_iter(cut_lits));
+                }
+            }
+        }
+
+        None
+    }
+}
+

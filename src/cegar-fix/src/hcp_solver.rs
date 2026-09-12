@@ -47,6 +47,7 @@ use crate::balanced_pair_cutset::BalancedPairCutset;
 use crate::localized_sat_repair::LocalizedSatRepair;
 use crate::alternating_port_engine::AlternatingPortEngine;
 use crate::port_corridor_lns::PortCorridorLns;
+use crate::modular_ring_dp_solver::RingDpSolver;
 
 
 
@@ -278,6 +279,19 @@ pub fn solve_hamilton(g:Graph, contractor: &Degree2Contractor, hub_registry: &Hu
     if let Some(hierarchical_tour) = HubHierarchicalDecomposer::try_solve_hierarchical(&g) {
         println!("HubHierarchicalDecomposer: successfully solved graph via 2-tier hub hierarchy!");
         return Some(contractor.expand_tour(&hierarchical_tour));
+    }
+
+    // Fast Track: Modular Ring DP / Quotient Solver
+    if !contractor.chain_map.is_empty() && hub_registry.hub_vertices.is_empty() {
+        if let Some(ring_tour) = RingDpSolver::solve_contracted(&g, contractor) {
+            println!("RingDpSolver: successfully solved graph via Modular Ring Quotient Solver!");
+            let line = ring_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+            println!();
+            println!("solution: ");
+            println!("{}\n", line);
+            println!("s SATISFIABLE");
+            return Some(ring_tour);
+        }
     }
 
     let mut encoder = Encoder::new();
