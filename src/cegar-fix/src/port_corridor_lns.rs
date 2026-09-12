@@ -17,6 +17,15 @@ pub struct PortSubpathCorridor {
     pub unfrozen_blocks: HashSet<usize>,
 }
 
+#[derive(Debug, Clone)]
+pub struct AnchorCandidate {
+    pub start_pos: usize,
+    pub end_pos: usize,
+    pub span: usize,
+    pub sat_dock1: Port,
+    pub sat_dock2: Port,
+}
+
 pub struct PortCorridorLns;
 
 impl PortCorridorLns {
@@ -142,6 +151,137 @@ impl PortCorridorLns {
 
         for step in 0..total_subpath_ports {
             let idx = (entry_idx + step) % n_giant_ports;
+            let b = giant[idx].block;
+            if unfrozen_blocks.insert(b) {
+                giant_subpath_blocks.push(b);
+            }
+        }
+
+        Some(PortSubpathCorridor {
+            sat_blocks,
+            giant_subpath_blocks,
+            entry_port,
+            exit_port,
+            unfrozen_blocks,
+        })
+    }
+
+    pub fn find_anchor_candidates(
+        sat: &[Port],
+        giant: &[Port],
+        giant_pos: &[usize],
+        g: &Graph,
+        node_to_port: &HashMap<i32, Port>,
+        port_to_node: &HashMap<Port, i32>,
+        max_span: usize,
+    ) -> Vec<AnchorCandidate> {
+        let giant_blocks: HashSet<usize> = giant.iter().map(|p| p.block).collect();
+        let n_giant = giant.len();
+
+        // Collect all (giant_port, sat_port) docking pairs
+        let mut dock_pairs: Vec<(Port, Port)> = Vec::new();
+        for &p_sat in sat {
+            let u = port_to_node[&p_sat];
+            if let Some(nbrs) = g.adjacency_list.get(&u) {
+                for &v in nbrs {
+                    if let Some(&p_giant) = node_to_port.get(&v) {
+                        if giant_blocks.contains(&p_giant.block) {
+                            dock_pairs.push((p_giant, p_sat));
+                        }
+                    }
+                }
+            }
+        }
+
+        if dock_pairs.len() < 2 {
+            return Vec::new();
+        }
+
+        let mut candidates = Vec::new();
+        for i in 0..dock_pairs.len() {
+            let (dg1, ds1) = dock_pairs[i];
+            let pos1 = giant_pos[dg1.idx()];
+            for j in (i + 1)..dock_pairs.len() {
+                let (dg2, ds2) = dock_pairs[j];
+                let pos2 = giant_pos[dg2.idx()];
+                if ds1.block == ds2.block && ds1.end == ds2.end {
+                    continue; // Must connect distinct satellite ports or blocks
+                }
+
+                let d_fwd = (pos2 + n_giant - pos1) % n_giant;
+                let d_bwd = (pos1 + n_giant - pos2) % n_giant;
+                let (start_pos, end_pos, span, p1, p2) = if d_fwd <= d_bwd {
+                    (pos1, pos2, d_fwd, ds1, ds2)
+                } else {
+                    (pos2, pos1, d_bwd, ds2, ds1)
+                };
+
+                if span <= max_span * 2 {
+                    candidates.push(AnchorCandidate {
+                        start_pos,
+                        end_pos,
+                        span,
+                        sat_dock1: p1,
+                        sat_dock2: p2,
+                    });
+                }
+            }
+        }
+
+        candidates.sort_by_key(|c| c.span);
+        // Deduplicate overlapping positions
+        candidates.dedup_by(|a, b| a.start_pos == b.start_pos && a.end_pos == b.end_pos);
+        candidates
+    }
+
+    pub fn build_corridor_from_anchor(
+        anchor: &AnchorCandidate,
+        sat: &[Port],
+        giant: &[Port],
+        buffer: usize,
+    ) -> Option<PortSubpathCorridor> {
+        let n_giant = giant.len();
+        let max_subpath_ports = if n_giant > 2 { n_giant - 2 } else { n_giant };
+
+        let buf_ports = buffer * 2;
+        let raw_start = (anchor.start_pos + n_giant - (buf_ports % n_giant)) % n_giant;
+        let entry_idx = if raw_start % 2 == 0 {
+            (raw_start + n_giant - 1) % n_giant
+        } else {
+            raw_start
+        };
+
+        let raw_end = (anchor.end_pos + buf_ports) % n_giant;
+        let exit_idx = if raw_end % 2 != 0 {
+            (raw_end + 1) % n_giant
+        } else {
+            raw_end
+        };
+
+        let mut total_subpath_ports = if exit_idx >= entry_idx {
+            exit_idx - entry_idx + 1
+        } else {
+            (n_giant - entry_idx) + exit_idx + 1
+        };
+
+        if total_subpath_ports > max_subpath_ports {
+            return None;
+        }
+
+        // Parity invariant: total_subpath_ports must be even
+        if total_subpath_ports % 2 != 0 {
+            total_subpath_ports += 1;
+        }
+
+        let entry_port = giant[entry_idx];
+        let exit_port = giant[(entry_idx + total_subpath_ports - 1) % n_giant];
+
+        let sat_blocks: HashSet<usize> = sat.iter().map(|p| p.block).collect();
+        let mut giant_subpath_blocks = Vec::new();
+        let mut unfrozen_blocks = sat_blocks.clone();
+
+        for step in 0..total_subpath_ports {
+            let idx = (entry_idx + step) % n_giant;
             let b = giant[idx].block;
             if unfrozen_blocks.insert(b) {
                 giant_subpath_blocks.push(b);
