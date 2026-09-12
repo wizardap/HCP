@@ -228,7 +228,7 @@ impl PortCorridorLns {
             }
         }
 
-        candidates.sort_by_key(|c| c.span);
+        candidates.sort_by_key(|c| (c.span, c.start_pos, c.end_pos));
         // Deduplicate overlapping positions
         candidates.dedup_by(|a, b| a.start_pos == b.start_pos && a.end_pos == b.end_pos);
         candidates
@@ -243,7 +243,8 @@ impl PortCorridorLns {
         let n_giant = giant.len();
         let max_subpath_ports = if n_giant > 2 { n_giant - 2 } else { n_giant };
 
-        let buf_ports = buffer * 2;
+        let max_buffer_ports = (max_subpath_ports.saturating_sub(anchor.span)) / 4 * 2;
+        let buf_ports = std::cmp::min(buffer * 2, max_buffer_ports);
         let raw_start = (anchor.start_pos + n_giant - (buf_ports % n_giant)) % n_giant;
         let entry_idx = if raw_start % 2 == 0 {
             (raw_start + n_giant - 1) % n_giant
