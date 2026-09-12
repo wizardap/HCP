@@ -65,6 +65,7 @@ pub mod module_state_cnf_encoder;
 pub mod balanced_pair_cutset;
 pub mod localized_sat_repair;
 pub mod alternating_port_engine;
+pub mod port_corridor_lns;
 
 
 use contraction::Degree2Contractor;

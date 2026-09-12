@@ -46,6 +46,8 @@ use crate::module_state_cnf_encoder::ModuleStateCnfEncoder;
 use crate::balanced_pair_cutset::BalancedPairCutset;
 use crate::localized_sat_repair::LocalizedSatRepair;
 use crate::alternating_port_engine::AlternatingPortEngine;
+use crate::port_corridor_lns::PortCorridorLns;
+
 
 
 
@@ -581,6 +583,37 @@ fn cegar(
                             return (count, clause_count, Some(final_tour));
                         }
                         repaired
+                    } else {
+                        sol_cycles
+                    };
+
+                    // Attempt Port Corridor LNS Subcycle Absorption
+                    let sol_cycles = if alternating_engine != 0 && !contractor.chain_map.is_empty() && sol_cycles.len() > 1 {
+                        let absorbed = PortCorridorLns::repair(&sol_cycles, &g, contractor, encoder, &base_cnf);
+                        if absorbed.len() < sol_cycles.len() {
+                            println!("PortCorridorLns: absorbed satellite subcycles from {} down to {} cycles", sol_cycles.len(), absorbed.len());
+                        }
+                        if absorbed.len() == 1 && (absorbed[0].len() == g.adjacency_list.len() || absorbed[0].len() == contractor.original_vertices_count) {
+                            println!("*** 100% HAMILTONIAN TOUR FOUND VIA PORT CORRIDOR LNS! ***");
+                            let flat: Vec<i32> = absorbed.into_iter().flatten().collect();
+                            let final_tour = if flat.len() == contractor.original_vertices_count {
+                                flat
+                            } else {
+                                contractor.uncontract_cycle(&flat)
+                            };
+                            let line = final_tour.iter().map(|i| i.to_string()).collect::<Vec<String>>().join(" ");
+                            let time = now - previous_time;
+                            let add_block_clauses_time = now - previous_time - sat_solving_time;
+                            println!("number of added block clauses = {}", clause_count);
+                            println!("add block clauses time = {:?}", add_block_clauses_time);
+                            println!("increment time = {:?}", time);
+                            println!();
+                            println!("solution: ");
+                            println!("{}\n", line);
+                            println!("s SATISFIABLE");
+                            return (count, clause_count, Some(final_tour));
+                        }
+                        absorbed
                     } else {
                         sol_cycles
                     };
