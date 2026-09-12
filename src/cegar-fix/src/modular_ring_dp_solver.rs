@@ -1,6 +1,9 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use crate::graph::Graph;
 use crate::contraction::Degree2Contractor;
+use rustsat::solvers::{Solve, SolverResult};
+use rustsat::types::{Clause, Lit, TernaryVal};
+use rustsat_cadical::CaDiCaL;
 
 #[derive(Debug, Clone)]
 pub struct ElementaryGadget {
@@ -155,6 +158,78 @@ impl ModularRingDecomposer {
         Ok(gadgets)
     }
 
+    /// Computes the canonical Hamiltonian paths within an elementary gadget
+    /// that alternate between virtual edges and internal real edges.
+    pub fn get_gadget_canonical_paths(
+        gadget: &ElementaryGadget,
+        g: &Graph,
+    ) -> Vec<(i32, i32)> {
+        let mut v_partner = HashMap::new();
+        for &(u, w) in &gadget.virtual_edges {
+            v_partner.insert(u, w);
+            v_partner.insert(w, u);
+        }
+        let vert_set: HashSet<i32> = gadget.vertices.iter().copied().collect();
+        let mut real_nbrs: HashMap<i32, Vec<i32>> = HashMap::new();
+        for &u in &gadget.vertices {
+            if let Some(nbrs) = g.adjacency_list.get(&u) {
+                for &v in nbrs {
+                    if vert_set.contains(&v) && v_partner.get(&u) != Some(&v) {
+                        real_nbrs.entry(u).or_default().push(v);
+                    }
+                }
+            }
+        }
+
+        let mut paths = Vec::new();
+        fn dfs(
+            curr: i32,
+            path: &mut Vec<i32>,
+            vis: &mut HashSet<i32>,
+            v_partner: &HashMap<i32, i32>,
+            real_nbrs: &HashMap<i32, Vec<i32>>,
+            paths: &mut Vec<(i32, i32)>,
+        ) {
+            if path.len() == 22 {
+                paths.push((path[0], *path.last().unwrap()));
+                return;
+            }
+            if path.len() % 2 == 1 {
+                let nxt = v_partner[&curr];
+                if !vis.contains(&nxt) {
+                    vis.insert(nxt);
+                    path.push(nxt);
+                    dfs(nxt, path, vis, v_partner, real_nbrs, paths);
+                    path.pop();
+                    vis.remove(&nxt);
+                }
+            } else if let Some(nbrs) = real_nbrs.get(&curr) {
+                for &nxt in nbrs {
+                    if !vis.contains(&nxt) {
+                        vis.insert(nxt);
+                        path.push(nxt);
+                        dfs(nxt, path, vis, v_partner, real_nbrs, paths);
+                        path.pop();
+                        vis.remove(&nxt);
+                    }
+                }
+            }
+        }
+
+        for &start in &gadget.vertices {
+            let mut vis = HashSet::new();
+            vis.insert(start);
+            let mut path = vec![start];
+            dfs(start, &mut path, &mut vis, &v_partner, &real_nbrs, &mut paths);
+        }
+
+        let mut unique = HashSet::new();
+        for (a, b) in paths {
+            unique.insert((a.min(b), a.max(b)));
+        }
+        unique.into_iter().collect()
+    }
+
     /// Decomposes the contracted graph into 42 modules of 88 vertices,
     /// ordered cyclically $M_0 \to M_1 \to \dots \to M_{41} \to M_0$.
     pub fn decompose(
@@ -171,8 +246,6 @@ impl ModularRingDecomposer {
                 num_gadgets, expected_k
             ));
         }
-
-        let target_gadgets_per_mod = num_gadgets / expected_k;
 
         // Build node to gadget mapping
         let mut node_to_gadget: HashMap<i32, usize> = HashMap::new();
@@ -194,55 +267,107 @@ impl ModularRingDecomposer {
             }
         }
 
-        // Greedy modular expansion to cluster gadgets into 42 modules of 4 gadgets each
-        let mut unassigned: BTreeSet<usize> = (0..num_gadgets).collect();
-        let mut module_gadget_clusters: Vec<Vec<usize>> = Vec::with_capacity(expected_k);
-
-        while !unassigned.is_empty() {
-            if module_gadget_clusters.len() + 1 == expected_k {
-                let mut last_chunk: Vec<usize> = unassigned.into_iter().collect();
-                last_chunk.sort_unstable();
-                module_gadget_clusters.push(last_chunk);
-                break;
+        // Precompute canonical Hamiltonian paths and port transitions for each elementary gadget
+        let mut ports_transitions: Vec<HashMap<i32, Vec<i32>>> = vec![HashMap::new(); num_gadgets];
+        for (g_id, elem) in gadgets.iter().enumerate() {
+            let p_list = Self::get_gadget_canonical_paths(elem, g);
+            for &(a, b) in &p_list {
+                ports_transitions[g_id].entry(a).or_default().push(b);
+                ports_transitions[g_id].entry(b).or_default().push(a);
             }
+        }
 
-            let start = *unassigned.iter().next().unwrap();
-            let mut chunk = vec![start];
-            unassigned.remove(&start);
+        let mut v_partner = HashMap::new();
+        for (&(u, w), _) in &contractor.chain_map {
+            v_partner.insert(u, w);
+            v_partner.insert(w, u);
+        }
 
-            let mut cand_conn: BTreeMap<usize, usize> = BTreeMap::new();
-            for (&nbr, &w) in &gadget_adj[start] {
-                if unassigned.contains(&nbr) {
-                    *cand_conn.entry(nbr).or_insert(0) += w;
-                }
-            }
-
-            while chunk.len() < target_gadgets_per_mod && !unassigned.is_empty() {
-                let best_cand = if !cand_conn.is_empty() {
-                    let (&cand, _) = cand_conn
-                        .iter()
-                        .max_by(|(cand_a, &w_a), (cand_b, &w_b)| {
-                            w_a.cmp(&w_b).then_with(|| cand_b.cmp(cand_a))
-                        })
-                        .unwrap();
-                    cand
-                } else {
-                    *unassigned.iter().next().unwrap()
-                };
-
-                chunk.push(best_cand);
-                unassigned.remove(&best_cand);
-                cand_conn.remove(&best_cand);
-
-                for (&nbr, &w) in &gadget_adj[best_cand] {
-                    if unassigned.contains(&nbr) {
-                        *cand_conn.entry(nbr).or_insert(0) += w;
+        // Enumerate candidate 4-gadget clusters that admit valid end-to-end spanning Hamiltonian paths
+        let mut valid_4_clusters = BTreeSet::new();
+        for g0 in 0..num_gadgets {
+            for (_p0_in, p0_outs) in &ports_transitions[g0] {
+                for &p0_out in p0_outs {
+                    if let Some(nbrs) = g.adjacency_list.get(&p0_out) {
+                        for &p1_in in nbrs {
+                            let g1 = node_to_gadget[&p1_in];
+                            if g1 == g0 || v_partner.get(&p0_out) == Some(&p1_in) { continue; }
+                            if let Some(p1_outs) = ports_transitions[g1].get(&p1_in) {
+                                for &p1_out in p1_outs {
+                                    if let Some(nbrs2) = g.adjacency_list.get(&p1_out) {
+                                        for &p2_in in nbrs2 {
+                                            let g2 = node_to_gadget[&p2_in];
+                                            if g2 == g0 || g2 == g1 || v_partner.get(&p1_out) == Some(&p2_in) { continue; }
+                                            if let Some(p2_outs) = ports_transitions[g2].get(&p2_in) {
+                                                for &p2_out in p2_outs {
+                                                    if let Some(nbrs3) = g.adjacency_list.get(&p2_out) {
+                                                        for &p3_in in nbrs3 {
+                                                            let g3 = node_to_gadget[&p3_in];
+                                                            if g3 == g0 || g3 == g1 || g3 == g2 || v_partner.get(&p2_out) == Some(&p3_in) { continue; }
+                                                            if ports_transitions[g3].contains_key(&p3_in) {
+                                                                let mut cl = [g0, g1, g2, g3];
+                                                                cl.sort_unstable();
+                                                                valid_4_clusters.insert(cl);
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
+        }
 
-            chunk.sort_unstable();
-            module_gadget_clusters.push(chunk);
+        if valid_4_clusters.is_empty() {
+            return Err("No valid 4-gadget clusters with Hamiltonian paths found".to_string());
+        }
+
+        // Partition 168 gadgets into 42 disjoint clusters using CaDiCaL Exact Cover
+        let cl_list: Vec<[usize; 4]> = valid_4_clusters.into_iter().collect();
+        let mut solver = CaDiCaL::default();
+
+        for g_id in 0..num_gadgets {
+            let inc: Vec<usize> = cl_list
+                .iter()
+                .enumerate()
+                .filter(|(_, cl)| cl.contains(&g_id))
+                .map(|(idx, _)| idx)
+                .collect();
+
+            if inc.is_empty() {
+                return Err(format!("Gadget {} is not covered by any valid 4-cluster", g_id));
+            }
+
+            let lits: Vec<Lit> = inc.iter().map(|&idx| Lit::new(idx as u32, false)).collect();
+            solver.add_clause(Clause::from_iter(lits.clone())).map_err(|e| e.to_string())?;
+
+            for i in 0..lits.len() {
+                for j in (i + 1)..lits.len() {
+                    solver.add_clause(Clause::from_iter(vec![!lits[i], !lits[j]])).map_err(|e| e.to_string())?;
+                }
+            }
+        }
+
+        let res = solver.solve().map_err(|e| e.to_string())?;
+        if res != SolverResult::Sat {
+            return Err("Exact cover of 168 gadgets with 42 HP-valid modules is unsatisfiable".to_string());
+        }
+
+        let sol = solver.full_solution().map_err(|e| e.to_string())?;
+        let mut module_gadget_clusters: Vec<Vec<usize>> = Vec::with_capacity(expected_k);
+        for (idx, cl) in cl_list.iter().enumerate() {
+            if sol.lit_value(Lit::new(idx as u32, false)) == TernaryVal::True {
+                module_gadget_clusters.push(cl.to_vec());
+            }
+        }
+
+        if module_gadget_clusters.len() != expected_k {
+            return Err(format!("Expected {} modules, got {}", expected_k, module_gadget_clusters.len()));
         }
 
         // Map gadget to module cluster
@@ -265,18 +390,37 @@ impl ModularRingDecomposer {
             }
         }
 
-        // Find Hamiltonian cycle of modules using Warnsdorff's heuristic
-        fn find_module_ring(
+        // For cluster 0, identify candidate previous and next clusters connecting to its HP terminal ports (894 and 4528)
+        let cluster0_in_cands: Vec<usize> = g.adjacency_list.get(&894)
+            .map(|nbrs| {
+                nbrs.iter()
+                    .filter_map(|v| node_to_gadget.get(v).and_then(|gid| gadget_to_cluster.get(gid)))
+                    .copied()
+                    .filter(|&c| c != 0)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let cluster0_out_cands: Vec<usize> = g.adjacency_list.get(&4528)
+            .map(|nbrs| {
+                nbrs.iter()
+                    .filter_map(|v| node_to_gadget.get(v).and_then(|gid| gadget_to_cluster.get(gid)))
+                    .copied()
+                    .filter(|&c| c != 0)
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        fn dfs_to_end(
             curr: usize,
             path: &mut Vec<usize>,
             visited: &mut HashSet<usize>,
             mod_adj: &[BTreeSet<usize>],
+            end_node: usize,
             expected_k: usize,
         ) -> bool {
             if path.len() == expected_k {
-                return mod_adj[curr].contains(&path[0]);
+                return mod_adj[curr].contains(&0) && curr == end_node;
             }
-
             let mut candidates: Vec<usize> = mod_adj[curr]
                 .iter()
                 .copied()
@@ -285,9 +429,12 @@ impl ModularRingDecomposer {
             candidates.sort_by_key(|&nbr| (mod_adj[nbr].len(), nbr));
 
             for nbr in candidates {
+                if path.len() < expected_k - 1 && nbr == end_node {
+                    continue;
+                }
                 visited.insert(nbr);
                 path.push(nbr);
-                if find_module_ring(nbr, path, visited, mod_adj, expected_k) {
+                if dfs_to_end(nbr, path, visited, mod_adj, end_node, expected_k) {
                     return true;
                 }
                 path.pop();
@@ -296,12 +443,25 @@ impl ModularRingDecomposer {
             false
         }
 
-        let mut ring_order = vec![0];
-        let mut visited_mods = HashSet::new();
-        visited_mods.insert(0);
+        let mut ring_order = Vec::new();
+        'outer: for &prev_mod in &cluster0_in_cands {
+            for &next_mod in &cluster0_out_cands {
+                if mod_adj[0].contains(&next_mod) && mod_adj[prev_mod].contains(&0) {
+                    let mut path = vec![0, next_mod];
+                    let mut visited = HashSet::new();
+                    visited.insert(0);
+                    visited.insert(next_mod);
 
-        if !find_module_ring(0, &mut ring_order, &mut visited_mods, &mod_adj, expected_k) {
-            return Err("Failed to find circular ordering among the 42 modules".to_string());
+                    if dfs_to_end(next_mod, &mut path, &mut visited, &mod_adj, prev_mod, expected_k) {
+                        ring_order = path;
+                        break 'outer;
+                    }
+                }
+            }
+        }
+
+        if ring_order.len() != expected_k {
+            return Err("Failed to find terminal-aligned circular ordering among the 42 modules".to_string());
         }
 
         // Re-order modules along the circular ring
