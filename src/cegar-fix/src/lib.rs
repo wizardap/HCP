@@ -66,3 +66,4 @@ pub mod balanced_pair_cutset;
 pub mod localized_sat_repair;
 pub mod alternating_port_engine;
 pub mod port_corridor_lns;
+pub mod modular_ring_dp_solver;
