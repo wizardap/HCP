@@ -441,11 +441,92 @@ impl PortCorridorLns {
         base_cnf: &Cnf,
         other_cycles: &[Vec<Port>],
     ) -> Option<Vec<Port>> {
-        let corridor = match Self::build_subpath_corridor(sat, giant, giant_pos, g, node_to_port, port_to_node, 20, 2) {
-            Some(c) => c,
-            None => return None,
-        };
+        let anchor_candidates = Self::find_anchor_candidates(
+            sat,
+            giant,
+            giant_pos,
+            g,
+            node_to_port,
+            port_to_node,
+            30,
+        );
 
+        let mut corridors = Vec::new();
+        for anchor in &anchor_candidates {
+            if let Some(c) = Self::build_corridor_from_anchor(anchor, sat, giant, 1) {
+                if c.entry_port.block != c.exit_port.block {
+                    corridors.push(c);
+                }
+            }
+        }
+
+        let mut seen_endpoints = HashSet::new();
+        corridors.retain(|c| seen_endpoints.insert((c.entry_port, c.exit_port)));
+
+        if corridors.is_empty() {
+            if let Some(c) = Self::build_subpath_corridor(sat, giant, giant_pos, g, node_to_port, port_to_node, 20, 2) {
+                if c.entry_port.block != c.exit_port.block {
+                    corridors.push(c);
+                }
+            }
+        }
+
+        for corridor in &corridors {
+            if let Some(merged) = Self::try_solve_corridor(
+                corridor,
+                sat,
+                giant,
+                giant_pos,
+                g,
+                contractor,
+                node_to_port,
+                port_to_node,
+                encoder,
+                base_cnf,
+                other_cycles,
+            ) {
+                return Some(merged);
+            }
+        }
+
+        if !anchor_candidates.is_empty() {
+            if let Some(c) = Self::build_subpath_corridor(sat, giant, giant_pos, g, node_to_port, port_to_node, 20, 2) {
+                if !seen_endpoints.contains(&(c.entry_port, c.exit_port)) && c.entry_port.block != c.exit_port.block {
+                    if let Some(merged) = Self::try_solve_corridor(
+                        &c,
+                        sat,
+                        giant,
+                        giant_pos,
+                        g,
+                        contractor,
+                        node_to_port,
+                        port_to_node,
+                        encoder,
+                        base_cnf,
+                        other_cycles,
+                    ) {
+                        return Some(merged);
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    pub fn try_solve_corridor(
+        corridor: &PortSubpathCorridor,
+        sat: &[Port],
+        giant: &[Port],
+        giant_pos: &[usize],
+        g: &Graph,
+        contractor: &Degree2Contractor,
+        node_to_port: &HashMap<i32, Port>,
+        port_to_node: &HashMap<Port, i32>,
+        encoder: &Encoder,
+        base_cnf: &Cnf,
+        other_cycles: &[Vec<Port>],
+    ) -> Option<Vec<Port>> {
         let n_giant = giant.len();
         let entry_idx = giant_pos[corridor.entry_port.idx()];
         let exit_idx = giant_pos[corridor.exit_port.idx()];
@@ -456,8 +537,11 @@ impl PortCorridorLns {
         let p_entry_prev = giant[entry_prev_idx];
         let p_exit_next = giant[exit_next_idx];
 
-        assert!(!corridor.unfrozen_blocks.contains(&p_entry_prev.block), "p_entry_prev must be outside Omega");
-        assert!(!corridor.unfrozen_blocks.contains(&p_exit_next.block), "p_exit_next must be outside Omega");
+        if corridor.unfrozen_blocks.contains(&p_entry_prev.block)
+            || corridor.unfrozen_blocks.contains(&p_exit_next.block)
+        {
+            return None;
+        }
 
         // Track active successor and predecessor for outside vertices
         let mut active_succ: HashMap<i32, i32> = HashMap::new();
@@ -566,15 +650,32 @@ impl PortCorridorLns {
                     encoder.graph_lit_map.get(&(w, u)),
                 ) {
                     let _ = local_solver.add_clause(Clause::from_iter(vec![l_uw, l_wu]));
+                    let _ = local_solver.add_clause(Clause::from_iter(vec![!l_uw, !l_wu]));
                 }
             }
         }
+
+        // Inject Unary MTZ ordering
+        let mut next_free_var = (encoder.instance.n_vars() as i32).max(
+            encoder.graph_lit_map.values().map(|l| l.var().idx() as i32).max().unwrap_or(0) + 1
+        ) + 10;
+
+        Self::inject_unary_mtz_ordering(
+            &mut local_solver,
+            corridor,
+            encoder,
+            g,
+            node_to_port,
+            port_to_node,
+            &mut next_free_var,
+        );
 
         // Local CEGAR loop (up to 8 iterations)
         let expected_len = giant.len() + sat.len();
 
         for _cegar_iter in 0..8 {
-            match local_solver.solve_assumps(&assumptions) {
+            let res = local_solver.solve_assumps(&assumptions);
+            match res {
                 Ok(SolverResult::Sat) => {
                     let sol = match local_solver.full_solution() {
                         Ok(s) => s,
