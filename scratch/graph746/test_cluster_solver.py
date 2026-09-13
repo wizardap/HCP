@@ -29,3 +29,30 @@ def test_cached_paths_valid():
         all_path_nodes.update(path)
 
     assert len(all_path_nodes) == 5 * 855
+ 
+def test_assembled_tour_soundness():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    tour_file = os.path.join(base_dir, "found_tour_graph746.hcp")
+    assert os.path.exists(tour_file), "found_tour_graph746.hcp missing"
+
+    col_path = "FHCPCS-col/graph746.col"
+    G, _, _, _, _ = load_and_decompose_graph746(col_path)
+
+    # Read tour file
+    with open(tour_file, "r") as f:
+        lines = [l.strip() for l in f if l.strip()]
+
+    tour_idx = lines.index("TOUR_SECTION")
+    tour = []
+    for l in lines[tour_idx + 1:]:
+        if l in ("-1", "EOF"):
+            break
+        tour.append(int(l))
+
+    assert len(tour) == 4286
+    assert len(set(tour)) == 4286
+    assert set(tour) == set(G.keys())
+    for i in range(len(tour)):
+        u = tour[i]
+        v = tour[(i + 1) % len(tour)]
+        assert v in G[u], f"Phantom edge ({u}, {v})"

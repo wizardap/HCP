@@ -54,7 +54,15 @@ def main():
     print("*****************************************************************")
 
     out_tour = os.path.join(base_dir, "found_tour_graph746.hcp")
-    write_hcp(full_tour, out_tour)
+    with open(out_tour, "w") as f:
+        f.write("NAME : graph746.hcp.tour\n")
+        f.write("TYPE : TOUR\n")
+        f.write(f"DIMENSION : {len(full_tour)}\n")
+        f.write("TOUR_SECTION\n")
+        for v in full_tour:
+            f.write(f"{v}\n")
+        f.write("-1\n")
+        f.write("EOF\n")
     print(f"Tour written to {out_tour}")
     print(f"Total time elapsed: {time.time()-t_start:.2f}s")
 
