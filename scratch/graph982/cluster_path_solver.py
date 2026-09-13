@@ -29,8 +29,8 @@ def solve_all_half_groups(G, degs, grp, targets, strips, strip_adj_hubs, cache_f
                 print(f"Loaded cached path for Group {k}: {len(v)} vertices.")
 
     for sh, u_in, u_out, cfg in targets:
-        if sh in solved and len(solved[sh]) == 760:
-            print(f"Group {sh} already solved (cached), skipping.")
+        if sh in solved and len(solved[sh]) == 760 and solved[sh][0] == u_in and solved[sh][-1] == u_out:
+            print(f"Group {sh} already solved with matching endpoints (cached), skipping.")
             continue
         print(f"\nSolving Group {sh} (760v) from {u_in} to {u_out}...")
         t0 = time.time()

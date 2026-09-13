@@ -15,7 +15,7 @@ def test_solve_single_group(use_cache: bool = True):
     if use_cache and os.path.exists(cache_file):
         with open(cache_file) as f:
             cached = json.load(f)
-            if str(sh) in cached:
+            if str(sh) in cached and cached[str(sh)][0] == u_in and cached[str(sh)][-1] == u_out:
                 path = cached[str(sh)]
             else:
                 path = solve_group_bulk(sh, u_in, u_out, cfg, strips1, strip_adj_hubs1, degs, G)
