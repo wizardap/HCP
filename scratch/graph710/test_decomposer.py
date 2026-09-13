@@ -1,8 +1,9 @@
-import pytest
+import os, pytest
 from scratch.graph710.decomposer import load_and_decompose_graph710
 
 def test_decomposer_invariants():
-    col_path = "FHCPCS-col/graph710.col"
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    col_path = os.path.join(repo_root, "FHCPCS-col/graph710.col")
     G, V_A, V_B, port_u, port_v = load_and_decompose_graph710(col_path)
 
     # 1. Graph sizes

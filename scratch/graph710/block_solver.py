@@ -138,6 +138,10 @@ def solve_block_b(G: Dict[int, Set[int]], V_B: Set[int], port_u: int, port_v: in
         e_uw = tuple(sorted([u, w]))
         adj_b[u].add(w)
         adj_b[w].add(u)
+        # If edge (u, w) already existed in G, contracting degree-2 vertex v forces the
+        # 2-factor to traverse u-v-w. Any simple cycle visiting v cannot also traverse
+        # the direct chord (u, w) without violating the degree-2 constraint at u and w.
+        # Thus overwriting (u, w) with the contracted chain is mathematically sound.
         edge_chains[e_uw] = merged_chain
 
     print(f"[Block B] Contracted: {len(V_B)} -> {len(rem)} vertices ({len(edge_chains)} contracted chains).")

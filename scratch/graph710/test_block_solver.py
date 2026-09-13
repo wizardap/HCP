@@ -6,7 +6,8 @@ def test_cached_block_paths_valid():
     cache_file = os.path.join(base_dir, "block_paths.json")
     assert os.path.exists(cache_file), "block_paths.json missing, run solve_blocks_parallel.py first"
 
-    col_path = "FHCPCS-col/graph710.col"
+    repo_root = os.path.abspath(os.path.join(base_dir, "../.."))
+    col_path = os.path.join(repo_root, "FHCPCS-col/graph710.col")
     G, V_A, V_B, port_u, port_v = load_and_decompose_graph710(col_path)
 
     with open(cache_file, "r") as f:

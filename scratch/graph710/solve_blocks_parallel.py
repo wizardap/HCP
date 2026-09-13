@@ -40,6 +40,7 @@ def solve_both_blocks_parallel(col_path: str, cache_path: str) -> Dict[str, List
 
 if __name__ == "__main__":
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    col_path = "FHCPCS-col/graph710.col"
+    repo_root = os.path.abspath(os.path.join(base_dir, "../.."))
+    col_path = os.path.join(repo_root, "FHCPCS-col/graph710.col")
     cache_path = os.path.join(base_dir, "block_paths.json")
     solve_both_blocks_parallel(col_path, cache_path)
