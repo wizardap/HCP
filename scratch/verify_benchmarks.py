@@ -122,6 +122,7 @@ def main():
         ("graph717", "graph717.col", ["found_tour_graph717.hcp"]),
         ("graph882", "graph882.col", ["found_tour_graph882.hcp"]),
         ("graph677", "graph677.col", ["found_tour_graph677.hcp"]),
+        ("graph678", "graph678.col", ["found_tour_graph678.hcp"]),
     ]
 
     print("=================================================================")
@@ -141,6 +142,7 @@ def main():
             candidate1 = os.path.join(scratch_dir, tf)
             candidate2 = os.path.join(cegar_scratch_dir, tf)
             candidate3 = os.path.join(scratch_dir, graph_name, tf)
+            candidate4 = os.path.join(scratch_dir, "engine", tf)
             if os.path.exists(candidate1):
                 tour_path = candidate1
                 break
@@ -149,6 +151,9 @@ def main():
                 break
             elif os.path.exists(candidate3):
                 tour_path = candidate3
+                break
+            elif os.path.exists(candidate4):
+                tour_path = candidate4
                 break
 
         if tour_path and os.path.exists(tour_path):
