@@ -4,7 +4,7 @@
 
 **Goal:** Build and execute a certified hierarchical linear-chain and central-block solver for `FHCPCS-col/graph717.col` ($N = 4,122, M = 7,638$), producing a 100% verified sound Hamiltonian cycle in `scratch/graph717/found_tour_graph717.hcp` in $\le 1,800$s without tour injection.
 
-**Architecture:** Decompose graph into two 508-vertex linear chains (each comprising three 167-vertex modules) and one 3,108-vertex central block Comp 0; solve the 6 modules with CaDiCaL CEGAR and assemble Chain 1 and Chain 2; solve Comp 0 via degree-2 contraction (922 vertices contracted) + 376 static triangle cuts + CaDiCaL CEGAR with virtual edges; deterministically splice chains into the central cycle.
+**Architecture:** Decompose graph into two 509-vertex linear chains (each comprising three 167-vertex modules) and one 3,108-vertex central block Comp 0; solve the 6 modules with CaDiCaL CEGAR and assemble Chain 1 and Chain 2; solve Comp 0 via degree-2 contraction (922 vertices contracted) + 376 static triangle cuts + CaDiCaL CEGAR with virtual edges; deterministically splice chains into the central cycle.
 
 **Tech Stack:** Python 3, PySAT (CaDiCaL 1.9.5), multiprocessing.
 
@@ -30,8 +30,8 @@
   where:
   - `G`: full adjacency dictionary ($|V| = 4,122, |E| = 7,638$).
   - `modules`: dict mapping each module's port pair `(u, v)` to its set of 167 internal vertices.
-  - `chain1_nodes`: set of 508 vertices in Chain 1.
-  - `chain2_nodes`: set of 508 vertices in Chain 2.
+  - `chain1_nodes`: set of 509 vertices in Chain 1.
+  - `chain2_nodes`: set of 509 vertices in Chain 2.
   - `comp0_nodes`: set of 3,108 vertices in Comp 0 (including 4 interface ports).
 
 - [ ] **Step 1: Write the failing test**
@@ -61,8 +61,8 @@ def test_decomposer_invariants():
         assert len(G[v] & mod) == 13
 
     # 3. Chain and Comp 0 sizes
-    assert len(chain1_nodes) == 508
-    assert len(chain2_nodes) == 508
+    assert len(chain1_nodes) == 509
+    assert len(chain2_nodes) == 509
     assert len(comp0_nodes) == 3108
 
     # 4. Overlaps and union
@@ -153,14 +153,14 @@ def load_and_decompose_graph717(col_path: str) -> Tuple[Dict[int, Set[int]], Dic
     mod4 = modules[tuple(sorted([1213, 2681]))]
     mod6 = modules[tuple(sorted([702, 773]))]
     chain1_nodes = mod2 | mod4 | mod6 | {255, 1389, 2677, 1213, 2681, 773, 702, 1955}
-    assert len(chain1_nodes) == 508
+    assert len(chain1_nodes) == 509
 
     # Chain 2: modules (1016, 3986), (1177, 2467), (540, 577) + intermediate cut nodes + ports 3358, 2609
     mod1 = modules[tuple(sorted([1016, 3986]))]
     mod5 = modules[tuple(sorted([1177, 2467]))]
     mod3 = modules[tuple(sorted([540, 577]))]
     chain2_nodes = mod1 | mod5 | mod3 | {3358, 3986, 1016, 1177, 2467, 577, 540, 2609}
-    assert len(chain2_nodes) == 508
+    assert len(chain2_nodes) == 509
 
     return G, modules, chain1_nodes, chain2_nodes, comp0_nodes
 ```
@@ -190,8 +190,8 @@ git commit -m "feat(graph717): add graph decomposer and 16-cut verification test
 - Consumes: `load_and_decompose_graph717` from `scratch/graph717/decomposer.py`
 - Produces: `solve_and_assemble_chains(col_path: str, cache_path: str) -> Dict[str, List[int]]`
   where `scratch/graph717/chains.json` contains:
-  - `"chain1"`: list of 508 unique vertices starting at 255 and ending at 1955.
-  - `"chain2"`: list of 508 unique vertices starting at 3358 and ending at 2609.
+  - `"chain1"`: list of 509 unique vertices starting at 255 and ending at 1955.
+  - `"chain2"`: list of 509 unique vertices starting at 3358 and ending at 2609.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -217,16 +217,16 @@ def test_cached_chains_valid():
     c2 = data["chain2"]
 
     # Chain 1 assertions
-    assert len(c1) == 508
-    assert len(set(c1)) == 508
+    assert len(c1) == 509
+    assert len(set(c1)) == 509
     assert set(c1) == chain1_nodes
     assert c1[0] == 255 and c1[-1] == 1955
     for i in range(len(c1) - 1):
         assert c1[i+1] in G[c1[i]], f"Phantom edge in c1: ({c1[i]}, {c1[i+1]})"
 
     # Chain 2 assertions
-    assert len(c2) == 508
-    assert len(set(c2)) == 508
+    assert len(c2) == 509
+    assert len(set(c2)) == 509
     assert set(c2) == chain2_nodes
     assert c2[0] == 3358 and c2[-1] == 2609
     for i in range(len(c2) - 1):
@@ -334,7 +334,7 @@ def solve_and_assemble_chains(col_path: str, cache_path: str) -> Dict[str, List[
     if os.path.exists(cache_path):
         with open(cache_path, "r") as f:
             data = json.load(f)
-        if "chain1" in data and "chain2" in data and len(data["chain1"]) == 508 and len(data["chain2"]) == 508:
+        if "chain1" in data and "chain2" in data and len(data["chain1"]) == 509 and len(data["chain2"]) == 509:
             print("Both chains already solved and cached!")
             return data
 
@@ -366,7 +366,7 @@ def solve_and_assemble_chains(col_path: str, cache_path: str) -> Dict[str, List[
     if p_m6[0] != 773: p_m6 = list(reversed(p_m6))
 
     chain1 = [255] + p_m2 + p_m4 + p_m6 + [1955]
-    assert len(chain1) == 508
+    assert len(chain1) == 509
 
     # Assemble Chain 2: 3358 -> [3986..1016] -> [1177..2467] -> [577..540] -> 2609
     p_m1 = solved_mods[tuple(sorted([1016, 3986]))]
@@ -377,7 +377,7 @@ def solve_and_assemble_chains(col_path: str, cache_path: str) -> Dict[str, List[
     if p_m3[0] != 577: p_m3 = list(reversed(p_m3))
 
     chain2 = [3358] + p_m1 + p_m5 + p_m3 + [2609]
-    assert len(chain2) == 508
+    assert len(chain2) == 509
 
     res = {"chain1": chain1, "chain2": chain2}
     os.makedirs(os.path.dirname(os.path.abspath(cache_path)), exist_ok=True)
@@ -704,8 +704,8 @@ def assemble_and_verify_tour():
     chains = solve_and_assemble_chains(col_path, chains_path)
     comp0_cyc = solve_comp0(col_path, comp0_path)
 
-    c1 = chains["chain1"]  # 255 -> ... -> 1955 (508 vertices)
-    c2 = chains["chain2"]  # 3358 -> ... -> 2609 (508 vertices)
+    c1 = chains["chain1"]  # 255 -> ... -> 1955 (509 vertices)
+    c2 = chains["chain2"]  # 3358 -> ... -> 2609 (509 vertices)
 
     # In comp0_cyc, find virtual edges (255, 1955) and (3358, 2609)
     # Replace the virtual edge with the chain interior
