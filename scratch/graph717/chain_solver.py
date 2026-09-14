@@ -73,7 +73,7 @@ def solve_module_path(G: Dict[int, Set[int]], mod: Set[int], u_port: int, v_port
                 idx_u = cyc.index(u_port)
             assert cyc[(idx_u - 1) % n] == v_port
             path = cyc[idx_u:] + cyc[:idx_u]
-            assert path[0] == u_port and path[-1] == v_port and len(path) == 169
+            assert path[0] == u_port and path[-1] == v_port and len(path) == len(V_mod)
             solver.delete()
             return path
 

@@ -1,4 +1,4 @@
-import collections, os
+import collections
 from typing import Dict, Set, Tuple
 
 def load_graph(col_path: str) -> Dict[int, Set[int]]:

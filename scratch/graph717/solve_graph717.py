@@ -1,6 +1,8 @@
-import collections, json, os, sys, time
+import json, os, sys, time
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 from scratch.graph717.decomposer import load_and_decompose_graph717
+from scratch.graph717.chain_solver import solve_and_assemble_chains
+from scratch.graph717.comp0_solver import solve_comp0
 
 def assemble_and_verify_tour():
     t0 = time.time()
@@ -10,6 +12,11 @@ def assemble_and_verify_tour():
     chains_cache = os.path.join(base_dir, "chains.json")
     comp0_cache = os.path.join(base_dir, "comp0_cycle.json")
     tour_path = os.path.join(base_dir, "found_tour_graph717.hcp")
+
+    if not os.path.exists(chains_cache):
+        solve_and_assemble_chains(col_path, chains_cache)
+    if not os.path.exists(comp0_cache):
+        solve_comp0(col_path, comp0_cache)
 
     G, modules, chain1_nodes, chain2_nodes, comp0_nodes = load_and_decompose_graph717(col_path)
 

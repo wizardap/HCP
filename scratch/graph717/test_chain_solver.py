@@ -32,3 +32,21 @@ def test_cached_chains_valid():
     assert c2[0] == 3358 and c2[-1] == 2609
     for i in range(len(c2) - 1):
         assert c2[i+1] in G[c2[i]], f"Phantom edge in c2: ({c2[i]}, {c2[i+1]})"
+
+def test_solve_module_path_logic():
+    # Verify CaDiCaL CEGAR path solving algorithm on a synthetic module
+    from scratch.graph717.chain_solver import solve_module_path
+    G = {
+        0: {1, 2},
+        1: {0, 2, 3},
+        2: {0, 1, 4},
+        3: {1, 4, 5},
+        4: {2, 3, 5},
+        5: {3, 4}
+    }
+    path = solve_module_path(G, {1, 2, 3, 4}, 0, 5)
+    assert len(path) == 6
+    assert path[0] == 0 and path[-1] == 5
+    assert set(path) == {0, 1, 2, 3, 4, 5}
+    for i in range(5):
+        assert path[i+1] in G[path[i]]

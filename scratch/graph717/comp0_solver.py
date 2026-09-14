@@ -100,6 +100,7 @@ def solve_comp0(col_path: str, cache_path: str) -> List[int]:
         merged_chain = chain_uv[:-1] + chain_vw
         e_uw = tuple(sorted([u, w]))
         adj_c0[u].add(w); adj_c0[w].add(u)
+        assert e_uw not in edge_chains, f"Degree-2 contraction collision on edge {e_uw}"
         edge_chains[e_uw] = merged_chain
 
     print(f"[Comp 0] Contracted: {len(comp0_nodes)} -> {len(rem)} vertices ({len(edge_chains)} contracted chains).")
