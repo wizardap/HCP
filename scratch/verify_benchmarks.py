@@ -121,6 +121,7 @@ def main():
         ("graph710", "graph710.col", ["found_tour_graph710.hcp"]),
         ("graph717", "graph717.col", ["found_tour_graph717.hcp"]),
         ("graph882", "graph882.col", ["found_tour_graph882.hcp"]),
+        ("graph677", "graph677.col", ["found_tour_graph677.hcp"]),
     ]
 
     print("=================================================================")
