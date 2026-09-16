@@ -155,16 +155,16 @@ def detect_variable_modules(
     cl_list = sorted(list(valid_4_clusters.keys()))
     chosen_clusters = []
     if num_gadgets % 4 == 0 and len(cl_list) > 0:
-        solver = Cadical195()
-        for gid in range(num_gadgets):
-            inc = [idx + 1 for idx, cl in enumerate(cl_list) if gid in cl]
-            solver.add_clause(inc)
-            for i in range(len(inc)):
-                for j in range(i + 1, len(inc)):
-                    solver.add_clause([-inc[i], -inc[j]])
-        if solver.solve():
-            model = set(solver.get_model())
-            chosen_clusters = [cl_list[idx] for idx in range(len(cl_list)) if (idx + 1) in model]
+        with Cadical195() as solver:
+            for gid in range(num_gadgets):
+                inc = [idx + 1 for idx, cl in enumerate(cl_list) if gid in cl]
+                solver.add_clause(inc)
+                for i in range(len(inc)):
+                    for j in range(i + 1, len(inc)):
+                        solver.add_clause([-inc[i], -inc[j]])
+            if solver.solve():
+                model = set(solver.get_model())
+                chosen_clusters = [cl_list[idx] for idx in range(len(cl_list)) if (idx + 1) in model]
 
     if not chosen_clusters:
         # Fallback greedy packing of disjoint 4-clusters
@@ -185,13 +185,11 @@ def detect_variable_modules(
             m_nodes.extend(elementary_gadgets[gid])
         m_set = set(m_nodes)
         ext_ports = []
-        int_nodes = set()
         for u in m_nodes:
-            ext_nbrs = [v for v in adj_c0[u] if v not in m_set]
+            ext_nbrs = [v for v in adj_contracted[u] if v not in m_set]
             if ext_nbrs:
                 ext_ports.append(u)
-            else:
-                int_nodes.add(u)
+
         m_ves = set()
         for u in m_nodes:
             if u in v_partner and v_partner[u] in m_set and u < v_partner[u]:
@@ -204,6 +202,8 @@ def detect_variable_modules(
             ports = tuple(sorted(ext_ports[:2]))
         else:
             ports = tuple(sorted(ext_ports))
+
+        int_nodes = m_set - set(ports)
 
         modules.append({
             'id': mid,

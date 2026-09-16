@@ -18,6 +18,8 @@ def test_detect_modules_graph868():
     for m in modules:
         assert len(m['nodes']) == 88 or len(m['nodes']) == 44, f"Unexpected module size: {len(m['nodes'])}"
         assert len(m['ports']) == 2, f"Module must have exactly 2 interface ports"
+        assert len(m['internal_nodes']) == len(m['nodes']) - 2, f"Module internal nodes must be total nodes - 2"
+        assert len(m['virtual_edges']) == len(m['nodes']) // 2, f"Module virtual edges must be total nodes // 2"
 
 def test_detect_modules_graph965():
     col_path = "FHCPCS-col/graph965.col"
@@ -30,3 +32,6 @@ def test_detect_modules_graph965():
     assert len(modules) >= 30, f"Expected >= 30 modules for graph965, got {len(modules)}"
     for m in modules:
         assert len(m['ports']) == 2
+        assert len(m['internal_nodes']) == len(m['nodes']) - 2
+        assert len(m['virtual_edges']) == len(m['nodes']) // 2
+
