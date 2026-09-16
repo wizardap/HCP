@@ -104,7 +104,7 @@ def solve_modular_comp0(
         inc_edges[e[0]].append(edge_to_var[e])
         inc_edges[e[1]].append(edge_to_var[e])
 
-    solver = Cadical195()
+    static_clauses = []
     top = len(edge_list) + 1
 
     # Degree-2 constraint on every node
@@ -116,33 +116,42 @@ def solve_modular_comp0(
             encoding=EncType.cardnetwrk
         )
         for cl in clauses:
-            solver.add_clause(cl)
+            static_clauses.append(cl)
             for lit in cl:
                 top = max(top, abs(lit) + 1)
 
     # Force virtual and contracted edges
     for ve in virt_set:
-        solver.add_clause([edge_to_var[ve]])
+        static_clauses.append([edge_to_var[ve]])
     for ce in contracted_edges:
-        solver.add_clause([edge_to_var[ce]])
+        static_clauses.append([edge_to_var[ce]])
 
-    # Static chordless triangles
+    # Static chordless square cuts in contracted graph
     rem_list = sorted(list(rem))
-    for u in rem_list:
-        for v in adj_c0[u]:
-            if v > u:
-                for w in adj_c0[v]:
-                    if w > v and w in adj_c0[u]:
-                        solver.add_clause([
-                            -edge_to_var[tuple(sorted([u, v]))],
-                            -edge_to_var[tuple(sorted([v, w]))],
-                            -edge_to_var[tuple(sorted([w, u]))]
-                        ])
+    squares = set()
+    for a in rem_list:
+        nbrs_a = sorted(list(adj_c0[a]))
+        for i in range(len(nbrs_a)):
+            u = nbrs_a[i]
+            for j in range(i + 1, len(nbrs_a)):
+                v = nbrs_a[j]
+                common = [w for w in adj_c0[u] if w != a and w in adj_c0[v]]
+                for w in common:
+                    if w not in adj_c0[a] and v not in adj_c0[u]:
+                        e1 = tuple(sorted([a, u]))
+                        e2 = tuple(sorted([u, w]))
+                        e3 = tuple(sorted([w, v]))
+                        e4 = tuple(sorted([v, a]))
+                        sq_key = tuple(sorted([e1, e2, e3, e4]))
+                        if sq_key not in squares:
+                            squares.add(sq_key)
+                            static_clauses.append([-edge_to_var[e1], -edge_to_var[e2], -edge_to_var[e3], -edge_to_var[e4]])
 
     # 5. Inject Module State Selector Variables (b_i)
     selector_vars = {}
     for mid, (m, (t_path, f_path)) in enumerate(zip(modules, module_paths)):
-        if not t_path or not f_path or t_path == f_path:
+        ves = {tuple(sorted(ve)) for ve in m.get('virtual_edges', ())}
+        if not t_path or not f_path or t_path == f_path or not ves.issubset(t_path) or not ves.issubset(f_path):
             continue
         b_var = top
         top += 1
@@ -154,23 +163,28 @@ def solve_modular_comp0(
 
         for e in common:
             if e in edge_to_var:
-                solver.add_clause([edge_to_var[e]])
+                static_clauses.append([edge_to_var[e]])
         for e in true_only:
             if e in edge_to_var:
                 var_e = edge_to_var[e]
-                solver.add_clause([-b_var, var_e])
-                solver.add_clause([b_var, -var_e])
+                static_clauses.append([-b_var, var_e])
+                static_clauses.append([b_var, -var_e])
         for e in false_only:
             if e in edge_to_var:
                 var_e = edge_to_var[e]
-                solver.add_clause([b_var, var_e])
-                solver.add_clause([-b_var, -var_e])
+                static_clauses.append([b_var, var_e])
+                static_clauses.append([-b_var, -var_e])
 
     print(f"    Injected {len(selector_vars)} module selector variables. Top var: {top}.", flush=True)
+
+    solver = Cadical195(bootstrap_with=static_clauses)
 
     # 6. Macro-CEGAR Loop
     it = 0
     winner_cycle = None
+    accumulated_cuts = []
+    seen_cuts = {tuple(sorted(cl)) for cl in static_clauses}
+    active = []
 
     # Verify initial satisfiability of modular constraints
     sat_init = solver.solve()
@@ -301,6 +315,11 @@ def solve_modular_comp0(
                                 p_c1 = c1[start_idx:end_idx + 1]
                             hp_seq = list(reversed(hp)) if rev else hp
                             merged_cyc = p_c1 + hp_seq
+                            assert len(merged_cyc) == len(rem), f"Merged cycle length {len(merged_cyc)} != {len(rem)}"
+                            assert len(set(merged_cyc)) == len(rem), "Duplicate vertices in merged cycle!"
+                            for k in range(len(merged_cyc)):
+                                x, y = merged_cyc[k], merged_cyc[(k+1)%len(merged_cyc)]
+                                assert y in adj_c0[x], f"Invalid edge in merged cycle: ({x}, {y})"
                             break
                 if merged_cyc is not None:
                     break
@@ -309,16 +328,39 @@ def solve_modular_comp0(
                 winner_cycle = merged_cyc
                 break
 
-        print(f"    Iter {it} ({time.time()-t_it:.2f}s, total {time.time()-t0:.1f}s): {len(cycles)} raw -> {len(merged)} macro-cycles", flush=True)
+        round_time = time.time() - t_it
+        print(f"    Iter {it} ({round_time:.2f}s, total {time.time()-t0:.1f}s): {len(cycles)} raw -> {len(merged)} macro-cycles", flush=True)
 
-        # Universal cocycle cuts
+        # Negative cuts for all cycles, cocycle cuts for non-giant cycles (<= len(rem) // 2)
         for cyc in cycles:
-            c_set = set(cyc)
-            cut_e = [tuple(sorted([u, v])) for u in cyc for v in adj_c0[u] if v not in c_set]
-            solver.add_clause([edge_to_var[e] for e in cut_e])
-            if len(cyc) <= len(rem) // 2:
-                neg_c = [-edge_to_var[tuple(sorted([cyc[i], cyc[(i + 1) % len(cyc)]]))] for i in range(len(cyc))]
+            neg_c = [-edge_to_var[tuple(sorted([cyc[i], cyc[(i + 1) % len(cyc)]]))] for i in range(len(cyc))]
+            t_neg = tuple(sorted(neg_c))
+            if t_neg not in seen_cuts:
+                seen_cuts.add(t_neg)
                 solver.add_clause(neg_c)
+                accumulated_cuts.append(neg_c)
+
+            if len(cyc) <= len(rem) // 2:
+                c_set = set(cyc)
+                cut_e = [tuple(sorted([u, v])) for u in cyc for v in adj_c0[u] if v not in c_set]
+                c_clause = [edge_to_var[e] for e in cut_e]
+                t_cut = tuple(sorted(c_clause))
+                if t_cut not in seen_cuts:
+                    seen_cuts.add(t_cut)
+                    solver.add_clause(c_clause)
+                    accumulated_cuts.append(c_clause)
+
+        if len(merged) > 1:
+            for cyc in merged:
+                if len(cyc) <= len(rem) // 2:
+                    c_set = set(cyc)
+                    cut_e = [tuple(sorted([u, v])) for u in cyc for v in adj_c0[u] if v not in c_set]
+                    c_clause = [edge_to_var[e] for e in cut_e]
+                    t_cut = tuple(sorted(c_clause))
+                    if t_cut not in seen_cuts:
+                        seen_cuts.add(t_cut)
+                        solver.add_clause(c_clause)
+                        accumulated_cuts.append(c_clause)
 
     solver.delete()
 

@@ -12,22 +12,21 @@ def test_loader_and_detector():
     assert len(G) == 3868
 
     corridors, comp0_nodes = detect_bridge_corridors(G)
-    assert len(corridors) == 1
-    assert len(corridors[0]['nodes']) == 169
-    assert len(comp0_nodes) == 3699
-    assert corridors[0]['ports'] == (2696, 493)
-    assert set(corridors[0]['ext_ports']) == {2291, 2042}
+    assert len(corridors) == 2
+    sizes = sorted([len(c['nodes']) for c in corridors])
+    assert sizes == [15, 170]
+    assert len(comp0_nodes) == 3868 - 185
 
 def test_corridor_path_solve():
     col_path = os.path.join(repo_root, "FHCPCS-col/graph677.col")
     G = load_dimacs(col_path)
     corridors, _ = detect_bridge_corridors(G)
-    c = corridors[0]
-    u, v = c['ports']
-    path = solve_corridor_path(G, c['nodes'], src=u, dst=v)
-    assert len(path) == 169
-    assert path[0] == u and path[-1] == v
-    assert len(set(path)) == 169
+    for c in corridors:
+        u, v = c['ports']
+        path = solve_corridor_path(G, c['nodes'], src=u, dst=v)
+        assert len(path) == len(c['nodes'])
+        assert (path[0] == u and path[-1] == v) or (path[0] == v and path[-1] == u)
+        assert len(set(path)) == len(c['nodes'])
 
 def test_assembler_toy():
     comp0_cycle = [1, 2, 3, 4]
@@ -39,3 +38,14 @@ def test_assembler_toy():
     tour = assemble_full_tour(comp0_cycle, corridors)
     assert len(tour) == 7
     assert tour == [1, 2, 10, 20, 30, 3, 4]
+
+def test_maximal_corridor_detection_graph944():
+    col_path = os.path.join(repo_root, "FHCPCS-col/graph944.col")
+    if not os.path.exists(col_path):
+        pytest.skip("graph944.col not found")
+    G = load_dimacs(col_path)
+    corridors, comp0_nodes = detect_bridge_corridors(G)
+    assert len(corridors) == 2
+    sizes = sorted([len(c['nodes']) for c in corridors])
+    assert sizes == [15, 508]
+    assert len(comp0_nodes) == 6544 - 523

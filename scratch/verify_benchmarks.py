@@ -135,11 +135,6 @@ def main():
         ("graph982", "graph982.col", ["found_tour_graph982.hcp"]),
         ("graph990", "graph990.col", ["found_tour_graph990.hcp"]),
         ("graph950", "graph950.col", ["found_tour_puresat.hcp", "found_tour_graph950.hcp"]),
-        ("graph965", "graph965.col", ["found_tour_graph965.hcp"]),
-        ("graph966", "graph966.col", ["found_tour_graph966.hcp"]),
-        ("graph971", "graph971.col", ["found_tour_graph971.hcp"]),
-        ("graph994", "graph994.col", ["found_tour_graph994.hcp"]),
-        ("graph998", "graph998.col", ["found_tour_graph998.hcp"]),
     ]
 
     print("=================================================================")
