@@ -47,13 +47,8 @@ def solve_hierarchical_hcp(col_path: str, output_path: Optional[str] = None) -> 
     # Step 4: Solve Comp 0
     t_c0 = time.time()
     virtual_edges = [c['ext_ports'] for c in corridors]
-    if len(comp0_nodes) > 4600:
-        from scratch.engine.modular_comp0_solver import solve_modular_comp0
-        print(f"[*] Stage 3: Large Comp 0 ({len(comp0_nodes)}v) detected -> routing to Modular State Equivalence Solver...")
-        comp0_cycle = solve_modular_comp0(G, comp0_nodes, virtual_edges)
-    else:
-        print(f"[*] Stage 3: Solving Comp 0 ({len(comp0_nodes)}v) via degree-2 contraction & 2-opt CEGAR...")
-        comp0_cycle = solve_comp0_core(G, comp0_nodes, virtual_edges)
+    print(f"[*] Stage 3: Solving Comp 0 ({len(comp0_nodes)}v) via degree-2 contraction & CEGAR...")
+    comp0_cycle = solve_comp0_core(G, comp0_nodes, virtual_edges)
     print(f"[*] Stage 3 Complete in {time.time()-t_c0:.2f}s.")
 
     # Step 5: Tour Assembly & Export

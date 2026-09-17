@@ -230,15 +230,14 @@ def solve_comp0_core(G: Dict[int, Set[int]], comp0_nodes: Set[int], virtual_edge
         inc_edges[e[1]].append(edge_to_var[e])
 
     static_clauses = []
-    top = len(edge_list) + 1
-    # Degree-2 constraint for each vertex
+    # Degree-2 constraint for each vertex (pure direct combinatoric, 0 auxiliary variables)
     for u in sorted(rem):
         lits = inc_edges[u]
-        clauses = CardEnc.equals(lits=lits, bound=2, top_id=top, encoding=EncType.cardnetwrk)
-        for cl in clauses:
-            static_clauses.append(cl)
-            for lit in cl:
-                top = max(top, abs(lit) + 1)
+        d = len(lits)
+        for comb in itertools.combinations(lits, 3):
+            static_clauses.append([-x for x in comb])
+        for comb in itertools.combinations(lits, d - 1):
+            static_clauses.append(list(comb))
 
     # Force virtual edges and contracted macro-edges
     for ve in virt_set:
@@ -246,8 +245,16 @@ def solve_comp0_core(G: Dict[int, Set[int]], comp0_nodes: Set[int], virtual_edge
     for ce in contracted_edges:
         static_clauses.append([edge_to_var[ce]])
 
-    # Static chordless square cuts in contracted graph
     rem_list = sorted(list(rem))
+    # Static chordless triangle cuts in contracted graph
+    for u in rem_list:
+        for v in adj_c0[u]:
+            if v > u:
+                for w in adj_c0[v]:
+                    if w > v and w in adj_c0[u]:
+                        static_clauses.append([-edge_to_var[tuple(sorted([u, v]))], -edge_to_var[tuple(sorted([v, w]))], -edge_to_var[tuple(sorted([w, u]))]])
+
+    # Static chordless square cuts in contracted graph
     squares = set()
     for a in rem_list:
         nbrs_a = sorted(list(adj_c0[a]))
@@ -332,8 +339,8 @@ def solve_comp0_core(G: Dict[int, Set[int]], comp0_nodes: Set[int], virtual_edge
             winner_cycle = merged[0]
             break
 
-        # Non-intrusive multi-cycle closing operator for small subcycles (<= 60v):
-        if 2 <= len(merged) <= 8:
+        # Non-intrusive multi-cycle closing operator for small subcycles (<= 120v):
+        if 2 <= len(merged) <= 60:
             cand = list(merged)
             cand.sort(key=len, reverse=True)
             closed_any = True
@@ -341,10 +348,10 @@ def solve_comp0_core(G: Dict[int, Set[int]], comp0_nodes: Set[int], virtual_edge
                 closed_any = False
                 for i in range(len(cand)):
                     for j in range(len(cand)):
-                        if i != j and len(cand[j]) <= 60:
-                            res = sat_merge_cycles(cand[i], cand[j], adj_c0, forbidden_delete, max_window=15)
-                            if res is None and len(cand[j]) <= 40:
-                                res = try_patch_merge(cand[i], cand[j], adj_c0, forbidden_delete, max_window=10)
+                        if i != j and len(cand[j]) <= 120:
+                            res = sat_merge_cycles(cand[i], cand[j], adj_c0, forbidden_delete, max_window=50)
+                            if res is None and len(cand[j]) <= 60:
+                                res = try_patch_merge(cand[i], cand[j], adj_c0, forbidden_delete, max_window=25)
                             if res is None:
                                 res = try_merge_3opt(cand[i], cand[j], adj_c0, forbidden_delete)
                             if res is not None:
@@ -354,9 +361,11 @@ def solve_comp0_core(G: Dict[int, Set[int]], comp0_nodes: Set[int], virtual_edge
                                 break
                     if closed_any:
                         break
-            if len(cand) == 1:
+            if len(cand) < len(merged):
+                merged = list(cand)
+            if len(merged) == 1:
                 print(f"[*] Comp 0 closing operator (SAT-HP/patch/3-opt) converged at iter {it} in {time.time()-t0:.2f}s!", flush=True)
-                winner_cycle = cand[0]
+                winner_cycle = merged[0]
                 break
 
         # 2-cycle boundary HP splicer (merges 2 remaining macro-cycles across direct boundary edges)
@@ -418,15 +427,9 @@ def solve_comp0_core(G: Dict[int, Set[int]], comp0_nodes: Set[int], virtual_edge
             solver.delete()
             raise TimeoutError(f"Comp 0 reached 1800s timeout at iteration {it}!")
 
-        # Negative cuts for all cycles, cocycle cuts for non-giant cycles (<= len(rem) // 2)
+        # Cuts:
+        # Cocycle cuts and negative cuts for raw cycles
         for cyc in cycles:
-            neg_c = [-edge_to_var[tuple(sorted([cyc[i], cyc[(i + 1) % len(cyc)]]))] for i in range(len(cyc))]
-            t_neg = tuple(sorted(neg_c))
-            if t_neg not in seen_cuts:
-                seen_cuts.add(t_neg)
-                solver.add_clause(neg_c)
-                accumulated_cuts.append(neg_c)
-
             if len(cyc) <= len(rem) // 2:
                 c_set = set(cyc)
                 cut_e = [tuple(sorted([u, v])) for u in cyc for v in adj_c0[u] if v not in c_set]
@@ -437,6 +440,14 @@ def solve_comp0_core(G: Dict[int, Set[int]], comp0_nodes: Set[int], virtual_edge
                     solver.add_clause(c_clause)
                     accumulated_cuts.append(c_clause)
 
+            neg_c = [-edge_to_var[tuple(sorted([cyc[i], cyc[(i + 1) % len(cyc)]]))] for i in range(len(cyc))]
+            t_neg = tuple(sorted(neg_c))
+            if t_neg not in seen_cuts:
+                seen_cuts.add(t_neg)
+                solver.add_clause(neg_c)
+                accumulated_cuts.append(neg_c)
+
+        # Cocycle cuts for absorbed macro-cycles
         if len(merged) > 1:
             for cyc in merged:
                 if len(cyc) <= len(rem) // 2:

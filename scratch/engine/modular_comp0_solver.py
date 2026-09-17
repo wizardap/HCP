@@ -254,8 +254,8 @@ def solve_modular_comp0(
             winner_cycle = merged[0]
             break
 
-        # Multi-cycle closing operator for small subcycles (<= 60v)
-        if 2 <= len(merged) <= 8:
+        # Multi-cycle closing operator for small subcycles (<= 120v)
+        if 2 <= len(merged) <= 25:
             cand = list(merged)
             cand.sort(key=len, reverse=True)
             closed_any = True
@@ -263,10 +263,10 @@ def solve_modular_comp0(
                 closed_any = False
                 for i in range(len(cand)):
                     for j in range(len(cand)):
-                        if i != j and len(cand[j]) <= 60:
-                            res = sat_merge_cycles(cand[i], cand[j], adj_c0, forbidden_delete, max_window=15)
-                            if res is None and len(cand[j]) <= 40:
-                                res = try_patch_merge(cand[i], cand[j], adj_c0, forbidden_delete, max_window=10)
+                        if i != j and len(cand[j]) <= 120:
+                            res = sat_merge_cycles(cand[i], cand[j], adj_c0, forbidden_delete, max_window=50)
+                            if res is None and len(cand[j]) <= 60:
+                                res = try_patch_merge(cand[i], cand[j], adj_c0, forbidden_delete, max_window=25)
                             if res is None:
                                 res = try_merge_3opt(cand[i], cand[j], adj_c0, forbidden_delete)
                             if res is not None:
@@ -331,24 +331,26 @@ def solve_modular_comp0(
         round_time = time.time() - t_it
         print(f"    Iter {it} ({round_time:.2f}s, total {time.time()-t0:.1f}s): {len(cycles)} raw -> {len(merged)} macro-cycles", flush=True)
 
-        # Negative cuts for all cycles, cocycle cuts for non-giant cycles (<= len(rem) // 2)
+        # Cuts:
+        # Negative cuts only for small cycles (<= len(rem) // 2) or when exactly 2 cycles remain
         for cyc in cycles:
-            neg_c = [-edge_to_var[tuple(sorted([cyc[i], cyc[(i + 1) % len(cyc)]]))] for i in range(len(cyc))]
-            t_neg = tuple(sorted(neg_c))
-            if t_neg not in seen_cuts:
-                seen_cuts.add(t_neg)
-                solver.add_clause(neg_c)
-                accumulated_cuts.append(neg_c)
+            if len(cyc) <= len(rem) // 2 or len(cycles) == 2:
+                neg_c = [-edge_to_var[tuple(sorted([cyc[i], cyc[(i + 1) % len(cyc)]]))] for i in range(len(cyc))]
+                t_neg = tuple(sorted(neg_c))
+                if t_neg not in seen_cuts:
+                    seen_cuts.add(t_neg)
+                    solver.add_clause(neg_c)
+                    accumulated_cuts.append(neg_c)
 
-            if len(cyc) <= len(rem) // 2:
-                c_set = set(cyc)
-                cut_e = [tuple(sorted([u, v])) for u in cyc for v in adj_c0[u] if v not in c_set]
-                c_clause = [edge_to_var[e] for e in cut_e]
-                t_cut = tuple(sorted(c_clause))
-                if t_cut not in seen_cuts:
-                    seen_cuts.add(t_cut)
-                    solver.add_clause(c_clause)
-                    accumulated_cuts.append(c_clause)
+            # Boundary cocycle cut for ALL cycles (including Giant): forces every component to connect!
+            c_set = set(cyc)
+            cut_e = [tuple(sorted([u, v])) for u in cyc for v in adj_c0[u] if v not in c_set]
+            c_clause = [edge_to_var[e] for e in cut_e]
+            t_cut = tuple(sorted(c_clause))
+            if t_cut not in seen_cuts:
+                seen_cuts.add(t_cut)
+                solver.add_clause(c_clause)
+                accumulated_cuts.append(c_clause)
 
         if len(merged) > 1:
             for cyc in merged:
