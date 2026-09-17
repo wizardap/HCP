@@ -8,6 +8,7 @@ and validates the complete 7,020-vertex Hamiltonian tour independently.
 """
 
 import time, collections, json, os, sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from scratch.graph950.perfect_cluster_assembler import solve_cluster_path, verify_tour, write_hcp
 from scratch.graph950.two_half_two_tier_solver import load_graph, decompose_half
 

@@ -1,4 +1,5 @@
 import sys, os, time
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scratch.test_splice_14v import test_splice
 from scratch.engine.assembler import assemble_full_tour, export_hcp_tour
 from scratch.verify_benchmarks import verify_tour
