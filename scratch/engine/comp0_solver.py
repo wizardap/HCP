@@ -1,5 +1,10 @@
-import collections, itertools, time
+import os, sys, collections, itertools, time
 from typing import Dict, List, Optional, Set, Tuple
+
+repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+if repo_root not in sys.path:
+    sys.path.insert(0, repo_root)
+
 from pysat.solvers import Cadical195
 from pysat.card import CardEnc, EncType
 from scratch.engine.sat_merger import sat_merge_cycles, solve_local_hp_sat

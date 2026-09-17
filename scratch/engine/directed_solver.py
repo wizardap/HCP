@@ -1,5 +1,7 @@
-import sys, collections, time, os
-sys.path.insert(0, ".")
+import os, sys, collections, time
+repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+if repo_root not in sys.path:
+    sys.path.insert(0, repo_root)
 from pysat.solvers import Cadical195
 from scratch.engine.graph_loader import load_dimacs
 from scratch.engine.assembler import export_hcp_tour
