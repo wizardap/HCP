@@ -62,3 +62,4 @@ src/cegar-fix/examples/solve_class1_exact.rs
 src/cegar-fix/examples/solve_macro_cegar_class1.rs
 src/cegar-fix/examples/trace_cycle18_bfs.rs
 deep-research-skills/
+output_tours/
