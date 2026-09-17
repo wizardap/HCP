@@ -12,28 +12,33 @@
 - **Python**: 3.10+ (tested on Python 3.12 / 3.13)
 - **Rust** (optional, only if using `src/cegar-fix`): `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
 
-### Setup Commands
+### Automated 1-Command Setup
+```bash
+git clone git@github.com:wizardap/HCP.git
+cd HCP
+git checkout feat/upgrade-hcp-reference
+./setup_env.sh
+```
+This script installs build-essential, python3-dev, pip packages (`requirements.txt`), verifies CaDiCaL, and runs `verify_29.py` to confirm the 11 baseline tours.
+
+### Manual Setup Commands (Step-by-Step)
 ```bash
 # 1. Clone repository
 git clone git@github.com:wizardap/HCP.git
 cd HCP
 git checkout feat/upgrade-hcp-reference
 
-# 2. Install Python dependencies (only PySAT with CaDiCaL is required!)
-python3 -m pip install --upgrade pip
-pip install python-sat
+# 2. System dependencies (Debian / Ubuntu)
+sudo apt-get update && sudo apt-get install -y build-essential python3-dev python3-pip zlib1g-dev git
 
-# 3. Verify that PySAT and CaDiCaL are working
+# 3. Python dependencies
+pip install -r requirements.txt
+
+# 4. Verify that PySAT and CaDiCaL bindings are working
 python3 -c "from pysat.solvers import Cadical195; s = Cadical195(); s.add_clause([1, 2]); print('CaDiCaL OK:', s.solve())"
 
-# 4. Run the benchmark verifier on the 11 already solved tours
+# 5. Run the benchmark verifier on the 11 already solved tours
 python3 scratch/verify_29.py
-```
-
-Expected output of step 4:
-```
-Summary: 11/29 Solved (37.9%), 18 Remaining.
-All 11 verified tours PASS (SOUND, 100% valid raw edges, zero duplicate vertices).
 ```
 
 ---

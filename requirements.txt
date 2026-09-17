@@ -1,0 +1,7 @@
+# Core SAT Solver Engine dependency (provides CaDiCaL bindings)
+python-sat>=1.8.0
+
+# Optional dependencies for testing and scientific analysis
+pytest>=8.0.0
+numpy>=1.24.0
+scipy>=1.10.0
