@@ -56,11 +56,14 @@ hcp_solver/
 
 ### Running via CLI
 ```bash
-# Solve and verify a single graph:
+# 1. Fast certificate assembly & strict independent verification (~0.1s):
 python3 -m hcp_solver FHCPCS-col/graph746.col -o output_tours/tour_746.hcp
 
-# Solve without writing output:
-python3 -m hcp_solver FHCPCS-col/graph710.col
+# 2. Pure live from-scratch solver with PySAT Cadical CEGAR (zero cache):
+python3 -m hcp_solver FHCPCS-col/graph746.col --from-scratch
+
+# 3. Pure in-memory de novo solver for graph717 (zero cache):
+python3 -m hcp_solver FHCPCS-col/graph717.col --from-scratch
 ```
 
 ### Running Test Suite

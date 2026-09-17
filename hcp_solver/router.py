@@ -62,10 +62,7 @@ class HCPRouter:
         G = Graph(adj, name=os.path.basename(col_path))
 
         solver_cls = cls.dispatch(G, gid)
-        if solver_cls == DenseBipartiteSolver:
-            tour = solver_cls.solve(G, gid, verify=verify, from_scratch=from_scratch)
-        else:
-            tour = solver_cls.solve(G, gid, verify=verify)
+        tour = solver_cls.solve(G, gid, verify=verify, from_scratch=from_scratch)
 
         if out_tour_path:
             write_hcp_tour(tour, G.name, out_tour_path)

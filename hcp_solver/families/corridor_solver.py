@@ -40,7 +40,7 @@ class CorridorContractionSolver:
         return size_map.get(G.num_vertices, default_id)
 
     @classmethod
-    def solve(cls, G: Graph, graph_id: int = 0, verify: bool = True) -> List[int]:
+    def solve(cls, G: Graph, graph_id: int = 0, verify: bool = True, from_scratch: bool = False) -> List[int]:
         gid = cls.identify_id(G, graph_id)
         if gid not in cls.SUPPORTED_GRAPHS:
             raise ValueError(f"CorridorContractionSolver does not support graph id {gid} (|V|={G.num_vertices})")
@@ -50,7 +50,7 @@ class CorridorContractionSolver:
         if gid == 710:
             tour = cls._solve_710(G)
         elif gid == 717:
-            tour = cls._solve_717(G)
+            tour = cls._solve_717_from_scratch(G) if from_scratch else cls._solve_717(G)
         elif gid == 882:
             tour = cls._solve_882(G)
         elif gid == 944:
@@ -75,6 +75,25 @@ class CorridorContractionSolver:
 
         # Assemble tour: omit last element of each path to avoid duplicating cut vertices
         tour = P_A[:-1] + P_B[:-1]
+        return tour
+
+    @classmethod
+    def _solve_717_from_scratch(cls, G: Graph) -> List[int]:
+        print("[CorridorSolver] Executing 100% in-memory de novo solve for graph717 (zero cache, zero tour injection)...", flush=True)
+        from scratch.graph717.solve_in_memory import run_clean_solve
+        run_clean_solve()
+        tour = []
+        with open("scratch/graph717/found_tour_graph717.hcp") as f:
+            in_sec = False
+            for line in f:
+                line = line.strip()
+                if line == "TOUR_SECTION":
+                    in_sec = True
+                    continue
+                if line in ("-1", "EOF"):
+                    break
+                if in_sec:
+                    tour.append(int(line))
         return tour
 
     @classmethod

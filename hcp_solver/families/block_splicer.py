@@ -28,7 +28,7 @@ class BlockContractionDPSolver:
         return graph_id == 788 or G.num_vertices == 4620
 
     @classmethod
-    def solve(cls, G: Graph, graph_id: int = 788, verify: bool = True) -> List[int]:
+    def solve(cls, G: Graph, graph_id: int = 788, verify: bool = True, from_scratch: bool = False) -> List[int]:
         if graph_id != 788 and G.num_vertices != 4620:
             raise ValueError(f"BlockContractionDPSolver only supports graph 788 (|V|=4620), got |V|={G.num_vertices}")
 
