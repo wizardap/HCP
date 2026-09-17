@@ -27,6 +27,11 @@ def main():
         action="store_true",
         help="Skip strict mathematical verification against raw graph (not recommended)"
     )
+    parser.add_argument(
+        "--from-scratch",
+        action="store_true",
+        help="Solve from scratch using live SAT CEGAR without reading precomputed cache files"
+    )
 
     args = parser.parse_args()
 
@@ -35,7 +40,8 @@ def main():
         tour = HCPRouter.solve_file(
             col_path=args.input,
             out_tour_path=args.output,
-            verify=not args.no_verify
+            verify=not args.no_verify,
+            from_scratch=args.from_scratch
         )
         elapsed = time.time() - t0
         print(f"[*] Done in {elapsed:.3f}s. Tour length: {len(tour)} vertices.")

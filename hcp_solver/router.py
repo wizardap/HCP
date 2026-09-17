@@ -47,7 +47,8 @@ class HCPRouter:
         cls,
         col_path: str,
         out_tour_path: Optional[str] = None,
-        verify: bool = True
+        verify: bool = True,
+        from_scratch: bool = False
     ) -> List[int]:
         """
         Loads graph from DIMACS .col file, routes to solver, verifies tour,
@@ -61,7 +62,10 @@ class HCPRouter:
         G = Graph(adj, name=os.path.basename(col_path))
 
         solver_cls = cls.dispatch(G, gid)
-        tour = solver_cls.solve(G, gid, verify=verify)
+        if solver_cls == DenseBipartiteSolver:
+            tour = solver_cls.solve(G, gid, verify=verify, from_scratch=from_scratch)
+        else:
+            tour = solver_cls.solve(G, gid, verify=verify)
 
         if out_tour_path:
             write_hcp_tour(tour, G.name, out_tour_path)
