@@ -115,7 +115,10 @@ fn main() {
     let timeout_secs = matches.value_of_t::<f64>("timeout").unwrap_or(1800.0);
     let output_tour_path = matches.value_of("output-tour").map(|s| s.to_string());
     // solver,encodingのオプションを&strで受け取る
-    let input_filename = matches.value_of("input").unwrap_or("default");
+    let input_filename = matches
+        .value_of("input")
+        .or_else(|| matches.value_of("positional_input"))
+        .unwrap_or("default");
     let output_foldername = matches.value_of("output").unwrap_or("default");
 
     println!("solve {}", input_filename);

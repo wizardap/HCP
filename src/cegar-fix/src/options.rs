@@ -37,7 +37,13 @@ pub fn get_options() -> clap::ArgMatches {
                 .short('i')
                 .long("input")
                 .value_name("FILE NAME")
-                .help("Input file (Required)")
+                .help("Input file")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("positional_input")
+                .value_name("INPUT FILE")
+                .help("Input file path (positional)")
                 .takes_value(true)
                 .index(1),
         )
