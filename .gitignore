@@ -18,9 +18,47 @@ __pycache__/
 *.gz
 *.swp
 
-# Temporary scratch folders
+# Temporary scratch folders & artifacts
 src/cegar-fix/scratch/
 tools/
 *.patch
 scratch/*/*.json
 scratch/*.json
+scratch/*.pkl
+scratch/*/*.pkl
+scratch/*.txt
+scratch/*/*.txt
+scratch/*.log
+scratch/*/*.log
+scratch/*.par
+scratch/*/*.par
+scratch/*.tour
+scratch/lkh_test/
+scratch/ablation_tours/
+
+logs/
+
+# Untracked ad-hoc exploration examples in cegar-fix
+src/cegar-fix/examples/inspect_*
+!src/cegar-fix/examples/inspect_mde_788.rs
+src/cegar-fix/examples/test_*
+!src/cegar-fix/examples/test_blocks_678.rs
+!src/cegar-fix/examples/test_cadical_assumps.rs
+!src/cegar-fix/examples/test_clean_cegar_788.rs
+!src/cegar-fix/examples/test_decomposer_678.rs
+!src/cegar-fix/examples/test_twotier_678.rs
+src/cegar-fix/examples/print_*
+src/cegar-fix/examples/check_*
+src/cegar-fix/examples/count_*
+src/cegar-fix/examples/debug_*
+src/cegar-fix/examples/diagnose_*
+src/cegar-fix/examples/export_*
+src/cegar-fix/examples/find_*
+src/cegar-fix/examples/solve_exact_gadget_cycle.rs
+src/cegar-fix/examples/solve_directed_nocut_giant.rs
+src/cegar-fix/examples/solve_directed_macro.rs
+src/cegar-fix/examples/solve_directed_breakthrough.rs
+src/cegar-fix/examples/solve_class1_exact.rs
+src/cegar-fix/examples/solve_macro_cegar_class1.rs
+src/cegar-fix/examples/trace_cycle18_bfs.rs
+deep-research-skills/
