@@ -66,7 +66,7 @@ for gid in graph_ids:
     # Strict independent verification
     ok, msg = verify_tour(tour, G)
     if ok:
-        status = 'PASS (SOUND)'
+        status = 'SOLVED'
         passed += 1
     else:
         status = 'FAIL'

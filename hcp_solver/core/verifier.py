@@ -64,8 +64,8 @@ def certify_tour(tour: List[int], G: Union[Graph, Dict[int, Set[int]]], graph_na
         raise ValueError(f"Tour verification failed: {msg}")
 
     print("+" + "=" * 70 + "+")
-    print(f"| [SOUND CERTIFICATION] HAMILTONIAN CYCLE PASS{tag:<23} |")
+    print(f"| [VERIFIED] HAMILTONIAN TOUR CONFIRMED{tag:<30} |")
     print(f"| Vertices: {n:<10} Duplicates: 0{' ':<24} Edges: {n:<12} |")
-    print(f"| All {n} edges independently validated against raw DIMACS graph.  |")
+    print(f"| 100% sound: all {n} edges verified against raw DIMACS graph.      |")
     print("+" + "=" * 70 + "+")
     return True
