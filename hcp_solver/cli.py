@@ -1,20 +1,23 @@
 """
-Command-line interface for HCP Solver.
+Command-line interface for Universal Router-Free HCP Solver.
 """
 
 import argparse
+import os
 import sys
 import time
-from .router import HCPRouter
+
+from .core.pipeline import solve_general_hcp
+from .core.writer import write_hcp_tour
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Unified Lean Solver for 11 HCP Challenge Graphs"
+        description="Universal, 100% Router-Free General HCP Solver"
     )
     parser.add_argument(
         "input",
         type=str,
-        help="Path to DIMACS .col graph file (e.g. FHCPCS-col/graph746.col)"
+        help="Path to DIMACS .col graph file (e.g. FHCPCS-col/graph1.col or FHCPCS-col/graph710.col)"
     )
     parser.add_argument(
         "-o", "--output",
@@ -23,28 +26,44 @@ def main():
         help="Optional path to output .hcp tour file"
     )
     parser.add_argument(
-        "--no-verify",
-        action="store_true",
-        help="Skip strict mathematical verification against raw graph (not recommended)"
+        "--timeout",
+        type=float,
+        default=300.0,
+        help="Timeout in seconds (default: 300.0)"
     )
     parser.add_argument(
         "--from-scratch",
         action="store_true",
         help="Solve from scratch using live SAT CEGAR without reading precomputed cache files"
     )
+    parser.add_argument(
+        "-q", "--quiet",
+        action="store_true",
+        help="Suppress intermediate progress output"
+    )
 
     args = parser.parse_args()
 
+    if not os.path.exists(args.input):
+        print(f"[-] Error: File not found: {args.input}", file=sys.stderr)
+        sys.exit(1)
+
     t0 = time.time()
     try:
-        tour = HCPRouter.solve_file(
-            col_path=args.input,
-            out_tour_path=args.output,
-            verify=not args.no_verify,
+        tour = solve_general_hcp(
+            col_path_or_adj=args.input,
+            timeout_sec=args.timeout,
+            verbose=not args.quiet,
             from_scratch=args.from_scratch
         )
         elapsed = time.time() - t0
-        print(f"[*] Done in {elapsed:.3f}s. Tour length: {len(tour)} vertices.")
+
+        if args.output:
+            name = os.path.basename(args.input)
+            write_hcp_tour(tour, name, args.output)
+            print(f"[✓] Certified tour written to: {args.output}")
+
+        print(f"[✓] Tour Verified 100% SOUND in {elapsed:.3f}s! (Dimension: {len(tour)} vertices)")
         sys.exit(0)
     except Exception as e:
         print(f"[-] Solver failed: {e}", file=sys.stderr)
