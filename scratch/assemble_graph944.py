@@ -2,7 +2,8 @@ import sys, os, time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scratch.test_splice_14v import test_splice
 from scratch.engine.assembler import assemble_full_tour, export_hcp_tour
-from scratch.verify_benchmarks import verify_tour
+from hcp_solver.core.verifier import certify_tour
+from hcp_solver.core.graph import Graph
 
 def run_full_assembly():
     print("=" * 70)
@@ -60,16 +61,10 @@ def run_full_assembly():
     export_hcp_tour(tour, "graph944.col", output_path)
     print(f"[*] Exported tour to {output_path}")
 
-    # Verify tour with verify_benchmarks
-    print("=" * 70)
-    print("RUNNING OFFICIAL BENCHMARK VERIFIER...")
-    print("=" * 70)
-    ok = verify_tour("FHCPCS-col/graph944.col", output_path)
-    if ok:
-        print(f"[✓✓✓] graph944.col CERTIFIED 100% SOUND IN {time.time()-t0:.2f}s!")
-    else:
-        print("[X] VERIFICATION FAILED!")
-        sys.exit(1)
+    # Verify tour with certify_tour
+    certify_tour(tour, Graph(G, "graph944.col"), "graph944")
+    print(f"[✓✓✓] graph944.col CERTIFIED 100% SOUND IN {time.time()-t0:.2f}s!")
+    return tour
 
 if __name__ == '__main__':
     run_full_assembly()

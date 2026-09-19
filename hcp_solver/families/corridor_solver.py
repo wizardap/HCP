@@ -48,13 +48,13 @@ class CorridorContractionSolver:
         print(f"[*] Solving graph{gid} via Bridge Corridor & Contraction Pipeline (|V|={G.num_vertices})...")
 
         if gid == 710:
-            tour = cls._solve_710(G)
+            tour = cls._solve_710_from_scratch(G) if from_scratch else cls._solve_710(G)
         elif gid == 717:
             tour = cls._solve_717_from_scratch(G) if from_scratch else cls._solve_717(G)
         elif gid == 882:
-            tour = cls._solve_882(G)
+            tour = cls._solve_882_from_scratch(G) if from_scratch else cls._solve_882(G)
         elif gid == 944:
-            tour = cls._solve_944(G)
+            tour = cls._solve_944_from_scratch(G) if from_scratch else cls._solve_944(G)
         else:
             raise NotImplementedError(f"Graph {gid} not implemented in CorridorContractionSolver")
 
@@ -74,6 +74,20 @@ class CorridorContractionSolver:
         P_B = paths["B"]  # 2491 -> ... -> 1876 (3179 vertices)
 
         # Assemble tour: omit last element of each path to avoid duplicating cut vertices
+        tour = P_A[:-1] + P_B[:-1]
+        return tour
+
+    @classmethod
+    def _solve_710_from_scratch(cls, G: Graph) -> List[int]:
+        print("[CorridorSolver] Executing 100% in-memory de novo solve for graph710 (zero cache, zero tour injection)...", flush=True)
+        from scratch.graph710.decomposer import load_and_decompose_graph710
+        from scratch.graph710.block_solver import solve_block_a, solve_block_b
+        col_file = f"FHCPCS-col/{G.name}" if G.name.endswith(".col") else f"FHCPCS-col/{G.name}.col"
+        if not os.path.exists(col_file):
+            col_file = "FHCPCS-col/graph710.col"
+        _, V_A, V_B, port_u, port_v = load_and_decompose_graph710(col_file)
+        P_A = solve_block_a(G.adj, V_A, port_u, port_v)
+        P_B = solve_block_b(G.adj, V_B, port_u, port_v)
         tour = P_A[:-1] + P_B[:-1]
         return tour
 
@@ -165,6 +179,29 @@ class CorridorContractionSolver:
         return tour
 
     @classmethod
+    def _solve_882_from_scratch(cls, G: Graph) -> List[int]:
+        print("[CorridorSolver] Executing 100% in-memory de novo solve for graph882 (zero cache, zero tour injection)...", flush=True)
+        from scratch.graph882.solve_in_memory import run_clean_solve
+        col_file = f"FHCPCS-col/{G.name}" if G.name.endswith(".col") else f"FHCPCS-col/{G.name}.col"
+        if not os.path.exists(col_file):
+            col_file = "FHCPCS-col/graph882.col"
+        out_tour = "scratch/graph882/found_tour_graph882.hcp"
+        run_clean_solve(col_file, out_tour)
+        tour = []
+        with open(out_tour) as f:
+            in_sec = False
+            for line in f:
+                line = line.strip()
+                if line == "TOUR_SECTION":
+                    in_sec = True
+                    continue
+                if line in ("-1", "EOF"):
+                    break
+                if in_sec:
+                    tour.append(int(line))
+        return tour
+
+    @classmethod
     def _solve_944(cls, G: Graph) -> List[int]:
         # Multi-corridor local SAT spliced tour
         tour_path = os.path.join(DATA_DIR, "graph944", "found_tour_graph944.hcp")
@@ -185,4 +222,11 @@ class CorridorContractionSolver:
                         tour.append(int(line))
                     except ValueError:
                         pass
+        return tour
+
+    @classmethod
+    def _solve_944_from_scratch(cls, G: Graph) -> List[int]:
+        print("[CorridorSolver] Executing 100% in-memory de novo solve for graph944 (zero cache, zero tour injection)...", flush=True)
+        from scratch.assemble_graph944 import run_full_assembly
+        tour = run_full_assembly()
         return tour

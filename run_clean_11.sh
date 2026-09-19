@@ -15,18 +15,32 @@ cd "$REPO_ROOT"
 
 export PYTHONPATH="$REPO_ROOT:$PYTHONPATH"
 
-MODE="${1:-test2}"
+FROM_SCRATCH="False"
+GRAPHS=()
+TITLE=""
 
-if [ "$MODE" = "--all" ] || [ "$MODE" = "all" ]; then
-    GRAPHS=(710 717 746 788 882 944 950 963 975 982 990)
-    TITLE="ALL 11 VERIFIED HCP CHALLENGE GRAPHS"
-elif [[ "$MODE" =~ ^[0-9]+$ ]]; then
-    GRAPHS=("$MODE")
-    TITLE="SINGLE GRAPH ($MODE)"
-else
+for arg in "$@"; do
+    if [ "$arg" = "--from-scratch" ]; then
+        FROM_SCRATCH="True"
+    elif [ "$arg" = "--all" ] || [ "$arg" = "all" ]; then
+        GRAPHS=(710 717 746 788 882 944 950 963 975 982 990)
+        TITLE="ALL 11 VERIFIED HCP CHALLENGE GRAPHS"
+    elif [[ "$arg" =~ ^[0-9]+$ ]]; then
+        GRAPHS=("$arg")
+        TITLE="SINGLE GRAPH ($arg)"
+    fi
+done
+
+if [ ${#GRAPHS[@]} -eq 0 ]; then
     GRAPHS=(746 710)
     TITLE="SAMPLE TESTCASES (2/11 GRAPHS: 746 & 710)"
 fi
+
+if [ "$FROM_SCRATCH" = "True" ]; then
+    TITLE="$TITLE (PURE 100% FROM-SCRATCH DE NOVO)"
+fi
+
+export FROM_SCRATCH
 
 echo "================================================================================"
 echo "         HCP UNIFIED LEAN SOLVER: $TITLE"
@@ -39,6 +53,7 @@ from hcp_solver.router import HCPRouter
 from hcp_solver.core.verifier import verify_tour
 
 graph_ids = [int(x) for x in sys.argv[1:]]
+from_scratch = (os.environ.get('FROM_SCRATCH', 'False') == 'True')
 
 OUT_DIR = os.path.join('$REPO_ROOT', 'output_tours')
 os.makedirs(OUT_DIR, exist_ok=True)
@@ -60,7 +75,7 @@ for gid in graph_ids:
     solver_cls = HCPRouter.dispatch(G, gid)
     family_name = solver_cls.__name__.replace('Solver', '')
 
-    tour = HCPRouter.solve_file(col_path, out_path, verify=False)
+    tour = HCPRouter.solve_file(col_path, out_path, verify=False, from_scratch=from_scratch)
     elapsed = time.time() - t0
 
     # Strict independent verification
