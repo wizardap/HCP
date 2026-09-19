@@ -171,7 +171,8 @@ def try_patch_merge(cyc1: List[int], cyc2: List[int], adj: Dict[int, Set[int]], 
                     else:
                         cyc_rest = cyc1[idx_end:] + cyc1[: idx_prev + 1]
                     merged = cyc_rest + path[1:-1]
-                    assert len(merged) == n1 + n2
+                    if len(merged) != n1 + n2:
+                        continue
                     return merged
     return None
 

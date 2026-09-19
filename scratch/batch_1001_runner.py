@@ -53,7 +53,7 @@ def verify_cycle(tour, num_nodes, edges):
             return False, f"Invalid edge ({u}, {v})"
     return True, "100% sound"
 
-def solve_one(gid):
+def solve_one(gid, timeout=TIMEOUT_SEC):
     col_path = os.path.join(GRAPH_DIR, f"graph{gid}.col")
     if not os.path.exists(col_path):
         return {"gid": gid, "status": "MISSING_FILE", "time": 0.0}
@@ -80,11 +80,11 @@ def solve_one(gid):
         "-y", "0",
         "-t", "3",
         "-l", "1",
-        "--timeout", str(TIMEOUT_SEC)
+        "--timeout", str(timeout)
     ]
 
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=TIMEOUT_SEC + 2)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 2)
         elapsed = time.time() - t0
         out = proc.stdout
 
@@ -116,13 +116,22 @@ def solve_one(gid):
             return {"gid": gid, "status": "TIMEOUT", "time": elapsed}
 
     except subprocess.TimeoutExpired:
-        return {"gid": gid, "status": "TIMEOUT", "time": float(TIMEOUT_SEC)}
+        return {"gid": gid, "status": "TIMEOUT", "time": float(timeout)}
     except Exception as e:
         return {"gid": gid, "status": "ERROR", "time": time.time() - t0, "err": str(e)}
 
 def main():
-    max_workers = 6  # 6 cores on 8-core machine
-    print(f"[*] Starting Batch 1001 FHCPCS Runner (Workers={max_workers}, Timeout={TIMEOUT_SEC}s)...")
+    import argparse
+    parser = argparse.ArgumentParser(description="Batch FHCPCS Runner")
+    parser.add_argument("--start", type=int, default=1, help="Start graph ID")
+    parser.add_argument("--end", type=int, default=1001, help="End graph ID")
+    parser.add_argument("--workers", type=int, default=1, help="Number of worker processes")
+    parser.add_argument("--timeout", type=int, default=TIMEOUT_SEC, help="Timeout in seconds")
+    args = parser.parse_args()
+
+    max_workers = args.workers
+    timeout = args.timeout
+    print(f"[*] Starting Batch FHCPCS Runner (Graphs {args.start}..{args.end}, Workers={max_workers}, Timeout={timeout}s)...")
     print(f"[*] Output log: {LOG_FILE}")
     print(f"[*] Results JSON: {OUT_JSON}")
 
@@ -134,12 +143,13 @@ def main():
                 saved = json.load(f)
                 for item in saved:
                     results[item["gid"]] = item
-            print(f"[*] Resuming from checkpoint: {len(results)}/1001 already done.")
+            print(f"[*] Resuming from checkpoint: {len(results)} already done.")
         except Exception:
             results = {}
 
-    to_run = [gid for gid in range(1, 1002) if gid not in results]
-    print(f"[*] Remaining graphs to evaluate: {len(to_run)}")
+    target_range = range(args.start, args.end + 1)
+    to_run = [gid for gid in target_range if gid not in results]
+    print(f"[*] Remaining graphs to evaluate in range: {len(to_run)}")
 
     stats = {"SAT_VERIFIED": 0, "SOLVED_SPECIALIZED": 0, "PROVED_UNSAT": 0, "TIMEOUT": 0, "OTHER": 0}
     for item in results.values():
@@ -153,7 +163,7 @@ def main():
         log_f.write(f"\n--- Batch Run Started at {time.ctime()} ---\n")
 
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            future_to_gid = {executor.submit(solve_one, gid): gid for gid in to_run}
+            future_to_gid = {executor.submit(solve_one, gid, timeout): gid for gid in to_run}
 
             for future in as_completed(future_to_gid):
                 res = future.result()
@@ -165,18 +175,18 @@ def main():
                 stats[st] = stats.get(st, 0) + 1
                 tm = res["time"]
 
-                line = f"[{count:4d}/1001] graph{gid:4d}: {st:<18} ({tm:6.2f}s)"
+                line = f"[{count:4d}/{args.end}] graph{gid:4d}: {st:<18} ({tm:6.2f}s)"
                 log_f.write(line + "\n")
                 log_f.flush()
 
-                if count % 20 == 0 or count == 1001:
+                if count % 10 == 0 or count == args.end:
                     rate = (stats.get("SAT_VERIFIED", 0) + stats.get("SOLVED_SPECIALIZED", 0))
                     unsat = stats.get("PROVED_UNSAT", 0)
                     tout = stats.get("TIMEOUT", 0)
                     elapsed_all = time.time() - t_start
-                    print(f"[{count:4d}/1001] ({(count/1001)*100:5.1f}%) | "
+                    print(f"[{count:4d}/{args.end}] ({(count/args.end)*100:5.1f}%) | "
                           f"SAT: {rate} | UNSAT: {unsat} | TIMEOUT: {tout} | "
-                          f"Elapsed: {elapsed_all:.1f}s")
+                          f"Elapsed: {elapsed_all:.1f}s", flush=True)
 
                     # Checkpoint save
                     with open(OUT_JSON, "w") as jf:
