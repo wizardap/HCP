@@ -143,7 +143,11 @@ fn main() {
             println!();
             println!("overall time = {:?}", instant.elapsed());
         } else {
-            println!("s UNSATISFIABLE");
+            if instant.elapsed().as_secs_f64() >= timeout_secs {
+                println!("s UNKNOWN");
+            } else {
+                println!("s UNSATISFIABLE");
+            }
             println!("overall time = {:?}", instant.elapsed());
         }
         return;
@@ -165,7 +169,11 @@ fn main() {
             println!();
             println!("overall time = {:?}", instant.elapsed());
         } else {
-            println!("s UNSATISFIABLE");
+            if instant.elapsed().as_secs_f64() >= timeout_secs {
+                println!("s UNKNOWN");
+            } else {
+                println!("s UNSATISFIABLE");
+            }
             println!("overall time = {:?}", instant.elapsed());
         }
         return;
@@ -196,7 +204,11 @@ fn main() {
     if (auto_mode || matches.is_present("ablation") || hybrid_opts.macro_gadget || hybrid_opts.bounded_freezer) && !has_manual_overrides {
         let res = hybrid_orchestrator::HybridOrchestrator::solve(&g, &hybrid_opts);
         if res.is_none() {
-            println!("s UNSATISFIABLE");
+            if instant.elapsed().as_secs_f64() >= timeout_secs {
+                println!("s UNKNOWN");
+            } else {
+                println!("s UNSATISFIABLE");
+            }
         }
         println!("overall time = {:?}", instant.elapsed());
         return;
