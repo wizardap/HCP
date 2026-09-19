@@ -554,6 +554,7 @@ fn cegar(
                 let sol_arcs = get_solution_arcs_from_lits(&model_lits, &encoder.graph_lit_map);
                 // 閉路
                 let sol_cycles = get_solution_cycles(sol_arcs);
+                let raw_sol_cycles = sol_cycles.clone();
                 backbone_tracker.record_solution_edges(&sol_cycles);
 
                 // 閉路が一つであれば、ハミルトン閉路なので解を出力
@@ -862,9 +863,9 @@ fn cegar(
 
                     // 2-opt / 3-opt solution constructor
                     let (block_clauses, mut _active_cycles) = if opt == 0 {
-                        (get_blocking_clauses(&sol_cycles, encoder, &g, block_method, balanced), sol_cycles.clone())
+                        (get_blocking_clauses(&raw_sol_cycles, encoder, &g, block_method, balanced), raw_sol_cycles.clone())
                     } else if opt >= 1 {
-                        let (clauses, cycles) = two_opt(&sol_cycles, encoder, &g, contractor, hub_registry, block_method, balanced, opt, three_opt);
+                        let (clauses, cycles) = two_opt(&raw_sol_cycles, encoder, &g, contractor, hub_registry, block_method, balanced, opt, three_opt);
                         if cycles.len() == 1 && cycles[0].len() == g.adjacency_list.len() {
                             let flat: Vec<i32> = cycles.into_iter().flatten().collect();
                             let full_cycle = contractor.uncontract_cycle(&flat);
@@ -1386,15 +1387,7 @@ fn two_opt(
     let block_clauses = if active_cycles.len() == 1 && active_cycles[0].len() == g.adjacency_list.len() {
         Vec::new()
     } else {
-        match opt {
-            3 => get_blocking_clauses(&active_cycles, encoder, g, block_method, balanced),
-            2 => {
-                let mut cl = get_blocking_clauses(sol_cycles, encoder, g, block_method, balanced);
-                cl.extend(get_blocking_clauses(&active_cycles, encoder, g, block_method, balanced));
-                cl
-            }
-            _ => get_blocking_clauses(sol_cycles, encoder, g, block_method, balanced),
-        }
+        get_blocking_clauses(sol_cycles, encoder, g, block_method, balanced)
     };
 
     println!("number of connected cycles = {}", cycles.len() - sol_cycles.len());
