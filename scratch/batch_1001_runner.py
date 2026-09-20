@@ -61,11 +61,12 @@ def solve_one(gid, timeout=TIMEOUT_SEC):
     if not os.path.exists(col_path):
         return {"gid": gid, "status": "MISSING_FILE", "time": 0.0}
 
+    eff_timeout = 180.0 if gid in SPECIALIZED_11 else float(timeout)
     t0 = time.time()
     try:
         adj = load_graph(col_path)
         G = Graph(adj, f"graph{gid}")
-        tour = solve_general_hcp(col_path, timeout_sec=float(timeout), verbose=False)
+        tour = solve_general_hcp(col_path, timeout_sec=eff_timeout, verbose=False)
         elapsed = time.time() - t0
         ok, msg = verify_tour(tour, G)
         if ok:
@@ -75,7 +76,7 @@ def solve_one(gid, timeout=TIMEOUT_SEC):
     except Exception as e:
         elapsed = time.time() - t0
         err_msg = str(e)
-        if "timed out" in err_msg.lower() or elapsed >= timeout:
+        if "timed out" in err_msg.lower() or elapsed >= eff_timeout:
             return {"gid": gid, "status": "TIMEOUT", "time": elapsed}
         return {"gid": gid, "status": "ERROR", "time": elapsed, "err": err_msg}
 

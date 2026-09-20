@@ -51,6 +51,10 @@ def contract_degree2_chains(
         if c_vw[0] != v:
             c_vw = list(reversed(c_vw))
 
+        if w in sub_adj[u]:
+            sub_adj[u].remove(w)
+            sub_adj[w].remove(u)
+
         e_uw = tuple(sorted([u, w]))
         sub_adj[u].add(w)
         sub_adj[w].add(u)

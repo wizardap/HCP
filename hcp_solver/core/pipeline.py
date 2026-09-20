@@ -106,7 +106,8 @@ def solve_core_sat_binary(
 def solve_core_sat_pysat(
     adj: Dict[int, Set[int]],
     timeout_sec: float = 300.0,
-    verbose: bool = False
+    verbose: bool = False,
+    forced_edges: Optional[Set[Tuple[int, int]]] = None
 ) -> Optional[List[int]]:
     """
     Pure Python 100% sound CDCL SAT-CEGAR solver with DFJ cuts.
@@ -135,6 +136,12 @@ def solve_core_sat_pysat(
         cnf = CardEnc.equals(lits=inc, bound=2, top_id=top, encoding=EncType.seqcounter)
         top = max(top, cnf.nv)
         clauses.extend(cnf.clauses)
+
+    if forced_edges:
+        for fe in forced_edges:
+            e = tuple(sorted(fe))
+            if e in var_e:
+                clauses.append([var_e[e]])
 
     solver = Cadical195(bootstrap_with=clauses)
     it = 0
@@ -178,7 +185,8 @@ def solve_core_sat_pysat(
             return cycles[0]
 
         if 2 <= len(cycles) <= 4:
-            merged_tour = _try_fast_2opt_merge(cycles, adj)
+            forbidden_delete = set(tuple(sorted(e)) for e in (forced_edges or []))
+            merged_tour = _try_fast_2opt_merge(cycles, adj, forbidden_delete)
             if merged_tour is not None and len(merged_tour) == nv:
                 solver.delete()
                 if verbose:
@@ -195,7 +203,11 @@ def solve_core_sat_pysat(
     solver.delete()
     return None
 
-def _try_fast_2opt_merge(cycles: List[List[int]], adj: Dict[int, Set[int]]) -> Optional[List[int]]:
+def _try_fast_2opt_merge(
+    cycles: List[List[int]],
+    adj: Dict[int, Set[int]],
+    forbidden_delete: Set[Tuple[int, int]] = frozenset()
+) -> Optional[List[int]]:
     curr = list(cycles)
     merged_any = True
     while merged_any and len(curr) > 1:
@@ -203,7 +215,7 @@ def _try_fast_2opt_merge(cycles: List[List[int]], adj: Dict[int, Set[int]]) -> O
         curr.sort(key=len, reverse=True)
         for i in range(len(curr)):
             for j in range(i + 1, len(curr)):
-                res = _merge_two_cycles(curr[i], curr[j], adj)
+                res = _merge_two_cycles(curr[i], curr[j], adj, forbidden_delete)
                 if res is not None:
                     curr.pop(j)
                     curr[i] = res
@@ -215,14 +227,25 @@ def _try_fast_2opt_merge(cycles: List[List[int]], adj: Dict[int, Set[int]]) -> O
         return curr[0]
     return None
 
-def _merge_two_cycles(c1: List[int], c2: List[int], adj: Dict[int, Set[int]]) -> Optional[List[int]]:
+def _merge_two_cycles(
+    c1: List[int],
+    c2: List[int],
+    adj: Dict[int, Set[int]],
+    forbidden_delete: Set[Tuple[int, int]] = frozenset()
+) -> Optional[List[int]]:
     n1, n2 = len(c1), len(c2)
     for i in range(n1):
         u1 = c1[i]
         u2 = c1[(i + 1) % n1]
+        e1 = tuple(sorted([u1, u2]))
+        if e1 in forbidden_delete:
+            continue
         for j in range(n2):
             v1 = c2[j]
             v2 = c2[(j + 1) % n2]
+            e2 = tuple(sorted([v1, v2]))
+            if e2 in forbidden_delete:
+                continue
             if v1 in adj[u1] and v2 in adj[u2]:
                 tour = []
                 for k in range(1, n1 + 1):
@@ -323,7 +346,12 @@ def solve_general_hcp(
             print(f"[*] Contracted {N - N_c} degree-2 vertices ({N} -> {N_c} vertices).")
 
         rem_timeout = max(5.0, timeout_sec - (time.time() - t_start))
-        core_tour = solve_core_sat_pysat(contracted_adj, timeout_sec=rem_timeout, verbose=verbose)
+        core_tour = solve_core_sat_pysat(
+            contracted_adj,
+            timeout_sec=rem_timeout,
+            verbose=verbose,
+            forced_edges=set(chain_map.keys())
+        )
         if not core_tour:
             raise RuntimeError(f"Solver timed out or failed on graph '{name}' (|V|={N})")
 
