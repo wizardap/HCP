@@ -34,7 +34,14 @@ def main():
     parser.add_argument(
         "--from-scratch",
         action="store_true",
-        help="Solve from scratch using live SAT CEGAR without reading precomputed cache files"
+        default=True,
+        help="Solve from scratch using live SAT CEGAR without reading precomputed cache files (default: True)"
+    )
+    parser.add_argument(
+        "--use-cache",
+        action="store_true",
+        default=False,
+        help="Allow loading precomputed certificates from data/ cache (default: False)"
     )
     parser.add_argument(
         "-q", "--quiet",
@@ -48,13 +55,15 @@ def main():
         print(f"[-] Error: File not found: {args.input}", file=sys.stderr)
         sys.exit(1)
 
+    from_scratch = not args.use_cache
+
     t0 = time.time()
     try:
         tour = solve_general_hcp(
             col_path_or_adj=args.input,
             timeout_sec=args.timeout,
             verbose=not args.quiet,
-            from_scratch=args.from_scratch
+            from_scratch=from_scratch
         )
         elapsed = time.time() - t0
 

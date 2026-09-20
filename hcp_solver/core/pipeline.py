@@ -243,7 +243,7 @@ def solve_general_hcp(
     col_path_or_adj: Union[str, Dict[int, Set[int]]],
     timeout_sec: float = 300.0,
     verbose: bool = True,
-    from_scratch: bool = False
+    from_scratch: bool = True
 ) -> List[int]:
     """
     Universal, 100% Router-Free General Solver for ANY Hamiltonian Cycle Problem instance.

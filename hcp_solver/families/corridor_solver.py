@@ -40,7 +40,7 @@ class CorridorContractionSolver:
         return size_map.get(G.num_vertices, default_id)
 
     @classmethod
-    def solve(cls, G: Graph, graph_id: int = 0, verify: bool = True, from_scratch: bool = False) -> List[int]:
+    def solve(cls, G: Graph, graph_id: int = 0, verify: bool = True, from_scratch: bool = True) -> List[int]:
         gid = cls.identify_id(G, graph_id)
         if gid not in cls.SUPPORTED_GRAPHS:
             raise ValueError(f"CorridorContractionSolver does not support graph id {gid} (|V|={G.num_vertices})")

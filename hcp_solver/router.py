@@ -22,7 +22,7 @@ class HCPRouter:
         col_path: str,
         out_tour_path: Optional[str] = None,
         verify: bool = True,
-        from_scratch: bool = False
+        from_scratch: bool = True
     ) -> List[int]:
         if not os.path.exists(col_path):
             raise FileNotFoundError(f"Input graph file not found: {col_path}")

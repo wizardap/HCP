@@ -15,12 +15,14 @@ cd "$REPO_ROOT"
 
 export PYTHONPATH="$REPO_ROOT:$PYTHONPATH"
 
-FROM_SCRATCH="False"
+FROM_SCRATCH="True"
 GRAPHS=()
 TITLE=""
 
 for arg in "$@"; do
-    if [ "$arg" = "--from-scratch" ]; then
+    if [ "$arg" = "--use-cache" ]; then
+        FROM_SCRATCH="False"
+    elif [ "$arg" = "--from-scratch" ]; then
         FROM_SCRATCH="True"
     elif [ "$arg" = "--all" ] || [ "$arg" = "all" ]; then
         GRAPHS=(710 717 746 788 882 944 950 963 975 982 990)
@@ -72,8 +74,7 @@ for gid in graph_ids:
     t0 = time.time()
     adj = load_graph(col_path)
     G = Graph(adj, f'graph{gid}')
-    solver_cls = HCPRouter.dispatch(G, gid)
-    family_name = solver_cls.__name__.replace('Solver', '')
+    family_name = 'UniversalEngine'
 
     tour = HCPRouter.solve_file(col_path, out_path, verify=False, from_scratch=from_scratch)
     elapsed = time.time() - t0
