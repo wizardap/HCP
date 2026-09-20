@@ -53,72 +53,31 @@ def verify_cycle(tour, num_nodes, edges):
             return False, f"Invalid edge ({u}, {v})"
     return True, "100% sound"
 
+sys.path.insert(0, REPO_ROOT)
+from hcp_solver import solve_general_hcp, load_graph, Graph, verify_tour
+
 def solve_one(gid, timeout=TIMEOUT_SEC):
     col_path = os.path.join(GRAPH_DIR, f"graph{gid}.col")
     if not os.path.exists(col_path):
         return {"gid": gid, "status": "MISSING_FILE", "time": 0.0}
 
-    # Handle specialized 11 graphs
-    if gid in SPECIALIZED_11:
-        tour_path = os.path.join(REPO_ROOT, "output_tours", f"tour_graph{gid}.hcp")
-        if os.path.exists(tour_path):
-            return {
-                "gid": gid,
-                "status": "SOLVED_SPECIALIZED",
-                "time": 0.05,
-                "method": "StructuralDecomposition",
-                "note": "Pre-certified in unified hcp_solver"
-            }
-
     t0 = time.time()
-    cmd = [
-        CEGAR_BIN,
-        "-i", col_path,
-        "--auto", "0",
-        "-e", "1",
-        "-b", "3",
-        "-y", "0",
-        "-t", "3",
-        "-l", "1",
-        "--timeout", str(timeout)
-    ]
-
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 2)
+        adj = load_graph(col_path)
+        G = Graph(adj, f"graph{gid}")
+        tour = solve_general_hcp(col_path, timeout_sec=float(timeout), verbose=False)
         elapsed = time.time() - t0
-        out = proc.stdout
-
-        if "s SATISFIABLE" in out:
-            # Parse solution
-            tour = []
-            for line in out.splitlines():
-                if line.startswith("solution:"):
-                    continue
-                # The line following solution: is the space-separated tour
-                parts = line.strip().split()
-                if len(parts) > 1 and all(p.isdigit() for p in parts[:min(10, len(parts))]):
-                    tour = [int(p) for p in parts]
-                    break
-
-            if tour:
-                num_nodes, edges = parse_dimacs(col_path)
-                ok, msg = verify_cycle(tour, num_nodes, edges)
-                if ok:
-                    return {"gid": gid, "status": "SAT_VERIFIED", "time": elapsed, "nodes": num_nodes}
-                else:
-                    return {"gid": gid, "status": "SAT_INVALID", "time": elapsed, "err": msg}
-            else:
-                return {"gid": gid, "status": "SAT_NO_TOUR", "time": elapsed}
-
-        elif "s UNSATISFIABLE" in out:
-            return {"gid": gid, "status": "PROVED_UNSAT", "time": elapsed}
+        ok, msg = verify_tour(tour, G)
+        if ok:
+            return {"gid": gid, "status": "SAT_VERIFIED", "time": elapsed, "nodes": G.num_vertices}
         else:
-            return {"gid": gid, "status": "TIMEOUT", "time": elapsed}
-
-    except subprocess.TimeoutExpired:
-        return {"gid": gid, "status": "TIMEOUT", "time": float(timeout)}
+            return {"gid": gid, "status": "SAT_INVALID", "time": elapsed, "err": msg}
     except Exception as e:
-        return {"gid": gid, "status": "ERROR", "time": time.time() - t0, "err": str(e)}
+        elapsed = time.time() - t0
+        err_msg = str(e)
+        if "timed out" in err_msg.lower() or elapsed >= timeout:
+            return {"gid": gid, "status": "TIMEOUT", "time": elapsed}
+        return {"gid": gid, "status": "ERROR", "time": elapsed, "err": err_msg}
 
 def main():
     import argparse
