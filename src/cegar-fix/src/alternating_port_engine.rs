@@ -184,8 +184,8 @@ impl AlternatingPortEngine {
             for b in 0..n_blocks {
                 for end in 0..=1 {
                     let p = Port { block: b, end };
-                    let raw_u = port_to_node[&p];
-                    let act_nbr = port_nbr[&p];
+                    let Some(&raw_u) = port_to_node.get(&p) else { continue; };
+                    let Some(&act_nbr) = port_nbr.get(&p) else { continue; };
                     if let Some(nbrs) = g.adjacency_list.get(&raw_u) {
                         for &raw_v in nbrs {
                             if let Some(&inact_p) = node_to_port.get(&raw_v) {
