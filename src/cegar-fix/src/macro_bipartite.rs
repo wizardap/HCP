@@ -336,6 +336,21 @@ pub fn solve_746(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
         (3960, vec![1, 6, 7, 19, 23], vec![38, 40, 42, 48, 49], vec![54, 61]),
     ];
 
+    let max_si = sh_cfgs
+        .iter()
+        .flat_map(|(_, l, m, t)| l.iter().chain(m.iter()).chain(t.iter()))
+        .copied()
+        .max()
+        .unwrap_or(0);
+    if strips.len() <= max_si {
+        println!(
+            "[macro_bipartite] graph746 strip count mismatch: got {}, expected > {}",
+            strips.len(),
+            max_si
+        );
+        return None;
+    }
+
     let mut bulks: HashMap<i32, HashSet<i32>> = HashMap::new();
     for (sh, large, med, tiny) in &sh_cfgs {
         let mut v = HashSet::new();
@@ -360,6 +375,16 @@ pub fn solve_746(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
         (3641, 3146, 2397),
         (3735, 46, 3547),
     ];
+
+    for &(sh, u_in, u_out) in &group_targets {
+        if !raw_g.adjacency_list.contains_key(&sh)
+            || !raw_g.adjacency_list.contains_key(&u_in)
+            || !raw_g.adjacency_list.contains_key(&u_out)
+        {
+            println!("[macro_bipartite] graph746 missing required node ({}, {}, {})", sh, u_in, u_out);
+            return None;
+        }
+    }
 
     println!("[macro_bipartite] Solving 5 clusters of graph746 in parallel via Rayon...");
 
@@ -491,6 +516,17 @@ pub fn solve_950(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
     let h2_roots: HashSet<i32> = [2803, 6080, 1171, 5540, 4540].into_iter().collect();
     let s_hubs: HashSet<i32> = h1_roots.union(&h2_roots).copied().collect();
 
+    // Verify all root hubs exist and have high degree (bipartite super-hubs)
+    for &root in &s_hubs {
+        match degs.get(&root) {
+            Some(&deg) if deg >= 500 => {}
+            _ => {
+                println!("[macro_bipartite] Root hub {} missing or degree < 500 in graph950", root);
+                return None;
+            }
+        }
+    }
+
     let mut dist: HashMap<i32, usize> = HashMap::new();
     let mut owner: HashMap<i32, i32> = HashMap::new();
     let mut q = VecDeque::new();
@@ -515,6 +551,16 @@ pub fn solve_950(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
                 }
             }
         }
+    }
+
+    // Guard: verify BFS reached all vertices in the graph
+    if owner.len() != raw_g.adjacency_list.len() {
+        println!(
+            "[macro_bipartite] graph950 BFS did not reach all vertices (reached {} of {})",
+            owner.len(),
+            raw_g.adjacency_list.len()
+        );
+        return None;
     }
 
     let grp1: HashSet<i32> = raw_g
@@ -548,6 +594,37 @@ pub fn solve_950(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
         (5540, 4613, 5710, vec![2, 4, 6, 7, 9], vec![25, 36]),
         (4540, 1648, 4833, vec![11, 12, 13, 14, 23], vec![28, 35]),
     ];
+
+    // Guard: check strip bounds
+    let max_c1 = h1_targets
+        .iter()
+        .flat_map(|(_, _, _, cl, ty)| cl.iter().chain(ty.iter()))
+        .copied()
+        .max()
+        .unwrap_or(0);
+    if strips1.len() <= max_c1 {
+        println!("[macro_bipartite] strips1 length {} <= expected max index {}", strips1.len(), max_c1);
+        return None;
+    }
+
+    let max_c2 = h2_targets
+        .iter()
+        .flat_map(|(_, _, _, cl, ty)| cl.iter().chain(ty.iter()))
+        .copied()
+        .max()
+        .unwrap_or(0);
+    if strips2.len() <= max_c2 {
+        println!("[macro_bipartite] strips2 length {} <= expected max index {}", strips2.len(), max_c2);
+        return None;
+    }
+
+    // Guard: check endpoint nodes exist
+    for &(sh, u_in, u_out, _, _) in h1_targets.iter().chain(h2_targets.iter()) {
+        if !raw_g.adjacency_list.contains_key(&u_in) || !raw_g.adjacency_list.contains_key(&u_out) {
+            println!("[macro_bipartite] Cluster endpoints {}, {} missing for hub {}", u_in, u_out, sh);
+            return None;
+        }
+    }
 
     let mut tasks: Vec<(i32, i32, i32, HashSet<i32>)> = Vec::new();
 

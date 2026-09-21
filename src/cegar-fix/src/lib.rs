@@ -73,4 +73,4 @@ pub mod macro_corridor;
 pub mod macro_788;
 pub mod solver_pipeline;
 
-pub use solver_pipeline::{solve_single_graph, BatchItemResult, find_graph_file, run_batch, save_checkpoint_atomic};
+pub use solver_pipeline::{solve_single_graph, BatchItemResult, SolverPipelineError, find_graph_file, run_batch, save_checkpoint_atomic};

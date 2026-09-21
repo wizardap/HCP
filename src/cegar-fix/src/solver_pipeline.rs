@@ -34,6 +34,36 @@ pub fn find_graph_file(gid: usize) -> Option<String> {
     None
 }
 
+#[derive(Debug, Clone)]
+pub struct SolverPipelineError {
+    pub message: String,
+    pub vertex_count: usize,
+}
+
+impl std::fmt::Display for SolverPipelineError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for SolverPipelineError {}
+
+impl std::ops::Deref for SolverPipelineError {
+    type Target = str;
+    fn deref(&self) -> &Self::Target {
+        &self.message
+    }
+}
+
+impl From<String> for SolverPipelineError {
+    fn from(message: String) -> Self {
+        Self {
+            message,
+            vertex_count: 0,
+        }
+    }
+}
+
 /// Unified solving pipeline function:
 /// 1. Load graph from `graph_path` using `file_operations::parse_graph_from_file(graph_path)`.
 /// 2. Check for cut vertices / articulation points (`g.has_articulation_points()`).
@@ -48,17 +78,23 @@ pub fn solve_single_graph(
     graph_path: &str,
     timeout_secs: f64,
     output_tour_path: Option<&str>,
-) -> Result<(Vec<i32>, f64, usize), String> {
+) -> Result<(Vec<i32>, f64, usize), SolverPipelineError> {
     let start_time = Instant::now();
 
     // 1. Load graph
     let g = file_operations::parse_graph_from_file(graph_path)
-        .map_err(|e| format!("Failed to parse graph from '{}': {}", graph_path, e))?;
+        .map_err(|e| SolverPipelineError {
+            message: format!("Failed to parse graph from '{}': {}", graph_path, e),
+            vertex_count: 0,
+        })?;
     let vertex_count = g.adjacency_list.len();
 
     // 2. Check for cut vertices / articulation points
     if g.has_articulation_points() {
-        return Err("UNSAT: Graph has cut-vertex or is disconnected".to_string());
+        return Err(SolverPipelineError {
+            message: "UNSAT: Graph has cut-vertex or is disconnected".to_string(),
+            vertex_count,
+        });
     }
 
     // 2.5 Macro-decomposition check for challenge graphs
@@ -85,7 +121,10 @@ pub fn solve_single_graph(
     if let Some(tour) = macro_tour_opt {
         let (is_valid, err_msg) = TourVerifier::verify(&g, &tour);
         if !is_valid {
-            return Err(format!("Tour verification failed: {}", err_msg));
+            return Err(SolverPipelineError {
+                message: format!("Tour verification failed: {}", err_msg),
+                vertex_count,
+            });
         }
         let elapsed_time = start_time.elapsed().as_secs_f64();
         if let Some(out_path) = output_tour_path {
@@ -94,21 +133,36 @@ pub fn solve_single_graph(
                 .and_then(|s| s.to_str())
                 .unwrap_or("tour");
             TourVerifier::write_tsplib_hcp(&tour, name, out_path)
-                .map_err(|e| format!("Failed to write TSPLIB HCP to '{}': {}", out_path, e))?;
+                .map_err(|e| SolverPipelineError {
+                    message: format!("Failed to write TSPLIB HCP to '{}': {}", out_path, e),
+                    vertex_count,
+                })?;
             println!("Wrote certified tour to {}", out_path);
         }
         return Ok((tour, elapsed_time, vertex_count));
     } else if [4286, 4064, 4620, 6620].contains(&vertex_count) {
         let elapsed = start_time.elapsed().as_secs_f64();
         if elapsed >= timeout_secs {
-            return Err(format!("TIMEOUT (elapsed: {:.2}s)", elapsed));
+            return Err(SolverPipelineError {
+                message: format!("TIMEOUT (elapsed: {:.2}s)", elapsed),
+                vertex_count,
+            });
         }
     }
 
-    // 3. Try HybridOrchestrator::solve with timeout
+    // 3. Try HybridOrchestrator::solve with remaining timeout
+    let elapsed = start_time.elapsed().as_secs_f64();
+    let remaining_timeout = timeout_secs - elapsed;
+    if remaining_timeout <= 0.0 {
+        return Err(SolverPipelineError {
+            message: format!("TIMEOUT (elapsed: {:.2}s)", elapsed),
+            vertex_count,
+        });
+    }
+
     let hybrid_opts = HybridOptions {
         auto_mode: true,
-        timeout_secs,
+        timeout_secs: remaining_timeout,
         output_tour: None, // Verified tour will be written at the end if output_tour_path is specified
         macro_gadget: false,
         bounded_freezer: false,
@@ -133,16 +187,28 @@ pub fn solve_single_graph(
                 Err(err) => {
                     let total_elapsed = start_time.elapsed().as_secs_f64();
                     if total_elapsed >= timeout_secs || err.to_uppercase().contains("TIMEOUT") {
-                        return Err(format!("TIMEOUT (elapsed: {:.2}s)", total_elapsed));
+                        return Err(SolverPipelineError {
+                            message: format!("TIMEOUT (elapsed: {:.2}s)", total_elapsed),
+                            vertex_count,
+                        });
                     } else if err.to_uppercase().contains("INFEASIBLE") || err.to_uppercase().contains("UNSAT") {
-                        return Err(format!("UNSAT: {}", err));
+                        return Err(SolverPipelineError {
+                            message: format!("UNSAT: {}", err),
+                            vertex_count,
+                        });
                     } else {
-                        return Err(format!("Solver error: {}", err));
+                        return Err(SolverPipelineError {
+                            message: format!("Solver error: {}", err),
+                            vertex_count,
+                        });
                     }
                 }
             }
         } else {
-            return Err(format!("TIMEOUT (elapsed: {:.2}s)", elapsed));
+            return Err(SolverPipelineError {
+                message: format!("TIMEOUT (elapsed: {:.2}s)", elapsed),
+                vertex_count,
+            });
         }
     }
 
@@ -150,7 +216,10 @@ pub fn solve_single_graph(
     if let Some(tour) = found_tour {
         let (is_valid, err_msg) = TourVerifier::verify(&g, &tour);
         if !is_valid {
-            return Err(format!("Tour verification failed: {}", err_msg));
+            return Err(SolverPipelineError {
+                message: format!("Tour verification failed: {}", err_msg),
+                vertex_count,
+            });
         }
         let elapsed_time = start_time.elapsed().as_secs_f64();
 
@@ -161,7 +230,10 @@ pub fn solve_single_graph(
                 .and_then(|s| s.to_str())
                 .unwrap_or("tour");
             TourVerifier::write_tsplib_hcp(&tour, name, out_path)
-                .map_err(|e| format!("Failed to write TSPLIB HCP to '{}': {}", out_path, e))?;
+                .map_err(|e| SolverPipelineError {
+                    message: format!("Failed to write TSPLIB HCP to '{}': {}", out_path, e),
+                    vertex_count,
+                })?;
             println!("Wrote certified tour to {}", out_path);
         }
 
@@ -169,9 +241,15 @@ pub fn solve_single_graph(
     } else {
         let elapsed = start_time.elapsed().as_secs_f64();
         if elapsed >= timeout_secs {
-            Err(format!("TIMEOUT (elapsed: {:.2}s)", elapsed))
+            Err(SolverPipelineError {
+                message: format!("TIMEOUT (elapsed: {:.2}s)", elapsed),
+                vertex_count,
+            })
         } else {
-            Err("UNSAT".to_string())
+            Err(SolverPipelineError {
+                message: "UNSAT".to_string(),
+                vertex_count,
+            })
         }
     }
 }
@@ -184,7 +262,7 @@ pub fn save_checkpoint_atomic(results: &[BatchItemResult], checkpoint_path: &str
             let _ = fs::create_dir_all(parent);
         }
     }
-    let tmp_path = format!("{}.tmp.{}", checkpoint_path, std::process::id());
+    let tmp_path = format!("{}.tmp.{}.{:?}", checkpoint_path, std::process::id(), std::thread::current().id());
     let json_data = serde_json::to_string_pretty(results)
         .map_err(|e| format!("Failed to serialize results to JSON: {}", e))?;
     fs::write(&tmp_path, json_data)
@@ -244,12 +322,12 @@ pub fn run_batch(
                                 err: None,
                             }
                         }
-                        Err(err_msg) => {
+                        Err(err) => {
                             let is_timeout = elapsed >= timeout_secs
-                                || err_msg.to_uppercase().contains("TIMEOUT");
-                            let is_unsat = err_msg.to_uppercase().contains("UNSAT")
-                                || err_msg.to_uppercase().contains("INFEASIBLE")
-                                || err_msg.to_uppercase().contains("CUT-VERTEX");
+                                || err.message.to_uppercase().contains("TIMEOUT");
+                            let is_unsat = err.message.to_uppercase().contains("UNSAT")
+                                || err.message.to_uppercase().contains("INFEASIBLE")
+                                || err.message.to_uppercase().contains("CUT-VERTEX");
 
                             let status = if is_timeout {
                                 "TIMEOUT".to_string()
@@ -259,16 +337,12 @@ pub fn run_batch(
                                 "ERROR".to_string()
                             };
 
-                            let vertices = file_operations::parse_graph_from_file(graph_path)
-                                .map(|g| g.adjacency_list.len())
-                                .unwrap_or(0);
-
                             BatchItemResult {
                                 gid,
                                 status,
                                 time: elapsed,
-                                vertices,
-                                err: Some(err_msg),
+                                vertices: err.vertex_count,
+                                err: Some(err.message),
                             }
                         }
                     };
