@@ -104,7 +104,7 @@ fn sat_absorb_small_cycle(
         for &v2 in &dir_adj[u1] {
             if small_set.contains(&v2) {
                 let i1 = giant_pos[&u1];
-                let v1 = giant[(i1 + 1) % n_g];
+                let _v1 = giant[(i1 + 1) % n_g];
                 let j2 = small_pos[&v2];
 
                 for step in 1..n_s {

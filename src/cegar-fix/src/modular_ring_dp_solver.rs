@@ -683,6 +683,7 @@ impl RingDpSolver {
             }
         }
 
+        #[allow(dead_code)]
         struct GadgetPathInfo {
             gadget_id: usize,
             port_in: i32,

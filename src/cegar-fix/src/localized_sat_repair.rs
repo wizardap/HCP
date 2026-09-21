@@ -105,7 +105,7 @@ impl LocalizedSatRepair {
         encoder: &Encoder,
     ) -> Vec<Vec<i32>> {
         let total_v = g.adjacency_list.len();
-        let mut active_cycles = cycles.to_vec();
+        let active_cycles = cycles.to_vec();
         let mut current_giant = active_cycles[giant_idx].clone();
 
         // Sort satellite cycles by length (smallest first)

@@ -521,7 +521,6 @@ fn is_valid_cycle(cycle: &[i32], g: &Graph) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
 
     fn build_test_graph(edges: &[(i32, i32)]) -> Graph {
         let mut g = Graph::new();

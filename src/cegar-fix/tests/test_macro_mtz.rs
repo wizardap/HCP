@@ -264,7 +264,7 @@ fn test_macro_mtz_prevents_subcycles_with_strips() {
             }
         }
 
-        let encoder = MacroMtzEncoder::encode(
+        let _encoder = MacroMtzEncoder::encode(
             &mut solver,
             &mut next_var_id,
             &decomp,

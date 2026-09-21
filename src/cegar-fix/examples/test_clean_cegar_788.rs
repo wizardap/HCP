@@ -22,6 +22,7 @@ enum WorkerCmd {
 enum WorkerMsg {
     Solution(usize, Vec<Lit>),
     Unsat(usize),
+    #[allow(dead_code)]
     Cancelled(usize),
 }
 

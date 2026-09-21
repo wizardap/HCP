@@ -52,7 +52,7 @@ impl IteratedLocalSearchPatcher {
             return cycles.to_vec();
         }
 
-        let mut best_cycles = cycles.to_vec();
+        let best_cycles = cycles.to_vec();
         let total_nodes = g.adjacency_list.len();
 
         if best_cycles.len() == 1 && best_cycles[0].len() == total_nodes {

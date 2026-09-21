@@ -498,7 +498,6 @@ mod tests {
     use crate::contraction::Degree2Contractor;
     use crate::graph::Graph;
     use crate::hub_registry::HubRegistry;
-    use std::collections::HashMap;
     use std::time::Instant;
 
     fn build_test_graph(edges: &[(i32, i32)]) -> Graph {

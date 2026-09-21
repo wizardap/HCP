@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use cegar_fix::graph::Graph;
 use cegar_fix::encoder::Encoder;
 use cegar_fix::contraction::Degree2Contractor;

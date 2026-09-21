@@ -38,14 +38,13 @@ pub use engine::static_cycle_cutter;
 pub use engine::alternating_port_engine;
 
 pub mod pipeline;
+pub use pipeline::options;
 pub use pipeline::options::Options;
+pub use pipeline::solver_pipeline;
 pub use pipeline::solver_pipeline::{
     find_graph_file, run_batch, run_batch_range, save_checkpoint_atomic, solve_single_graph,
     BatchItemResult, SolverPipelineError,
 };
-
-pub mod options;
-pub mod solver_pipeline;
 
 pub mod chained_lk;
 pub mod hub_registry;

@@ -39,7 +39,7 @@ impl MacroCrtEncoder {
         }
 
         let root_hub = sorted_hubs[0];
-        let n_h = sorted_hubs.len();
+        let _n_h = sorted_hubs.len();
 
         // 1. Lightweight coprime moduli [2, 3, 7] (Product = 42)
         // Provides aggressive pruning of small/medium subcycles without overloading SAT solving

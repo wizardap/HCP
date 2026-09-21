@@ -3,6 +3,7 @@ use crate::graph::Graph;
 use crate::contraction::Degree2Contractor;
 
 #[inline]
+#[allow(dead_code)]
 fn min_max(u: i32, v: i32) -> (i32, i32) {
     if u < v {
         (u, v)

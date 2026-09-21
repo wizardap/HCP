@@ -1,14 +1,8 @@
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
-#[path = "../src/file_operations.rs"]
-mod file_operations;
-#[path = "../src/graph.rs"]
-mod graph;
-#[path = "../src/tour_verifier.rs"]
-mod tour_verifier;
-
-use tour_verifier::TourVerifier;
+use cegar_fix::core::file_operations;
+use cegar_fix::core::tour_verifier::TourVerifier;
 
 fn main() {
     let col_path = "/home/ubuntu/HCP/FHCPCS-col/graph678.col";

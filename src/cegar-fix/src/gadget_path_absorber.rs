@@ -298,6 +298,7 @@ impl GadgetPathAbsorber {
     }
 
     /// Validates 2-regularity and simplicity of the enlarged cycle.
+    #[allow(dead_code)]
     fn validate_cycle(cycle: &[i32], g: &Graph) -> bool {
         let n = cycle.len();
         if n < 3 {

@@ -26,7 +26,6 @@ use crate::solver_reseeder::{SolverReseeder, ReseederOptions};
 use crate::hemisphere_splicer::HemisphereSplicer;
 use crate::static_cycle_cutter::StaticCycleCutter;
 use crate::boundary_alternating_patcher::BoundaryAlternatingPatcher;
-use crate::metagraph_router::MetagraphRouter;
 use crate::parallel_sat_portfolio::{ParallelSatPortfolio, PortfolioResult};
 use crate::giant_cycle_stitcher::GiantCycleStitcher;
 use crate::interface_port_synchronizer::InterfacePortSynchronizer;
@@ -39,11 +38,9 @@ use crate::sat_macro_patcher::SatMacroPatcher;
 use crate::gadget_path_absorber::GadgetPathAbsorber;
 use crate::incremental_sat::IncrementalSatSolver;
 use crate::macro_crossover_splicer::MacroCrossoverSplicer;
-use crate::quotient_block_cutter::QuotientBlockCutter;
 use crate::bipartite_module_detector::BipartiteModuleDetector;
 use crate::module_dual_path_extractor::ModuleDualPathExtractor;
 use crate::module_state_cnf_encoder::ModuleStateCnfEncoder;
-use crate::balanced_pair_cutset::BalancedPairCutset;
 use crate::localized_sat_repair::LocalizedSatRepair;
 use crate::alternating_port_engine::AlternatingPortEngine;
 use crate::port_corridor_lns::PortCorridorLns;
@@ -514,7 +511,7 @@ fn cegar(
     let mut backbone_tracker = EmpiricalBackboneTracker::new(10);
 
     // Modular Quotient Block Pre-computation disabled
-    let modular_blocks: Vec<std::collections::HashSet<i32>> = Vec::new();
+    let _modular_blocks: Vec<std::collections::HashSet<i32>> = Vec::new();
 
     loop {
         if instant.elapsed().as_secs_f64() >= timeout_secs {
@@ -1227,6 +1224,7 @@ where
     arcs
 }
 
+#[allow(dead_code)]
 fn get_solution_arcs(sol:Assignment,lit_map:&BTreeMap<(i32,i32),Lit>) -> Vec<(i32,i32)>{
     let sol_arcs: Vec<(i32,i32)> = lit_map.iter().filter_map(|((u,v), lit)| if sol[lit.var()] == TernaryVal::True { Some((*u,*v)) } else { None }).collect();
     sol_arcs
@@ -1723,6 +1721,7 @@ fn merge_three_cycles(
 /// o[v][t] where o[v][t] = 1 iff position(v) >= t+1.
 ///
 /// Prevents ANY subtour entirely within K\{source}.
+#[allow(dead_code)]
 fn inject_partial_mtz(
     k_vertices: &Vec<i32>,
     g: &Graph,

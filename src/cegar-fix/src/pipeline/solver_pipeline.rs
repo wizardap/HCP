@@ -278,13 +278,14 @@ pub fn save_checkpoint_atomic(results: &[BatchItemResult], checkpoint_path: &str
 
 /// Executes the batch runner over options specified in `Options`.
 pub fn run_batch(opts: &Options) -> Vec<BatchItemResult> {
+    let tour_dir = opts.output_tour_file.as_deref().unwrap_or("scratch/suite_a_tours");
     run_batch_range(
         opts.batch_start,
         opts.batch_end,
         opts.workers,
         opts.timeout,
         &opts.checkpoint,
-        opts.output_tour_file.as_deref(),
+        Some(tour_dir),
     )
 }
 
@@ -302,8 +303,35 @@ pub fn run_batch_range(
         .build()
         .expect("Failed to create Rayon thread pool");
 
-    let shared_results: Arc<Mutex<Vec<BatchItemResult>>> = Arc::new(Mutex::new(Vec::new()));
-    let gids: Vec<usize> = (start..=end).collect();
+    let mut initial_results = Vec::new();
+    let mut already_solved = std::collections::HashSet::new();
+    if Path::new(checkpoint_path).is_file() {
+        if let Ok(content) = fs::read_to_string(checkpoint_path) {
+            if let Ok(loaded) = serde_json::from_str::<Vec<BatchItemResult>>(&content) {
+                for item in loaded {
+                    if item.gid >= start && item.gid <= end && item.status == "SAT_VERIFIED" {
+                        let has_tour = match output_tour_dir {
+                            Some(dir) => Path::new(&format!("{}/tour_graph{}.hcp", dir.trim_end_matches('/'), item.gid)).exists(),
+                            None => true,
+                        };
+                        if has_tour {
+                            already_solved.insert(item.gid);
+                            initial_results.push(item);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for item in &initial_results {
+        println!(
+            "[BATCH] graph{}: SAT_VERIFIED (cached) ({} vertices, {:.2}s)",
+            item.gid, item.vertices, item.time
+        );
+    }
+
+    let gids: Vec<usize> = (start..=end).filter(|gid| !already_solved.contains(gid)).collect();
+    let shared_results: Arc<Mutex<Vec<BatchItemResult>>> = Arc::new(Mutex::new(initial_results));
 
     pool.install(|| {
         gids.into_par_iter().for_each(|gid| {
