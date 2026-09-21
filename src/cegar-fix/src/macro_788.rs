@@ -348,41 +348,8 @@ pub fn solve_788(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
         cnf.add_clause(Clause::from_iter(lits));
     }
 
-    // Optional clean backbone hints
-    let possible_paths = [
-        "scratch/graph788_best_cegar_edges.txt",
-        "../../scratch/graph788_best_cegar_edges.txt",
-        "scratch/graph788_giant_only_edges.txt",
-        "../../scratch/graph788_giant_only_edges.txt",
-    ];
-    let mut backbone_hints: Vec<Lit> = Vec::new();
-    for p in &possible_paths {
-        if let Ok(bb_content) = std::fs::read_to_string(p) {
-            for line in bb_content.lines() {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() == 2 {
-                    if let (Ok(u), Ok(v)) = (parts[0].parse::<i32>(), parts[1].parse::<i32>()) {
-                        if let (Some(&b1), Some(&b2)) = (node_to_id.get(&u), node_to_id.get(&v)) {
-                            let u_c = color.get(&u).copied().unwrap_or(0);
-                            let v_c = color.get(&v).copied().unwrap_or(0);
-                            let arc = if u_c == 1 && v_c == 0 {
-                                (b1, b2)
-                            } else {
-                                (b2, b1)
-                            };
-                            if let Some(&lit) = arc_lit_map.get(&arc) {
-                                backbone_hints.push(lit);
-                            }
-                        }
-                    }
-                }
-            }
-            if !backbone_hints.is_empty() {
-                println!("[macro_788] Loaded {} clean backbone phase hints from {}.", backbone_hints.len(), p);
-                break;
-            }
-        }
-    }
+    // 100% de novo solving: zero ambient scratch file probing
+    let backbone_hints: Vec<Lit> = Vec::new();
 
     // Spawn 3 persistent parallel workers with chrono=1 and dynamic reseeding
     let num_workers = 3;

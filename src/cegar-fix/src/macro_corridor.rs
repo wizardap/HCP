@@ -631,6 +631,65 @@ fn solve_block_b(
     Err("Block B timed out".to_string())
 }
 
+/// Checks whether removing `port_u` and `port_v` partitions the graph into
+/// at least 2 components where each of the two largest has size >= min_comp_size.
+fn check_2cut_split(raw_g: &Graph, port_u: i32, port_v: i32, min_comp_size: usize) -> bool {
+    let mut rem_nodes: HashSet<i32> = raw_g.adjacency_list.keys().copied().collect();
+    rem_nodes.remove(&port_u);
+    rem_nodes.remove(&port_v);
+
+    let mut visited = HashSet::new();
+    let mut comp_sizes = Vec::new();
+
+    for &u in &rem_nodes {
+        if !visited.contains(&u) {
+            let mut size = 0;
+            let mut q = VecDeque::new();
+            visited.insert(u);
+            q.push_back(u);
+
+            while let Some(curr) = q.pop_front() {
+                size += 1;
+                if let Some(nbrs) = raw_g.adjacency_list.get(&curr) {
+                    for &nbr in nbrs {
+                        if rem_nodes.contains(&nbr) && visited.insert(nbr) {
+                            q.push_back(nbr);
+                        }
+                    }
+                }
+            }
+            comp_sizes.push(size);
+        }
+    }
+
+    comp_sizes.len() >= 2 && comp_sizes.iter().filter(|&&sz| sz >= min_comp_size).count() >= 2
+}
+
+/// Dynamically discovers a 2-vertex separator {port_u, port_v} whose removal
+/// splits the graph into two large components (each with >= 500 vertices).
+pub fn find_2cut_ports(raw_g: &Graph) -> Option<(i32, i32)> {
+    // 1. Check known challenge pair (1876, 2491)
+    if raw_g.adjacency_list.contains_key(&1876) && raw_g.adjacency_list.contains_key(&2491) {
+        if check_2cut_split(raw_g, 1876, 2491, 500) {
+            return Some((1876, 2491));
+        }
+    }
+
+    // 2. Dynamic discovery: search over lowest-degree vertices
+    let mut candidates: Vec<i32> = raw_g.adjacency_list.keys().copied().collect();
+    candidates.sort_by_key(|&u| raw_g.adjacency_list.get(&u).map_or(0, |v| v.len()));
+
+    for &u in candidates.iter().take(50) {
+        for &v in candidates.iter().take(50) {
+            if u < v && check_2cut_split(raw_g, u, v, 500) {
+                return Some((u, v));
+            }
+        }
+    }
+
+    None
+}
+
 /// Solves graph710 (|V| = 4064) using 2-cut articulation decomposition.
 pub fn solve_710(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
     if raw_g.adjacency_list.len() != 4064 {
@@ -640,8 +699,14 @@ pub fn solve_710(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
     let t_start = Instant::now();
     let deadline = t_start + std::time::Duration::from_secs_f64(timeout_secs);
 
-    let port_u = 1876;
-    let port_v = 2491;
+    let (port_u, port_v) = match find_2cut_ports(raw_g) {
+        Some(ports) => ports,
+        None => {
+            eprintln!("[macro_corridor] Failed to find 2-cut separator for graph710");
+            return None;
+        }
+    };
+    println!("[macro_corridor] Identified 2-cut ports ({}, {})", port_u, port_v);
 
     // Split graph \ {port_u, port_v} into connected components
     let mut rem_nodes: HashSet<i32> = raw_g.adjacency_list.keys().copied().collect();
@@ -695,8 +760,14 @@ pub fn solve_710(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
         v_b.len()
     );
 
-    // Solve Block A
-    let p_a = match solve_block_a(&raw_g.adjacency_list, &v_a, port_u, port_v, deadline) {
+    // Solve Block A and Block B in parallel via Rayon
+    println!("[macro_corridor] Solving Block A and Block B concurrently via Rayon...");
+    let (res_a, res_b) = rayon::join(
+        || solve_block_a(&raw_g.adjacency_list, &v_a, port_u, port_v, deadline),
+        || solve_block_b(&raw_g.adjacency_list, &v_b, port_u, port_v, deadline),
+    );
+
+    let p_a = match res_a {
         Ok(path) => path,
         Err(e) => {
             eprintln!("[macro_corridor] Failed to solve Block A: {}", e);
@@ -705,8 +776,7 @@ pub fn solve_710(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
     };
     println!("[macro_corridor] Block A solved: path len = {}", p_a.len());
 
-    // Solve Block B
-    let p_b = match solve_block_b(&raw_g.adjacency_list, &v_b, port_u, port_v, deadline) {
+    let p_b = match res_b {
         Ok(path) => path,
         Err(e) => {
             eprintln!("[macro_corridor] Failed to solve Block B: {}", e);
