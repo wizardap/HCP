@@ -29,11 +29,25 @@ impl Default for Options {
 
 impl Options {
     pub fn parse_from_args() -> Self {
+        Self::try_parse_from_args().unwrap_or_else(|e| {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        })
+    }
+
+    pub fn try_parse_from_args() -> Result<Self, String> {
         let matches = get_options();
-        Self::from_matches(&matches)
+        Self::try_from_matches(&matches)
     }
 
     pub fn from_matches(matches: &clap::ArgMatches) -> Self {
+        Self::try_from_matches(matches).unwrap_or_else(|e| {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        })
+    }
+
+    pub fn try_from_matches(matches: &clap::ArgMatches) -> Result<Self, String> {
         let timeout = matches.value_of_t::<f64>("timeout").unwrap_or(1800.0);
         let output_tour_file = matches
             .value_of("output-tour")
@@ -42,10 +56,16 @@ impl Options {
 
         // Check if batch mode is requested
         if let Some(mut batch_vals) = matches.values_of("batch") {
-            let start_str = batch_vals.next().expect("Missing START for --batch");
+            let start_str = batch_vals
+                .next()
+                .ok_or_else(|| "Missing START for --batch".to_string())?;
             let end_str = batch_vals.next().unwrap_or(start_str);
-            let start: usize = start_str.parse().expect("Invalid START graph ID for --batch");
-            let end: usize = end_str.parse().expect("Invalid END graph ID for --batch");
+            let start: usize = start_str
+                .parse()
+                .map_err(|_| "Invalid START graph ID for --batch".to_string())?;
+            let end: usize = end_str
+                .parse()
+                .map_err(|_| "Invalid END graph ID for --batch".to_string())?;
             let workers: usize = matches
                 .value_of("workers")
                 .and_then(|w| w.parse().ok())
@@ -55,7 +75,7 @@ impl Options {
                 .unwrap_or("scratch/batch_1001_results.json")
                 .to_string();
 
-            return Options {
+            return Ok(Options {
                 batch_mode: true,
                 batch_start: start,
                 batch_end: end,
@@ -64,7 +84,7 @@ impl Options {
                 graph_file: String::new(),
                 timeout,
                 output_tour_file,
-            };
+            });
         }
 
         let input_filename = matches
@@ -73,12 +93,14 @@ impl Options {
         let graph_file = match input_filename {
             Some(f) => f.to_string(),
             None => {
-                eprintln!("Error: No input graph specified. Provide -i <FILE> or use --batch <START> <END>.");
-                std::process::exit(1);
+                return Err(
+                    "No input graph specified. Provide -i <FILE> or use --batch <START> <END>."
+                        .to_string(),
+                );
             }
         };
 
-        Options {
+        Ok(Options {
             batch_mode: false,
             batch_start: 0,
             batch_end: 0,
@@ -87,11 +109,15 @@ impl Options {
             graph_file,
             timeout,
             output_tour_file,
-        }
+        })
     }
 }
 
 pub fn get_options() -> clap::ArgMatches {
+    get_options_app().get_matches()
+}
+
+pub fn get_options_app() -> clap::App<'static> {
     App::new("HCP Solver")
         .version("1.0")
         .author("Me <me@example.com>")
@@ -351,5 +377,48 @@ pub fn get_options() -> clap::ArgMatches {
                 .help("Disable Alternating Port Engine")
                 .takes_value(false),
         )
-        .get_matches()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_options_missing_input_returns_err() {
+        let app = get_options_app();
+        let matches = app.try_get_matches_from(vec!["cegar-fix"]).unwrap();
+        let res = Options::try_from_matches(&matches);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("No input graph specified"));
+    }
+
+    #[test]
+    fn test_options_single_graph_success() {
+        let app = get_options_app();
+        let matches = app
+            .try_get_matches_from(vec!["cegar-fix", "-i", "test.col", "-t", "15"])
+            .unwrap();
+        let res = Options::try_from_matches(&matches);
+        assert!(res.is_ok());
+        let opts = res.unwrap();
+        assert_eq!(opts.graph_file, "test.col");
+        assert_eq!(opts.timeout, 15.0);
+        assert!(!opts.batch_mode);
+    }
+
+    #[test]
+    fn test_options_batch_mode_success() {
+        let app = get_options_app();
+        let matches = app
+            .try_get_matches_from(vec!["cegar-fix", "--batch", "1", "10", "--workers", "4"])
+            .unwrap();
+        let res = Options::try_from_matches(&matches);
+        assert!(res.is_ok());
+        let opts = res.unwrap();
+        assert!(opts.batch_mode);
+        assert_eq!(opts.batch_start, 1);
+        assert_eq!(opts.batch_end, 10);
+        assert_eq!(opts.workers, 4);
+    }
+}
+
