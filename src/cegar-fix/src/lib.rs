@@ -1,18 +1,53 @@
-pub mod auto_classifier;
-pub mod chained_lk;
 pub mod core;
 pub use core::encoder;
 pub use core::file_operations;
 pub use core::graph;
 pub use core::graph::Graph;
 pub use core::encoder::Encoder;
+pub use core::tour_verifier;
+pub use core::tour_verifier::TourVerifier;
+
 pub mod fallback;
 pub use fallback::contraction;
 pub use fallback::contraction::Degree2Contractor;
 pub use fallback::cycle_merge;
 pub use fallback::cycle_merge::safe_2opt_merge;
 pub use fallback::fallback_cegar;
-pub mod hcp_solver;
+
+pub mod macro_decomp;
+pub use macro_decomp::bipartite as macro_bipartite;
+pub use macro_decomp::corridor as macro_corridor;
+pub use macro_decomp::portfolio_788 as macro_788;
+
+pub mod engine;
+pub use engine::hybrid_orchestrator;
+pub use engine::hcp_solver;
+pub use engine::auto_classifier;
+pub use engine::two_tier_orchestrator;
+pub use engine::two_tier_decomposer;
+pub use engine::staged_subcycle_filter;
+pub use engine::dual_cut_generator;
+pub use engine::staged_lazy_smt_solver;
+pub use engine::subcycle_absorber;
+pub use engine::bridge_cut_generator;
+pub use engine::backbone_freezer;
+pub use engine::cycle_chain_absorber;
+pub use engine::cut_selector;
+pub use engine::solver_reseeder;
+pub use engine::static_cycle_cutter;
+pub use engine::alternating_port_engine;
+
+pub mod pipeline;
+pub use pipeline::options::Options;
+pub use pipeline::solver_pipeline::{
+    find_graph_file, run_batch, run_batch_range, save_checkpoint_atomic, solve_single_graph,
+    BatchItemResult, SolverPipelineError,
+};
+
+pub mod options;
+pub mod solver_pipeline;
+
+pub mod chained_lk;
 pub mod hub_registry;
 pub mod hub_sub_hcp;
 pub mod ils_patcher;
@@ -20,33 +55,17 @@ pub mod macro_solver;
 pub mod matching_patcher;
 pub mod modular_solver;
 pub mod modular_tree;
-pub mod options;
 pub mod parallel_sub_hcp;
 pub mod patching;
 pub mod stem_cycle_patcher;
-pub mod two_tier_decomposer;
 pub mod pinpointed_strip_solver;
 pub mod global_demand_coordinator;
 pub mod macro_splicer;
-pub mod two_tier_orchestrator;
-pub mod staged_subcycle_filter;
-pub mod dual_cut_generator;
-pub mod staged_lazy_smt_solver;
-pub mod subcycle_absorber;
-pub mod bridge_cut_generator;
-pub mod backbone_freezer;
-pub mod cycle_chain_absorber;
-pub use core::tour_verifier;
-pub use core::tour_verifier::TourVerifier;
-pub mod hybrid_orchestrator;
 pub mod snark_bridge;
 pub mod gadget_parity;
 pub mod component_meta_graph;
 pub mod macro_mtz_encoder;
-pub mod cut_selector;
-pub mod solver_reseeder;
 pub mod hemisphere_splicer;
-pub mod static_cycle_cutter;
 pub mod boundary_alternating_patcher;
 pub mod metagraph_router;
 pub mod parallel_sat_portfolio;
@@ -73,13 +92,5 @@ pub mod module_dual_path_extractor;
 pub mod module_state_cnf_encoder;
 pub mod balanced_pair_cutset;
 pub mod localized_sat_repair;
-pub mod alternating_port_engine;
 pub mod port_corridor_lns;
 pub mod modular_ring_dp_solver;
-pub mod macro_decomp;
-pub use macro_decomp::bipartite as macro_bipartite;
-pub use macro_decomp::corridor as macro_corridor;
-pub use macro_decomp::portfolio_788 as macro_788;
-pub mod solver_pipeline;
-
-pub use solver_pipeline::{solve_single_graph, BatchItemResult, SolverPipelineError, find_graph_file, run_batch, save_checkpoint_atomic};
