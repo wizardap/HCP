@@ -76,9 +76,10 @@ pub mod localized_sat_repair;
 pub mod alternating_port_engine;
 pub mod port_corridor_lns;
 pub mod modular_ring_dp_solver;
-pub mod macro_bipartite;
-pub mod macro_corridor;
-pub mod macro_788;
+pub mod macro_decomp;
+pub use macro_decomp::bipartite as macro_bipartite;
+pub use macro_decomp::corridor as macro_corridor;
+pub use macro_decomp::portfolio_788 as macro_788;
 pub mod solver_pipeline;
 
 pub use solver_pipeline::{solve_single_graph, BatchItemResult, SolverPipelineError, find_graph_file, run_batch, save_checkpoint_atomic};
