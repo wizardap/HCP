@@ -48,11 +48,12 @@ pub fn get_options() -> clap::ArgMatches {
                 .index(1),
         )
         .arg(
-            Arg::with_name("output")
+            Arg::with_name("output-tour")
                 .short('o')
-                .long("output")
-                .value_name("FOLDER NAME")
-                .help("Output folder (Optional)")
+                .long("output-tour")
+                .alias("output")
+                .value_name("FILE")
+                .help("Output certified HCP tour file path (TSPLIB format)")
                 .takes_value(true),
         )
         .arg(
@@ -244,11 +245,27 @@ pub fn get_options() -> clap::ArgMatches {
                 .takes_value(true),
         )
         .arg(
-            Arg::with_name("output-tour")
-                .long("output-tour")
-                .value_name("FILE")
-                .help("Output HCP tour file path (default: scratch/graph950/found_tour_rust.hcp)")
+            Arg::with_name("batch")
+                .long("batch")
+                .value_names(&["START", "END"])
+                .number_of_values(2)
+                .help("Run batch solver on graph ID range [START, END]")
                 .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("workers")
+                .long("workers")
+                .value_name("N")
+                .help("Number of worker threads for batch mode (default: 2 or available CPUs)")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("checkpoint")
+                .long("checkpoint")
+                .value_name("PATH")
+                .help("JSON checkpoint file path (default: scratch/batch_1001_results.json)")
+                .takes_value(true)
+                .default_value("scratch/batch_1001_results.json"),
         )
         .arg(
             Arg::with_name("auto")

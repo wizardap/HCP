@@ -6,28 +6,33 @@ use std::path::Path;
 use rustsat::instances::*;
 
 // ファイルを読み込みグラフへ変換する関数
-pub fn input_to_graph(filename: &str) -> Graph {
+pub fn parse_graph_from_file(filename: &str) -> io::Result<Graph> {
     let path = Path::new(filename);
-    let display = path.display();
-    let file = match File::open(&path) {
-        Err(why) => panic!("couldn't open {}: {}", display, why),
-        Ok(file) => file,
-    };
+    let file = File::open(&path)?;
     let reader = io::BufReader::new(file);
     let mut g = Graph::new();
     for line in reader.lines() {
-        let line = line.unwrap();
+        let line = line?;
         let parts: Vec<&str> = line.split_whitespace().collect();
         match parts.get(0) {
             Some(&"e") => {
-                let u = parts[1].parse::<i32>().unwrap();
-                let v = parts[2].parse::<i32>().unwrap();
-                g.add_edge(u, v);
+                if parts.len() >= 3 {
+                    if let (Ok(u), Ok(v)) = (parts[1].parse::<i32>(), parts[2].parse::<i32>()) {
+                        g.add_edge(u, v);
+                    }
+                }
             }
             _ => (),
         }
     }
-    g
+    Ok(g)
+}
+
+pub fn input_to_graph(filename: &str) -> Graph {
+    match parse_graph_from_file(filename) {
+        Ok(g) => g,
+        Err(why) => panic!("couldn't open {}: {}", filename, why),
+    }
 }
 
 //CNFファイルを書き出す関数

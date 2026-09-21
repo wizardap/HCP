@@ -67,7 +67,10 @@ pub mod localized_sat_repair;
 pub mod alternating_port_engine;
 pub mod port_corridor_lns;
 pub mod modular_ring_dp_solver;
+pub mod fallback_cegar;
+pub mod solver_pipeline;
 
+pub use solver_pipeline::{solve_single_graph, BatchItemResult, run_batch};
 
 use contraction::Degree2Contractor;
 use hub_registry::HubRegistry;
@@ -80,6 +83,32 @@ fn main() {
     let instant = Instant::now();
 
     let matches = options::get_options();
+
+    // Check if batch mode is requested
+    if let Some(mut batch_vals) = matches.values_of("batch") {
+        let start_str = batch_vals.next().expect("Missing START for --batch");
+        let end_str = batch_vals.next().unwrap_or(start_str);
+        let start: usize = start_str.parse().expect("Invalid START graph ID for --batch");
+        let end: usize = end_str.parse().expect("Invalid END graph ID for --batch");
+        let workers: usize = matches
+            .value_of("workers")
+            .and_then(|w| w.parse().ok())
+            .unwrap_or(2);
+        let checkpoint = matches
+            .value_of("checkpoint")
+            .unwrap_or("scratch/batch_1001_results.json");
+        let timeout_secs = matches.value_of_t::<f64>("timeout").unwrap_or(1800.0);
+        let output_tour_dir = matches
+            .value_of("output-tour")
+            .or_else(|| matches.value_of("output"));
+
+        println!(
+            "Running batch solver for graphs {}..={} with {} workers (timeout: {:.1}s)...",
+            start, end, workers, timeout_secs
+        );
+        run_batch(start, end, workers, timeout_secs, checkpoint, output_tour_dir);
+        return;
+    }
 
     // solver,encodingのオプションをintで受け取る
     let solver = matches.value_of_t::<i32>("solver").unwrap_or(0);
@@ -113,13 +142,56 @@ fn main() {
         true
     };
     let timeout_secs = matches.value_of_t::<f64>("timeout").unwrap_or(1800.0);
-    let output_tour_path = matches.value_of("output-tour").map(|s| s.to_string());
+    let output_tour_path = matches
+        .value_of("output-tour")
+        .or_else(|| matches.value_of("output"))
+        .map(|s| s.to_string());
     // solver,encodingのオプションを&strで受け取る
     let input_filename = matches
         .value_of("input")
-        .or_else(|| matches.value_of("positional_input"))
-        .unwrap_or("default");
-    let output_foldername = matches.value_of("output").unwrap_or("default");
+        .or_else(|| matches.value_of("positional_input"));
+    let input_filename = match input_filename {
+        Some(f) => f,
+        None => {
+            eprintln!("Error: No input graph specified. Provide -i <FILE> or use --batch <START> <END>.");
+            std::process::exit(1);
+        }
+    };
+    let output_foldername = matches.value_of("output-folder").unwrap_or("default");
+
+    let has_manual_overrides = matches.is_present("encoding")
+        || matches.is_present("blocking")
+        || matches.is_present("symmetry")
+        || matches.is_present("2-opt")
+        || matches.is_present("three-opt")
+        || matches.is_present("set-configration");
+    let has_ablation = matches.is_present("ablation") || macro_gadget || bounded_freezer;
+
+    if !has_manual_overrides && !is_two_tier && !is_staged_smt && !has_ablation {
+        println!("solve {}", input_filename);
+        match solve_single_graph(input_filename, timeout_secs, output_tour_path.as_deref()) {
+            Ok((tour, elapsed, _vertices)) => {
+                println!("s SATISFIABLE");
+                print!("solution: \n");
+                for v in &tour {
+                    print!("{} ", v);
+                }
+                println!();
+                println!("overall time = {:.6}s", elapsed);
+            }
+            Err(e) => {
+                if e.contains("UNSAT") || e.contains("Infeasible") || e.contains("cut-vertex") {
+                    println!("s UNSATISFIABLE");
+                } else {
+                    println!("s UNKNOWN");
+                }
+                eprintln!("Solver output/error: {}", e);
+                println!("overall time = {:?}", instant.elapsed());
+            }
+        }
+        info!("プログラム終了");
+        return;
+    }
 
     println!("solve {}", input_filename);
     // let g = instance();
