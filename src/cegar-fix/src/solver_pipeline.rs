@@ -25,7 +25,6 @@ pub fn find_graph_file(gid: usize) -> Option<String> {
         format!("FHCPCS-col/graph{}.col", gid),
         format!("../FHCPCS-col/graph{}.col", gid),
         format!("../../FHCPCS-col/graph{}.col", gid),
-        format!("/home/ubuntu/HCP/FHCPCS-col/graph{}.col", gid),
     ];
     for cand in &candidates {
         if Path::new(cand).is_file() {
@@ -238,12 +237,21 @@ pub fn run_batch(
                 }
             };
 
-            {
+            let snapshot_to_save = {
                 let mut results = shared_results.lock().unwrap();
                 results.push(item);
-                let mut sorted = results.clone();
-                sorted.sort_by_key(|r| r.gid);
-                if let Err(e) = save_checkpoint_atomic(&sorted, checkpoint_path) {
+                let count = results.len();
+                if count % 10 == 0 {
+                    let mut sorted = results.clone();
+                    sorted.sort_by_key(|r| r.gid);
+                    Some(sorted)
+                } else {
+                    None
+                }
+            };
+
+            if let Some(snapshot) = snapshot_to_save {
+                if let Err(e) = save_checkpoint_atomic(&snapshot, checkpoint_path) {
                     eprintln!("Warning: failed to save checkpoint: {}", e);
                 }
             }
