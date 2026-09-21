@@ -666,23 +666,92 @@ fn check_2cut_split(raw_g: &Graph, port_u: i32, port_v: i32, min_comp_size: usiz
 }
 
 /// Dynamically discovers a 2-vertex separator {port_u, port_v} whose removal
-/// splits the graph into two large components (each with >= 500 vertices).
+/// splits the graph into two large components (each with >= 500 vertices)
+/// using Tarjan's linear-time articulation point algorithm on G \ {u}.
 pub fn find_2cut_ports(raw_g: &Graph) -> Option<(i32, i32)> {
-    // 1. Check known challenge pair (1876, 2491)
-    if raw_g.adjacency_list.contains_key(&1876) && raw_g.adjacency_list.contains_key(&2491) {
-        if check_2cut_split(raw_g, 1876, 2491, 500) {
-            return Some((1876, 2491));
-        }
+    let n = raw_g.adjacency_list.len();
+    if n < 1000 {
+        return None;
     }
 
-    // 2. Dynamic discovery: search over lowest-degree vertices
-    let mut candidates: Vec<i32> = raw_g.adjacency_list.keys().copied().collect();
-    candidates.sort_by_key(|&u| raw_g.adjacency_list.get(&u).map_or(0, |v| v.len()));
+    let mut nodes: Vec<i32> = raw_g.adjacency_list.keys().copied().collect();
+    nodes.sort_unstable();
 
-    for &u in candidates.iter().take(50) {
-        for &v in candidates.iter().take(50) {
-            if u < v && check_2cut_split(raw_g, u, v, 500) {
-                return Some((u, v));
+    let node_to_idx: HashMap<i32, usize> = nodes
+        .iter()
+        .enumerate()
+        .map(|(i, &node)| (node, i))
+        .collect();
+
+    let adj: Vec<Vec<usize>> = nodes
+        .iter()
+        .map(|&u| {
+            raw_g
+                .adjacency_list
+                .get(&u)
+                .map(|nbrs| {
+                    nbrs.iter()
+                        .filter_map(|nbr| node_to_idx.get(nbr).copied())
+                        .collect()
+                })
+                .unwrap_or_default()
+        })
+        .collect();
+
+    // Iterate over candidate vertices u with degree in 3..=10
+    // (A 2-cut separating large components must have degree >= 2, and in HCP graphs degree >= 3)
+    for u in 0..n {
+        let deg_u = adj[u].len();
+        if deg_u < 3 || deg_u > 10 {
+            continue;
+        }
+
+        let root = if u != 0 { 0 } else { 1 };
+        let mut tin = vec![-1i32; n];
+        let mut low = vec![-1i32; n];
+        let mut sz = vec![0usize; n];
+        tin[u] = 0; // Mark u visited so DFS excludes u
+        let mut timer = 1i32;
+        tin[root] = timer;
+        low[root] = timer;
+        sz[root] = 1;
+
+        let mut stack = vec![(root, usize::MAX, 0usize)];
+
+        while let Some(&mut (curr, p, ref mut nbr_idx)) = stack.last_mut() {
+            let nbrs = &adj[curr];
+            if *nbr_idx < nbrs.len() {
+                let to = nbrs[*nbr_idx];
+                *nbr_idx += 1;
+                if to == p || to == u {
+                    continue;
+                }
+                if tin[to] != -1 {
+                    low[curr] = low[curr].min(tin[to]);
+                } else {
+                    timer += 1;
+                    tin[to] = timer;
+                    low[to] = timer;
+                    sz[to] = 1;
+                    stack.push((to, curr, 0));
+                }
+            } else {
+                let (curr, _p, _) = stack.pop().unwrap();
+                if let Some(&(parent, _, _)) = stack.last() {
+                    low[parent] = low[parent].min(low[curr]);
+                    sz[parent] += sz[curr];
+                    if low[curr] >= tin[parent] {
+                        let comp1 = sz[curr];
+                        let comp2 = (n - 1).saturating_sub(comp1);
+                        if comp1 >= 500 && comp2 >= 500 {
+                            let u_orig = nodes[u];
+                            let v_orig = nodes[parent];
+                            if check_2cut_split(raw_g, u_orig, v_orig, 500) {
+                                return Some((u_orig.min(v_orig), u_orig.max(v_orig)));
+                            }
+                        }
+                    }
+                }
             }
         }
     }
