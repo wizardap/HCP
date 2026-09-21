@@ -8,6 +8,7 @@ pub struct Degree2Contractor {
     pub contracted_vertices_count: usize,
     pub is_direct_cycle: Option<Vec<i32>>,
     pub is_infeasible: bool,
+    pub forced_edges: HashSet<(i32, i32)>,
 }
 
 impl Degree2Contractor {
@@ -18,6 +19,7 @@ impl Degree2Contractor {
             contracted_vertices_count: 0,
             is_direct_cycle: None,
             is_infeasible: false,
+            forced_edges: HashSet::new(),
         }
     }
 
@@ -66,6 +68,7 @@ impl Degree2Contractor {
                         contracted_vertices_count: total_v,
                         is_direct_cycle: Some(cycle),
                         is_infeasible: false,
+                        forced_edges: HashSet::new(),
                     },
                 );
             } else {
@@ -77,6 +80,7 @@ impl Degree2Contractor {
                         contracted_vertices_count: total_v,
                         is_direct_cycle: None,
                         is_infeasible: true,
+                        forced_edges: HashSet::new(),
                     },
                 );
             }
@@ -112,6 +116,7 @@ impl Degree2Contractor {
                             contracted_vertices_count: total_v,
                             is_direct_cycle: None,
                             is_infeasible: true,
+                            forced_edges: HashSet::new(),
                         },
                     );
                 }
@@ -138,6 +143,7 @@ impl Degree2Contractor {
                             contracted_vertices_count: total_v,
                             is_direct_cycle: None,
                             is_infeasible: true,
+                            forced_edges: HashSet::new(),
                         },
                     );
                 }
@@ -160,6 +166,7 @@ impl Degree2Contractor {
                         contracted_vertices_count: total_v,
                         is_direct_cycle: None,
                         is_infeasible: true,
+                        forced_edges: HashSet::new(),
                     },
                 );
             }
@@ -201,6 +208,8 @@ impl Degree2Contractor {
             }
         }
 
+        let mut forced_edges: HashSet<(i32, i32)> = HashSet::new();
+
         for (&(u, w), chains) in &edge_chains {
             if chains.len() > 1 {
                 let total_chain_verts: usize = chains.iter().map(|c| c.len()).sum();
@@ -213,6 +222,7 @@ impl Degree2Contractor {
                             contracted_vertices_count: total_v,
                             is_direct_cycle: None,
                             is_infeasible: true,
+                            forced_edges: HashSet::new(),
                         },
                     );
                 } else if chains.len() == 2 && total_chain_verts + 2 == total_v {
@@ -233,8 +243,24 @@ impl Degree2Contractor {
                             contracted_vertices_count: total_v,
                             is_direct_cycle: Some(cycle),
                             is_infeasible: false,
+                            forced_edges: HashSet::new(),
                         },
                     );
+                }
+            }
+
+            let min_uw = u.min(w);
+            let max_uw = u.max(w);
+            forced_edges.insert((min_uw, max_uw));
+
+            // If non-degree-2 vertices u and w had a direct edge (u, w) in the original graph (and |V| > 3):
+            // Prune the direct edge from contracted_adj before inserting the shortcut edge.
+            if total_v > 3 {
+                if let Some(set_u) = contracted_adj.get_mut(&u) {
+                    set_u.remove(&w);
+                }
+                if let Some(set_w) = contracted_adj.get_mut(&w) {
+                    set_w.remove(&u);
                 }
             }
 
@@ -281,6 +307,7 @@ impl Degree2Contractor {
                 contracted_vertices_count: contracted_v,
                 is_direct_cycle: None,
                 is_infeasible: false,
+                forced_edges,
             },
         )
     }
@@ -421,5 +448,23 @@ mod tests {
         let g = build_test_graph(&edges, 5);
         let (_, contractor) = Degree2Contractor::contract(&g);
         assert!(contractor.is_infeasible);
+    }
+
+    #[test]
+    fn test_contract_chordless_triangle_forced_edge() {
+        // Triangle 1 - 2 - 3 - 1 where 2 has deg 2, direct edge (1, 3) exists in G with |V| = 5 > 3
+        let edges = vec![
+            (1, 2), (2, 3), (1, 3),
+            (1, 4), (3, 4),
+            (1, 5), (3, 5),
+            (4, 5),
+        ];
+        let g = build_test_graph(&edges, 5);
+        let (cg, contractor) = Degree2Contractor::contract(&g);
+        assert!(!contractor.is_infeasible);
+        assert_eq!(contractor.original_vertices_count, 5);
+        assert_eq!(contractor.contracted_vertices_count, 4);
+        assert!(contractor.forced_edges.contains(&(1, 3)));
+        assert!(cg.adjacency_list.get(&1).unwrap().contains(&3));
     }
 }

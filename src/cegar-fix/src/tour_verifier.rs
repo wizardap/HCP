@@ -13,6 +13,14 @@ impl TourVerifier {
     /// 1. Tour length matches the number of vertices in `raw_g`.
     /// 2. Every vertex in `tour` is unique and exists in `raw_g`.
     /// 3. For every adjacent pair `(tour[i], tour[(i+1)%N])`, an undirected edge exists in `raw_g`.
+    /// Returns (true, "") if valid, or (false, err_msg) if invalid.
+    pub fn verify(raw_g: &Graph, tour: &[i32]) -> (bool, String) {
+        match Self::verify_raw_tour(tour, raw_g) {
+            Ok(()) => (true, String::new()),
+            Err(e) => (false, e),
+        }
+    }
+
     pub fn verify_raw_tour(tour: &[i32], raw_g: &Graph) -> Result<(), String> {
         let n = raw_g.adjacency_list.len();
         if tour.len() != n {

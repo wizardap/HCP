@@ -6,13 +6,7 @@ use cegar_fix::subcycle_absorber::SubcycleAbsorber;
 use std::collections::HashMap;
 
 fn empty_contractor() -> Degree2Contractor {
-    Degree2Contractor {
-        chain_map: HashMap::new(),
-        original_vertices_count: 0,
-        contracted_vertices_count: 0,
-        is_direct_cycle: None,
-        is_infeasible: false,
-    }
+    Degree2Contractor::new()
 }
 
 fn empty_hub_registry() -> HubRegistry {
