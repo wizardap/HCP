@@ -1,4 +1,5 @@
 use crate::core::file_operations;
+use crate::core::graph::Graph;
 use crate::core::tour_verifier::TourVerifier;
 use crate::engine::hybrid_orchestrator::{HybridOptions, HybridOrchestrator};
 use crate::fallback::fallback_cegar;
@@ -68,6 +69,38 @@ impl From<String> for SolverPipelineError {
     }
 }
 
+/// Helper function to verify a tour and optionally export it to TSPLIB HCP format.
+pub fn verify_and_export(
+    raw_g: &Graph,
+    tour: &[i32],
+    start_time: Instant,
+    output_tour_path: Option<&str>,
+) -> Result<(Vec<i32>, f64, usize), SolverPipelineError> {
+    let vertex_count = raw_g.adjacency_list.len();
+    let (is_valid, err_msg) = TourVerifier::verify(raw_g, tour);
+    if !is_valid {
+        return Err(SolverPipelineError {
+            message: format!("Tour verification failed: {}", err_msg),
+            vertex_count,
+        });
+    }
+    let elapsed_time = start_time.elapsed().as_secs_f64();
+    if let Some(out_path) = output_tour_path {
+        let name = Path::new(out_path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("tour");
+        TourVerifier::write_tsplib_hcp(tour, name, out_path).map_err(|e| {
+            SolverPipelineError {
+                message: format!("Failed to write TSPLIB HCP to '{}': {}", out_path, e),
+                vertex_count,
+            }
+        })?;
+        println!("Wrote certified tour to {}", out_path);
+    }
+    Ok((tour.to_vec(), elapsed_time, vertex_count))
+}
+
 /// Unified solving pipeline function:
 /// 1. Load graph from `graph_path` using `file_operations::parse_graph_from_file(graph_path)`.
 /// 2. Check for cut vertices / articulation points (`g.has_articulation_points()`).
@@ -123,27 +156,7 @@ pub fn solve_single_graph(
     };
 
     if let Some(tour) = macro_tour_opt {
-        let (is_valid, err_msg) = TourVerifier::verify(&g, &tour);
-        if !is_valid {
-            return Err(SolverPipelineError {
-                message: format!("Tour verification failed: {}", err_msg),
-                vertex_count,
-            });
-        }
-        let elapsed_time = start_time.elapsed().as_secs_f64();
-        if let Some(out_path) = output_tour_path {
-            let name = Path::new(graph_path)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("tour");
-            TourVerifier::write_tsplib_hcp(&tour, name, out_path)
-                .map_err(|e| SolverPipelineError {
-                    message: format!("Failed to write TSPLIB HCP to '{}': {}", out_path, e),
-                    vertex_count,
-                })?;
-            println!("Wrote certified tour to {}", out_path);
-        }
-        return Ok((tour, elapsed_time, vertex_count));
+        return verify_and_export(&g, &tour, start_time, output_tour_path);
     } else if [4286, 4064, 4620, 6620].contains(&vertex_count) {
         let elapsed = start_time.elapsed().as_secs_f64();
         if elapsed >= timeout_secs {
@@ -164,9 +177,10 @@ pub fn solve_single_graph(
         });
     }
 
+    let hybrid_timeout = (remaining_timeout * 0.8).max(1.0);
     let hybrid_opts = HybridOptions {
         auto_mode: true,
-        timeout_secs: remaining_timeout,
+        timeout_secs: hybrid_timeout,
         output_tour: None, // Verified tour will be written at the end if output_tour_path is specified
         macro_gadget: false,
         bounded_freezer: false,
@@ -216,32 +230,9 @@ pub fn solve_single_graph(
         }
     }
 
-    // 5. If tour found, verify with TourVerifier::verify
+    // 5. If tour found, verify and export
     if let Some(tour) = found_tour {
-        let (is_valid, err_msg) = TourVerifier::verify(&g, &tour);
-        if !is_valid {
-            return Err(SolverPipelineError {
-                message: format!("Tour verification failed: {}", err_msg),
-                vertex_count,
-            });
-        }
-        let elapsed_time = start_time.elapsed().as_secs_f64();
-
-        // 6. If sound, write TSPLIB HCP file if output_tour_path is specified
-        if let Some(out_path) = output_tour_path {
-            let name = Path::new(graph_path)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("tour");
-            TourVerifier::write_tsplib_hcp(&tour, name, out_path)
-                .map_err(|e| SolverPipelineError {
-                    message: format!("Failed to write TSPLIB HCP to '{}': {}", out_path, e),
-                    vertex_count,
-                })?;
-            println!("Wrote certified tour to {}", out_path);
-        }
-
-        Ok((tour, elapsed_time, vertex_count))
+        verify_and_export(&g, &tour, start_time, output_tour_path)
     } else {
         let elapsed = start_time.elapsed().as_secs_f64();
         if elapsed >= timeout_secs {
@@ -314,8 +305,7 @@ pub fn run_batch_range(
                             Some(dir) => Path::new(&format!("{}/tour_graph{}.hcp", dir.trim_end_matches('/'), item.gid)).exists(),
                             None => true,
                         };
-                        if has_tour {
-                            already_solved.insert(item.gid);
+                        if has_tour && already_solved.insert(item.gid) {
                             initial_results.push(item);
                         }
                     }

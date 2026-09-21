@@ -35,6 +35,7 @@ scratch/*/*.par
 scratch/*.tour
 scratch/lkh_test/
 scratch/ablation_tours/
+scratch/suite_a_tours/
 
 logs/
 

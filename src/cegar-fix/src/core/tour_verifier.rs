@@ -1,4 +1,4 @@
-use crate::graph::Graph;
+use crate::core::graph::Graph;
 use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{self, Write};
@@ -89,6 +89,15 @@ impl TourVerifier {
         let _ = std::fs::remove_file(&tmp_path);
 
         let output = output.map_err(|e| format!("Failed to execute python3 {}: {}", script_path, e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!(
+                "Upstream verifier failed with exit code {:?}: {}",
+                output.status.code(),
+                stderr
+            ));
+        }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let trimmed = stdout.trim();

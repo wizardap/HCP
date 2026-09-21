@@ -10,52 +10,6 @@ use rustsat_cadical::CaDiCaL;
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
-/// Encodes at-most-2 constraint: sum(lits) <= 2
-fn add_at_most_2(
-    solver: &mut CaDiCaL,
-    var_mgr: &mut BasicVarManager,
-    lits: &[Lit],
-) {
-    let n = lits.len();
-    if n <= 2 {
-        return;
-    }
-    if n <= 8 {
-        for i in 0..n {
-            for j in (i + 1)..n {
-                for k in (j + 1)..n {
-                    let _ = solver.add_clause(clause![!lits[i], !lits[j], !lits[k]]);
-                }
-            }
-        }
-        return;
-    }
-
-    // Sinz sequential counter for bound k = 2
-    let mut s: Vec<Vec<Lit>> = Vec::with_capacity(n - 1);
-    for _ in 0..(n - 1) {
-        let s0 = var_mgr.new_var().pos_lit();
-        let s1 = var_mgr.new_var().pos_lit();
-        s.push(vec![s0, s1]);
-    }
-
-    // Base clauses (i = 0)
-    let _ = solver.add_clause(clause![!lits[0], s[0][0]]);
-    let _ = solver.add_clause(clause![!s[0][1]]);
-
-    // Step clauses (i = 1..n-1)
-    for i in 1..(n - 1) {
-        let _ = solver.add_clause(clause![!s[i - 1][0], s[i][0]]);
-        let _ = solver.add_clause(clause![!s[i - 1][1], s[i][1]]);
-
-        let _ = solver.add_clause(clause![!lits[i], s[i][0]]);
-        let _ = solver.add_clause(clause![!lits[i], !s[i - 1][0], s[i][1]]);
-        let _ = solver.add_clause(clause![!lits[i], !s[i - 1][1]]);
-    }
-
-    // Final clause for last literal
-    let _ = solver.add_clause(clause![!lits[n - 1], !s[n - 2][1]]);
-}
 
 /// Pure Rust CDCL CEGAR fallback solver with degree-2 contraction,
 /// forced shortcuts, and forbidden-delete 2-opt cycle merger.
@@ -143,7 +97,7 @@ pub fn solve_with_contraction(g: &Graph, timeout_secs: f64) -> Result<Vec<i32>, 
             }
 
             // At-most-2
-            add_at_most_2(&mut solver, &mut var_mgr, &inc_lits);
+            crate::core::encoder::add_at_most_2(&mut solver, &inc_lits);
         }
     }
 
@@ -233,7 +187,10 @@ pub fn solve_with_contraction(g: &Graph, timeout_secs: f64) -> Result<Vec<i32>, 
                     }
                 }
 
-                // Attempt 2-opt merge when 2 to 4 cycles exist
+                // Attempt 2-opt merge when 2 to 4 cycles exist.
+                // Merging disjoint cycles via 2-opt edge swaps is combinatorial in the number of cycles;
+                // bounding the attempt to 2..=4 cycles ensures near-instant heuristic patching when close to a full
+                // Hamiltonian tour, while deferring higher cycle counts (>= 5) to CDCL/DFJ cut separation.
                 if cycles.len() >= 2 && cycles.len() <= 4 {
                     if let Some(merged) =
                         safe_2opt_merge(&cycles, &contracted_adj_set, &contractor.forced_edges)

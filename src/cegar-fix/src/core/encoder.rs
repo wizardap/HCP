@@ -1,7 +1,9 @@
-use crate::graph::*;
+use crate::core::graph::Graph;
 use rustsat::clause;
 use rustsat::instances::*;
+use rustsat::solvers::{Solve, SolveStats};
 use rustsat::types::*;
+use rustsat_cadical::CaDiCaL;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 pub struct Encoder {
@@ -764,3 +766,57 @@ impl Encoder {
         }
     }
 }
+
+/// Encodes at-most-2 cardinality constraint: sum(edge_lits) <= 2
+/// Uses naive cubic/pairwise clauses for n <= 8, and Sinz sequential counter for n > 8.
+pub fn add_at_most_2(solver: &mut CaDiCaL, edge_lits: &[Lit]) {
+    let n = edge_lits.len();
+    if n <= 2 {
+        return;
+    }
+    if n <= 8 {
+        for i in 0..n {
+            for j in (i + 1)..n {
+                for k in (j + 1)..n {
+                    let _ = solver.add_clause(clause![!edge_lits[i], !edge_lits[j], !edge_lits[k]]);
+                }
+            }
+        }
+        return;
+    }
+
+    let mut next_idx: u32 = solver
+        .max_var()
+        .map(|v| v.idx32() + 1)
+        .unwrap_or(0);
+    if let Some(edge_max) = edge_lits.iter().map(|l| l.var().idx32() + 1).max() {
+        next_idx = next_idx.max(edge_max);
+    }
+
+    let mut s: Vec<Vec<Lit>> = Vec::with_capacity(n - 1);
+    for _ in 0..(n - 1) {
+        let s0 = Var::new(next_idx).pos_lit();
+        next_idx += 1;
+        let s1 = Var::new(next_idx).pos_lit();
+        next_idx += 1;
+        s.push(vec![s0, s1]);
+    }
+
+    // Base clauses (i = 0)
+    let _ = solver.add_clause(clause![!edge_lits[0], s[0][0]]);
+    let _ = solver.add_clause(clause![!s[0][1]]);
+
+    // Step clauses (i = 1..n-1)
+    for i in 1..(n - 1) {
+        let _ = solver.add_clause(clause![!s[i - 1][0], s[i][0]]);
+        let _ = solver.add_clause(clause![!s[i - 1][1], s[i][1]]);
+
+        let _ = solver.add_clause(clause![!edge_lits[i], s[i][0]]);
+        let _ = solver.add_clause(clause![!edge_lits[i], !s[i - 1][0], s[i][1]]);
+        let _ = solver.add_clause(clause![!edge_lits[i], !s[i - 1][1]]);
+    }
+
+    // Final clause for last literal
+    let _ = solver.add_clause(clause![!edge_lits[n - 1], !s[n - 2][1]]);
+}
+

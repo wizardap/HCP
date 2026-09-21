@@ -9,42 +9,6 @@ use rustsat_cadical::CaDiCaL;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::Instant;
 
-fn add_at_most_2(solver: &mut CaDiCaL, var_mgr: &mut BasicVarManager, lits: &[Lit]) {
-    let n = lits.len();
-    if n <= 2 {
-        return;
-    }
-    if n <= 8 {
-        for i in 0..n {
-            for j in (i + 1)..n {
-                for k in (j + 1)..n {
-                    let _ = solver.add_clause(clause![!lits[i], !lits[j], !lits[k]]);
-                }
-            }
-        }
-        return;
-    }
-
-    let mut s: Vec<Vec<Lit>> = Vec::with_capacity(n - 1);
-    for _ in 0..(n - 1) {
-        let s0 = var_mgr.new_var().pos_lit();
-        let s1 = var_mgr.new_var().pos_lit();
-        s.push(vec![s0, s1]);
-    }
-
-    let _ = solver.add_clause(clause![!lits[0], s[0][0]]);
-    let _ = solver.add_clause(clause![!s[0][1]]);
-
-    for i in 1..(n - 1) {
-        let _ = solver.add_clause(clause![!s[i - 1][0], s[i][0]]);
-        let _ = solver.add_clause(clause![!s[i - 1][1], s[i][1]]);
-        let _ = solver.add_clause(clause![!lits[i], s[i][0]]);
-        let _ = solver.add_clause(clause![!lits[i], !s[i - 1][0], s[i][1]]);
-        let _ = solver.add_clause(clause![!lits[i], !s[i - 1][1]]);
-    }
-
-    let _ = solver.add_clause(clause![!lits[n - 1], !s[n - 2][1]]);
-}
 
 /// Solves a single continuous Hamiltonian path on `c_verts` from `u_in` to `u_out`.
 /// Enforces deg=1 at endpoints and deg=2 at interior vertices.
@@ -119,7 +83,7 @@ pub fn solve_cluster_path(
                     }
                     let _ = solver.add_clause(Clause::from_iter(cl));
                 }
-                add_at_most_2(&mut solver, &mut var_mgr, &lits);
+                crate::core::encoder::add_at_most_2(&mut solver, &lits);
             }
         }
     }

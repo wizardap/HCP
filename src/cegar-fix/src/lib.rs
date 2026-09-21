@@ -43,7 +43,7 @@ pub use pipeline::options::Options;
 pub use pipeline::solver_pipeline;
 pub use pipeline::solver_pipeline::{
     find_graph_file, run_batch, run_batch_range, save_checkpoint_atomic, solve_single_graph,
-    BatchItemResult, SolverPipelineError,
+    verify_and_export, BatchItemResult, SolverPipelineError,
 };
 
 pub mod chained_lk;

@@ -1,4 +1,4 @@
-use crate::graph::*;
+use crate::core::graph::Graph;
 use std::fs::File;
 use std::fs;
 use std::io::{self, BufRead,BufWriter ,Write};
