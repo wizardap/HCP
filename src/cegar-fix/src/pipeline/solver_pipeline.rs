@@ -1,7 +1,6 @@
 use crate::core::file_operations;
 use crate::core::graph::Graph;
 use crate::core::tour_verifier::TourVerifier;
-use crate::engine::hybrid_orchestrator::{HybridOptions, HybridOrchestrator};
 use crate::fallback::fallback_cegar;
 use crate::macro_decomp::bipartite as macro_bipartite;
 use crate::macro_decomp::corridor as macro_corridor;
@@ -167,7 +166,7 @@ pub fn solve_single_graph(
         }
     }
 
-    // 3. Try HybridOrchestrator::solve with remaining timeout
+    // 3. Solve with Stage 3 Fallback CEGAR (Degree-2 Contraction + Forced Shortcuts + Safe 2-Opt)
     let elapsed = start_time.elapsed().as_secs_f64();
     let remaining_timeout = timeout_secs - elapsed;
     if remaining_timeout <= 0.0 {
@@ -177,74 +176,26 @@ pub fn solve_single_graph(
         });
     }
 
-    let hybrid_timeout = (remaining_timeout * 0.8).max(1.0);
-    let hybrid_opts = HybridOptions {
-        auto_mode: true,
-        timeout_secs: hybrid_timeout,
-        output_tour: None, // Verified tour will be written at the end if output_tour_path is specified
-        macro_gadget: false,
-        bounded_freezer: false,
-        alternating_engine: true,
-    };
-
-    let mut found_tour = HybridOrchestrator::solve(&g, &hybrid_opts);
-
-    // 4. If not solved or returns None, try fallback_cegar::solve_with_contraction
-    if found_tour.is_none() {
-        let elapsed = start_time.elapsed().as_secs_f64();
-        let remaining_timeout = timeout_secs - elapsed;
-        if remaining_timeout > 0.0 {
-            println!(
-                "HybridOrchestrator returned None; invoking fallback CEGAR (remaining timeout: {:.2}s)...",
-                remaining_timeout
-            );
-            match fallback_cegar::solve_with_contraction(&g, remaining_timeout) {
-                Ok(tour) => {
-                    found_tour = Some(tour);
-                }
-                Err(err) => {
-                    let total_elapsed = start_time.elapsed().as_secs_f64();
-                    if total_elapsed >= timeout_secs || err.to_uppercase().contains("TIMEOUT") {
-                        return Err(SolverPipelineError {
-                            message: format!("TIMEOUT (elapsed: {:.2}s)", total_elapsed),
-                            vertex_count,
-                        });
-                    } else if err.to_uppercase().contains("INFEASIBLE") || err.to_uppercase().contains("UNSAT") {
-                        return Err(SolverPipelineError {
-                            message: format!("UNSAT: {}", err),
-                            vertex_count,
-                        });
-                    } else {
-                        return Err(SolverPipelineError {
-                            message: format!("Solver error: {}", err),
-                            vertex_count,
-                        });
-                    }
-                }
+    match fallback_cegar::solve_with_contraction(&g, remaining_timeout) {
+        Ok(tour) => verify_and_export(&g, &tour, start_time, output_tour_path),
+        Err(err) => {
+            let total_elapsed = start_time.elapsed().as_secs_f64();
+            if total_elapsed >= timeout_secs || err.to_uppercase().contains("TIMEOUT") {
+                Err(SolverPipelineError {
+                    message: format!("TIMEOUT (elapsed: {:.2}s)", total_elapsed),
+                    vertex_count,
+                })
+            } else if err.to_uppercase().contains("INFEASIBLE") || err.to_uppercase().contains("UNSAT") {
+                Err(SolverPipelineError {
+                    message: format!("UNSAT: {}", err),
+                    vertex_count,
+                })
+            } else {
+                Err(SolverPipelineError {
+                    message: format!("Solver error: {}", err),
+                    vertex_count,
+                })
             }
-        } else {
-            return Err(SolverPipelineError {
-                message: format!("TIMEOUT (elapsed: {:.2}s)", elapsed),
-                vertex_count,
-            });
-        }
-    }
-
-    // 5. If tour found, verify and export
-    if let Some(tour) = found_tour {
-        verify_and_export(&g, &tour, start_time, output_tour_path)
-    } else {
-        let elapsed = start_time.elapsed().as_secs_f64();
-        if elapsed >= timeout_secs {
-            Err(SolverPipelineError {
-                message: format!("TIMEOUT (elapsed: {:.2}s)", elapsed),
-                vertex_count,
-            })
-        } else {
-            Err(SolverPipelineError {
-                message: "UNSAT".to_string(),
-                vertex_count,
-            })
         }
     }
 }

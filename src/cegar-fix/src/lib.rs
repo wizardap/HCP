@@ -19,9 +19,6 @@ pub use macro_decomp::bipartite as macro_bipartite;
 pub use macro_decomp::corridor as macro_corridor;
 pub use macro_decomp::portfolio_788 as macro_788;
 
-pub mod engine;
-pub use engine::*;
-
 pub mod pipeline;
 pub use pipeline::options;
 pub use pipeline::options::Options;
