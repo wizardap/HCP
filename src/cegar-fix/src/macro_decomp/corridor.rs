@@ -68,7 +68,7 @@ fn solve_block_a(
                 }
                 let _ = solver.add_clause(Clause::from_iter(cl));
             }
-            crate::core::encoder::add_at_most_2(&mut solver, &lits);
+            crate::core::encoder::add_at_most_2(&mut solver, &mut var_mgr, &lits);
         }
     }
 
@@ -310,7 +310,7 @@ fn solve_block_b(
                 }
                 let _ = solver.add_clause(Clause::from_iter(cl));
             }
-            crate::core::encoder::add_at_most_2(&mut solver, &lits);
+            crate::core::encoder::add_at_most_2(&mut solver, &mut var_mgr, &lits);
         }
     }
 

@@ -1,7 +1,7 @@
 use crate::core::graph::Graph;
 use rustsat::clause;
 use rustsat::instances::*;
-use rustsat::solvers::{Solve, SolveStats};
+use rustsat::solvers::Solve;
 use rustsat::types::*;
 use rustsat_cadical::CaDiCaL;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -769,7 +769,11 @@ impl Encoder {
 
 /// Encodes at-most-2 cardinality constraint: sum(edge_lits) <= 2
 /// Uses naive cubic/pairwise clauses for n <= 8, and Sinz sequential counter for n > 8.
-pub fn add_at_most_2(solver: &mut CaDiCaL, edge_lits: &[Lit]) {
+pub fn add_at_most_2(
+    solver: &mut CaDiCaL,
+    var_mgr: &mut BasicVarManager,
+    edge_lits: &[Lit],
+) {
     let n = edge_lits.len();
     if n <= 2 {
         return;
@@ -785,20 +789,10 @@ pub fn add_at_most_2(solver: &mut CaDiCaL, edge_lits: &[Lit]) {
         return;
     }
 
-    let mut next_idx: u32 = solver
-        .max_var()
-        .map(|v| v.idx32() + 1)
-        .unwrap_or(0);
-    if let Some(edge_max) = edge_lits.iter().map(|l| l.var().idx32() + 1).max() {
-        next_idx = next_idx.max(edge_max);
-    }
-
     let mut s: Vec<Vec<Lit>> = Vec::with_capacity(n - 1);
     for _ in 0..(n - 1) {
-        let s0 = Var::new(next_idx).pos_lit();
-        next_idx += 1;
-        let s1 = Var::new(next_idx).pos_lit();
-        next_idx += 1;
+        let s0 = var_mgr.new_var().pos_lit();
+        let s1 = var_mgr.new_var().pos_lit();
         s.push(vec![s0, s1]);
     }
 

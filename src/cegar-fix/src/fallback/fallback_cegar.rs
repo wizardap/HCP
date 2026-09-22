@@ -97,7 +97,7 @@ pub fn solve_with_contraction(g: &Graph, timeout_secs: f64) -> Result<Vec<i32>, 
             }
 
             // At-most-2
-            crate::core::encoder::add_at_most_2(&mut solver, &inc_lits);
+            crate::core::encoder::add_at_most_2(&mut solver, &mut var_mgr, &inc_lits);
         }
     }
 
