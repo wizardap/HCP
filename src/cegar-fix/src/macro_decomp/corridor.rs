@@ -593,19 +593,20 @@ pub fn find_2cut_ports(raw_g: &Graph) -> Option<(i32, i32)> {
     None
 }
 
-/// Solves graph710 (|V| = 4064) using 2-cut articulation decomposition.
-pub fn solve_710(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
-    if raw_g.adjacency_list.len() != 4064 {
-        return None;
-    }
+/// Checks if the graph has a 2-vertex separator splitting it into two large components.
+pub fn can_solve_2cut(raw_g: &Graph) -> Option<(i32, i32)> {
+    find_2cut_ports(raw_g)
+}
 
+/// Solves any 2-connected graph admitting a 2-vertex separator splitting the graph
+/// into two components of at least 500 vertices each.
+pub fn solve_2cut_corridor(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
     let t_start = Instant::now();
     let deadline = t_start + std::time::Duration::from_secs_f64(timeout_secs);
 
     let (port_u, port_v) = match find_2cut_ports(raw_g) {
         Some(ports) => ports,
         None => {
-            eprintln!("[macro_corridor] Failed to find 2-cut separator for graph710");
             return None;
         }
     };
@@ -658,7 +659,7 @@ pub fn solve_710(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
     v_b.insert(port_v);
 
     println!(
-        "[macro_corridor] graph710 decomposed into Block A ({}v) and Block B ({}v)",
+        "[macro_corridor] Decomposed into Block A ({}v) and Block B ({}v)",
         v_a.len(),
         v_b.len()
     );
@@ -696,12 +697,17 @@ pub fn solve_710(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
     let (valid, err) = TourVerifier::verify(raw_g, &tour);
     if valid {
         println!(
-            "[macro_corridor] graph710 certified in {:.2}s!",
+            "[macro_corridor] 2-cut corridor tour certified in {:.2}s!",
             t_start.elapsed().as_secs_f64()
         );
         Some(tour)
     } else {
-        eprintln!("[macro_corridor] graph710 verification failed: {}", err);
+        eprintln!("[macro_corridor] Tour verification failed: {}", err);
         None
     }
+}
+
+/// Backward-compatible alias for solve_2cut_corridor.
+pub fn solve_710(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
+    solve_2cut_corridor(raw_g, timeout_secs)
 }

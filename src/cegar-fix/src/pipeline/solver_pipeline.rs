@@ -133,30 +133,42 @@ pub fn solve_single_graph(
         });
     }
 
-    // 2.5 Macro-decomposition check for challenge graphs
-    let macro_tour_opt: Option<Vec<i32>> = match vertex_count {
-        4286 => {
-            println!("[Pipeline] Detected |V|=4286 (graph746): invoking macro_bipartite::solve_746...");
-            macro_bipartite::solve_746(&g, timeout_secs)
+    // 2.5 Topological Macro-Decomposition Cascade
+    let mut macro_tour_opt: Option<Vec<i32>> = None;
+
+    // 2.5a. 2-Cut Articulation Separator (Corridor family)
+    if vertex_count >= 1000 {
+        if let Some((u, v)) = macro_corridor::can_solve_2cut(&g) {
+            println!(
+                "[Pipeline] Detected 2-cut articulation separator ({}, {}): invoking corridor decomposition...",
+                u, v
+            );
+            macro_tour_opt = macro_corridor::solve_2cut_corridor(&g, timeout_secs);
         }
-        4064 => {
-            println!("[Pipeline] Detected |V|=4064 (graph710): invoking macro_corridor::solve_710...");
-            macro_corridor::solve_710(&g, timeout_secs)
+    }
+
+    // 2.5b. Degree-2 Alternating Pair Contraction
+    if macro_tour_opt.is_none() && macro_788::can_solve_alternating_pairs(&g) {
+        println!("[Pipeline] Detected 2-colorable alternating pair structure: invoking alternating portfolio solver...");
+        macro_tour_opt = macro_788::solve_alternating_pairs(&g, timeout_secs);
+    }
+
+    // 2.5c. Super-Hub Bipartite Clusters
+    if macro_tour_opt.is_none() {
+        if let Some(super_hubs) = macro_bipartite::detect_bipartite_super_hubs(&g) {
+            if super_hubs.len() == 5 {
+                println!("[Pipeline] Detected 5 super-hubs: invoking 5-cluster bipartite macro solver...");
+                macro_tour_opt = macro_bipartite::solve_bipartite_ring(&g, timeout_secs);
+            } else if super_hubs.len() == 10 {
+                println!("[Pipeline] Detected 10 super-hubs: invoking 10-cluster two-half bipartite solver...");
+                macro_tour_opt = macro_bipartite::solve_two_half_bipartite(&g, timeout_secs);
+            }
         }
-        4620 => {
-            println!("[Pipeline] Detected |V|=4620 (graph788): invoking macro_788::solve_788...");
-            macro_788::solve_788(&g, timeout_secs)
-        }
-        6620 => {
-            println!("[Pipeline] Detected |V|=6620 (graph950): invoking macro_bipartite::solve_950...");
-            macro_bipartite::solve_950(&g, timeout_secs)
-        }
-        _ => None,
-    };
+    }
 
     if let Some(tour) = macro_tour_opt {
         return verify_and_export(&g, &tour, start_time, output_tour_path);
-    } else if [4286, 4064, 4620, 6620].contains(&vertex_count) {
+    } else {
         let elapsed = start_time.elapsed().as_secs_f64();
         if elapsed >= timeout_secs {
             return Err(SolverPipelineError {

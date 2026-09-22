@@ -207,11 +207,28 @@ pub fn solve_cluster_path(
     None
 }
 
-/// Solves graph746 (|V| = 4286) de novo via 5-cluster parallel decomposition.
-pub fn solve_746(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
-    if raw_g.adjacency_list.len() != 4286 {
-        return None;
+/// Dynamically detects super-hubs with exceptionally high degree (>= 500).
+pub fn detect_bipartite_super_hubs(raw_g: &Graph) -> Option<Vec<i32>> {
+    let mut super_hubs: Vec<i32> = raw_g
+        .adjacency_list
+        .iter()
+        .filter(|&(_, nbrs)| nbrs.len() >= 500)
+        .map(|(&u, _)| u)
+        .collect();
+    super_hubs.sort_unstable();
+    if super_hubs.is_empty() {
+        None
+    } else {
+        Some(super_hubs)
     }
+}
+
+/// Solves 5-cluster bipartite macro-ring topologies de novo.
+pub fn solve_bipartite_ring(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
+    match detect_bipartite_super_hubs(raw_g) {
+        Some(hubs) if hubs.len() == 5 => {}
+        _ => return None,
+    };
 
     let t_start = Instant::now();
     let deadline = t_start + std::time::Duration::from_secs_f64(timeout_secs);
@@ -221,17 +238,6 @@ pub fn solve_746(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
         .iter()
         .map(|(&k, v)| (k, v.len()))
         .collect();
-
-    let mut super_hubs: Vec<i32> = degs
-        .iter()
-        .filter(|&(_, &d)| d >= 500)
-        .map(|(&u, _)| u)
-        .collect();
-    super_hubs.sort_unstable();
-
-    if super_hubs != vec![1430, 3641, 3735, 3790, 3960] {
-        return None;
-    }
 
     let hubs: HashSet<i32> = degs
         .iter()
@@ -398,6 +404,11 @@ pub fn solve_746(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
     }
 }
 
+/// Backward-compatible alias for solve_bipartite_ring.
+pub fn solve_746(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
+    solve_bipartite_ring(raw_g, timeout_secs)
+}
+
 fn decompose_half(
     adj: &HashMap<i32, Vec<i32>>,
     degs: &HashMap<i32, usize>,
@@ -461,11 +472,12 @@ fn decompose_half(
     (strips, strip_adj_hubs)
 }
 
-/// Solves graph950 (|V| = 6620) de novo via 10-cluster two-half bipartite decomposition.
-pub fn solve_950(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
-    if raw_g.adjacency_list.len() != 6620 {
-        return None;
-    }
+/// Solves 10-cluster two-half bipartite decomposition de novo.
+pub fn solve_two_half_bipartite(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
+    match detect_bipartite_super_hubs(raw_g) {
+        Some(hubs) if hubs.len() == 10 => {}
+        _ => return None,
+    };
 
     let t_start = Instant::now();
     let deadline = t_start + std::time::Duration::from_secs_f64(timeout_secs);
@@ -485,7 +497,6 @@ pub fn solve_950(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
         match degs.get(&root) {
             Some(&deg) if deg >= 500 => {}
             _ => {
-                println!("[macro_bipartite] Root hub {} missing or degree < 500 in graph950", root);
                 return None;
             }
         }
@@ -687,4 +698,9 @@ pub fn solve_950(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
         eprintln!("[macro_bipartite] graph950 verification failed: {}", err);
         None
     }
+}
+
+/// Backward-compatible alias for solve_two_half_bipartite.
+pub fn solve_950(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
+    solve_two_half_bipartite(raw_g, timeout_secs)
 }

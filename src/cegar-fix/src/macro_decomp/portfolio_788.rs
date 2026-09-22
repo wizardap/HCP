@@ -175,14 +175,66 @@ fn sat_absorb_small_cycle(
     false
 }
 
-/// Solves graph788 (|V| = 4620) using degree-2 pair contraction and 3-worker reseeding portfolio CEGAR.
-pub fn solve_788(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
-    if raw_g.adjacency_list.len() != 4620 {
-        return None;
+/// Checks if the graph has a high density of degree-2 chains that contract into
+/// a 2-colorable alternating pair transition graph.
+pub fn can_solve_alternating_pairs(raw_g: &Graph) -> bool {
+    let deg2_count = raw_g.adjacency_list.values().filter(|nbrs| nbrs.len() == 2).count();
+    let n = raw_g.adjacency_list.len();
+    if deg2_count < 100 || deg2_count * 3 < n {
+        return false;
     }
 
+    let (g, contractor) = Degree2Contractor::contract(raw_g);
+    let mut v_partner: HashMap<i32, i32> = HashMap::new();
+    let mut pairs: Vec<(i32, i32)> = Vec::new();
+    let mut sorted_chains: Vec<(i32, i32)> = contractor.chain_map.keys().copied().collect();
+    sorted_chains.sort();
+
+    for (u, w) in sorted_chains {
+        if u < w {
+            pairs.push((u, w));
+            v_partner.insert(u, w);
+            v_partner.insert(w, u);
+        }
+    }
+
+    if pairs.len() < 50 {
+        return false;
+    }
+
+    let mut color: HashMap<i32, u8> = HashMap::new();
+    let (u0, w0) = pairs[0];
+    color.insert(u0, 0);
+    color.insert(w0, 1);
+    let mut q = vec![u0, w0];
+
+    while let Some(curr) = q.pop() {
+        let curr_c = color[&curr];
+        if let Some(&vp) = v_partner.get(&curr) {
+            if !color.contains_key(&vp) {
+                color.insert(vp, 1 - curr_c);
+                q.push(vp);
+            }
+        }
+        if let Some(nbrs) = g.adjacency_list.get(&curr) {
+            let vp = v_partner.get(&curr).copied().unwrap_or(0);
+            for &nxt in nbrs {
+                if nxt != vp && !color.contains_key(&nxt) {
+                    color.insert(nxt, 1 - curr_c);
+                    q.push(nxt);
+                }
+            }
+        }
+    }
+
+    color.len() >= pairs.len() * 2
+}
+
+/// Solves any graph with a 2-colorable alternating pair structure using degree-2 pair contraction
+/// and 3-worker reseeding portfolio CEGAR.
+pub fn solve_alternating_pairs(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
     let t_start = Instant::now();
-    println!("[macro_788] Initializing degree-2 contraction and directed pair graph...");
+    println!("[macro_alternating] Initializing degree-2 contraction and directed pair graph...");
 
     let (g, contractor) = Degree2Contractor::contract(raw_g);
 
@@ -665,4 +717,9 @@ pub fn solve_788(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
     }
 
     result_tour
+}
+
+/// Backward-compatible alias for solve_alternating_pairs.
+pub fn solve_788(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
+    solve_alternating_pairs(raw_g, timeout_secs)
 }
