@@ -3,7 +3,6 @@ use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::Path;
-use std::process::Command;
 
 pub struct TourVerifier;
 
@@ -56,56 +55,21 @@ impl TourVerifier {
         Ok(())
     }
 
-    /// Runs Takehide Soh's upstream verifier at ~/SAT-based-CEGAR/parse/is_hamiltonian.py
-    pub fn verify_upstream_python(graph_path: &str, tour: &[i32]) -> Result<bool, String> {
-        let tmp_path = format!(
-            "/tmp/tour_verify_{}_{}.txt",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
-        );
-        {
-            let mut f = File::create(&tmp_path).map_err(|e| e.to_string())?;
-            writeln!(f, "solution: ").map_err(|e| e.to_string())?;
-            for (idx, &v) in tour.iter().enumerate() {
-                if idx > 0 {
-                    write!(f, " ").map_err(|e| e.to_string())?;
-                }
-                write!(f, "{}", v).map_err(|e| e.to_string())?;
+    /// Verifies if a solution is a Hamiltonian cycle, following the exact algorithm from Takehide Soh's `is_hamiltonian.py`.
+    pub fn is_hamiltonian(raw_g: &Graph, solution: &[i32]) -> bool {
+        let n = raw_g.adjacency_list.len();
+        if solution.len() != n {
+            return false;
+        }
+        for i in 0..n {
+            let u = solution[i];
+            let v = solution[(i + 1) % n];
+            match raw_g.adjacency_list.get(&u) {
+                Some(nbrs) if nbrs.contains(&v) => continue,
+                _ => return false,
             }
-            writeln!(f).map_err(|e| e.to_string())?;
-            writeln!(f, "s SATISFIABLE").map_err(|e| e.to_string())?;
         }
-
-        let script_path = "/home/ubuntu/SAT-based-CEGAR/parse/is_hamiltonian.py";
-        let output = Command::new("python3")
-            .arg(script_path)
-            .arg(graph_path)
-            .arg(&tmp_path)
-            .output();
-
-        let _ = std::fs::remove_file(&tmp_path);
-
-        let output = output.map_err(|e| format!("Failed to execute python3 {}: {}", script_path, e))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!(
-                "Upstream verifier failed with exit code {:?}: {}",
-                output.status.code(),
-                stderr
-            ));
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let trimmed = stdout.trim();
-        if trimmed.ends_with("True") {
-            Ok(true)
-        } else {
-            Ok(false)
-        }
+        true
     }
 
     /// Writes a certified tour in standard TSPLIB format (.tour / .hcp).

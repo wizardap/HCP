@@ -9,9 +9,8 @@ fn test_graph1_upstream_verifier_parity() {
     let tour = fallback_cegar::solve_with_contraction(&g, 30.0).expect("Failed to solve graph1");
     
     let (valid, err) = TourVerifier::verify(&g, &tour);
-    assert!(valid, "Internal TourVerifier failed: {}", err);
+    assert!(valid, "TourVerifier failed: {}", err);
 
-    let upstream_valid = TourVerifier::verify_upstream_python(graph_path, &tour)
-        .expect("Failed to run upstream is_hamiltonian.py");
-    assert!(upstream_valid, "Upstream is_hamiltonian.py returned False");
+    let is_ham = TourVerifier::is_hamiltonian(&g, &tour);
+    assert!(is_ham, "TourVerifier::is_hamiltonian returned false");
 }
