@@ -15,7 +15,6 @@ pub use fallback::cycle_merge::safe_2opt_merge;
 pub use fallback::fallback_cegar;
 
 pub mod macro_decomp;
-pub use macro_decomp::bipartite as macro_bipartite;
 pub use macro_decomp::corridor as macro_corridor;
 pub use macro_decomp::portfolio_788 as macro_788;
 

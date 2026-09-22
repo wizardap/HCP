@@ -2,7 +2,6 @@ use crate::core::file_operations;
 use crate::core::graph::Graph;
 use crate::core::tour_verifier::TourVerifier;
 use crate::fallback::fallback_cegar;
-use crate::macro_decomp::bipartite as macro_bipartite;
 use crate::macro_decomp::corridor as macro_corridor;
 use crate::macro_decomp::portfolio_788 as macro_788;
 use crate::pipeline::options::Options;
@@ -151,19 +150,6 @@ pub fn solve_single_graph(
     if macro_tour_opt.is_none() && macro_788::can_solve_alternating_pairs(&g) {
         println!("[Pipeline] Detected 2-colorable alternating pair structure: invoking alternating portfolio solver...");
         macro_tour_opt = macro_788::solve_alternating_pairs(&g, timeout_secs);
-    }
-
-    // 2.5c. Super-Hub Bipartite Clusters
-    if macro_tour_opt.is_none() {
-        if let Some(super_hubs) = macro_bipartite::detect_bipartite_super_hubs(&g) {
-            if super_hubs.len() == 5 {
-                println!("[Pipeline] Detected 5 super-hubs: invoking 5-cluster bipartite macro solver...");
-                macro_tour_opt = macro_bipartite::solve_bipartite_ring(&g, timeout_secs);
-            } else if super_hubs.len() == 10 {
-                println!("[Pipeline] Detected 10 super-hubs: invoking 10-cluster two-half bipartite solver...");
-                macro_tour_opt = macro_bipartite::solve_two_half_bipartite(&g, timeout_secs);
-            }
-        }
     }
 
     if let Some(tour) = macro_tour_opt {
