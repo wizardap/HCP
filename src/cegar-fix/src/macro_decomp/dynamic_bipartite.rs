@@ -725,54 +725,71 @@ pub fn solve_cluster_path(
             return Some(orig_path);
         }
 
-        // Fast 2-opt cycle merge when <= 8 cycles remain
-        if cycles.len() <= 8 && curr == u_out_idx {
+        // Fast 2-opt cycle merge until fixpoint when <= 16 cycles remain
+        if cycles.len() <= 16 && curr == u_out_idx {
             let mut merged_path = path.clone();
-            let mut rem_cycles = Vec::new();
-            for cyc in &cycles {
-                let n_p = merged_path.len();
-                let k = cyc.len();
-                let mut merged = false;
-                for i in 0..(n_p - 1) {
-                    let pu = merged_path[i];
-                    let pv = merged_path[i + 1];
-                    for j in 0..k {
-                        let cu = cyc[j];
-                        let cv = cyc[(j + 1) % k];
-                        if adj_matrix[pu * m + cu] && adj_matrix[cv * m + pv] {
-                            let mut new_p = Vec::with_capacity(n_p + k);
-                            new_p.extend_from_slice(&merged_path[..=i]);
-                            for step in 0..k {
-                                let idx = (j + k - (step % k)) % k;
-                                new_p.push(cyc[idx]);
+            let mut unmerged_cycles = cycles.clone();
+            let mut progress = true;
+
+            while progress && !unmerged_cycles.is_empty() {
+                progress = false;
+                let mut remaining = Vec::with_capacity(unmerged_cycles.len());
+
+                for cyc in unmerged_cycles {
+                    let n_p = merged_path.len();
+                    let k = cyc.len();
+                    let mut merged = false;
+
+                    for i in 0..(n_p - 1) {
+                        let pu = merged_path[i];
+                        let pv = merged_path[i + 1];
+
+                        for j in 0..k {
+                            let cu = cyc[j];
+                            let cv = cyc[(j + 1) % k];
+
+                            if adj_matrix[pu * m + cu] && adj_matrix[cv * m + pv] {
+                                let mut new_p = Vec::with_capacity(n_p + k);
+                                new_p.extend_from_slice(&merged_path[..=i]);
+                                for step in 0..k {
+                                    let idx = (j + k - (step % k)) % k;
+                                    new_p.push(cyc[idx]);
+                                }
+                                new_p.extend_from_slice(&merged_path[(i + 1)..]);
+                                merged_path = new_p;
+                                merged = true;
+                                progress = true;
+                                break;
                             }
-                            new_p.extend_from_slice(&merged_path[(i + 1)..]);
-                            merged_path = new_p;
-                            merged = true;
-                            break;
+                            if adj_matrix[pu * m + cv] && adj_matrix[cu * m + pv] {
+                                let mut new_p = Vec::with_capacity(n_p + k);
+                                new_p.extend_from_slice(&merged_path[..=i]);
+                                for step in 0..k {
+                                    let idx = (j + 1 + step) % k;
+                                    new_p.push(cyc[idx]);
+                                }
+                                new_p.extend_from_slice(&merged_path[(i + 1)..]);
+                                merged_path = new_p;
+                                merged = true;
+                                progress = true;
+                                break;
+                            }
                         }
-                        if adj_matrix[pu * m + cv] && adj_matrix[cu * m + pv] {
-                            let mut new_p = Vec::with_capacity(n_p + k);
-                            new_p.extend_from_slice(&merged_path[..=i]);
-                            for step in 0..k {
-                                let idx = (j + 1 + step) % k;
-                                new_p.push(cyc[idx]);
-                            }
-                            new_p.extend_from_slice(&merged_path[(i + 1)..]);
-                            merged_path = new_p;
-                            merged = true;
+
+                        if merged {
                             break;
                         }
                     }
-                    if merged {
-                        break;
+
+                    if !merged {
+                        remaining.push(cyc);
                     }
                 }
-                if !merged {
-                    rem_cycles.push(cyc.clone());
-                }
+
+                unmerged_cycles = remaining;
             }
-            if rem_cycles.is_empty() && merged_path.len() == m {
+
+            if unmerged_cycles.is_empty() && merged_path.len() == m {
                 let orig_path: Vec<i32> = merged_path.into_iter().map(|idx| nodes_vec[idx]).collect();
                 return Some(orig_path);
             }
@@ -893,11 +910,15 @@ pub fn solve_bipartite(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
                 }
                 None => {
                     all_sat = false;
-                    println!(
-                        "[dynamic_bipartite] Cluster {} UNSAT for port pair ({}, {}). Learning conflict...",
-                        h, u_in, u_out
-                    );
-                    macro_solver.block_pair(h, u_in, u_out);
+                    if Instant::now() < deadline {
+                        println!(
+                            "[dynamic_bipartite] Cluster {} UNSAT for port pair ({}, {}). Learning conflict...",
+                            h, u_in, u_out
+                        );
+                        macro_solver.block_pair(h, u_in, u_out);
+                    } else {
+                        return None;
+                    }
                 }
             }
         }
