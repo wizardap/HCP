@@ -117,13 +117,36 @@ fn test_macro_sat_block_pair() {
     }
 }
 
+fn permute_graph(raw: &cegar_fix::core::graph::Graph) -> cegar_fix::core::graph::Graph {
+    let mut nodes: Vec<i32> = raw.adjacency_list.keys().copied().collect();
+    nodes.sort_unstable();
+    let n = nodes.len();
+    let mut perm_nodes = nodes.clone();
+    let mut seed: u64 = 42;
+    for i in (1..n).rev() {
+        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let j = (seed % (i as u64 + 1)) as usize;
+        perm_nodes.swap(i, j);
+    }
+    let map: std::collections::HashMap<i32, i32> = nodes.into_iter().zip(perm_nodes).collect();
+    let mut perm_g = cegar_fix::core::graph::Graph::new();
+    for (&u, nbrs) in &raw.adjacency_list {
+        let pu = map[&u];
+        for &v in nbrs {
+            if u < v {
+                let pv = map[&v];
+                perm_g.add_edge(pu, pv);
+            }
+        }
+    }
+    perm_g
+}
+
 #[test]
 fn test_macro_sat_permuted_graph746() {
-    let perm_path = "scratch/graph746_permuted_seed42.col";
-    if !Path::new(perm_path).exists() {
-        return;
-    }
-    let g = file_operations::parse_graph_from_file(perm_path).expect("Failed to parse permuted graph");
+    let path = find_graph("graph746.col");
+    let orig_g = file_operations::parse_graph_from_file(&path).expect("Failed to parse graph746");
+    let g = permute_graph(&orig_g);
     let partition = detect_and_partition(&g).expect("Failed to partition permuted graph");
 
     let mut solver = MacroSatSolver::new(&partition, &g).expect("Failed to build MacroSatSolver");
