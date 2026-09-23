@@ -180,7 +180,7 @@ fn sat_absorb_small_cycle(
 pub fn can_solve_alternating_pairs(raw_g: &Graph) -> bool {
     let deg2_count = raw_g.adjacency_list.values().filter(|nbrs| nbrs.len() == 2).count();
     let n = raw_g.adjacency_list.len();
-    if deg2_count < 100 || deg2_count * 3 < n {
+    if deg2_count < 10 || deg2_count * 3 < n {
         return false;
     }
 
@@ -198,7 +198,7 @@ pub fn can_solve_alternating_pairs(raw_g: &Graph) -> bool {
         }
     }
 
-    if pairs.len() < 50 {
+    if pairs.is_empty() {
         return false;
     }
 

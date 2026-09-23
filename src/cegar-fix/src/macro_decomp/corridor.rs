@@ -504,9 +504,10 @@ fn check_2cut_split(raw_g: &Graph, port_u: i32, port_v: i32, min_comp_size: usiz
 /// using Tarjan's linear-time articulation point algorithm on G \ {u}.
 pub fn find_2cut_ports(raw_g: &Graph) -> Option<(i32, i32)> {
     let n = raw_g.adjacency_list.len();
-    if n < 1000 {
+    if n < 100 {
         return None;
     }
+    let min_comp_sz = (n / 10).max(30);
 
     let mut nodes: Vec<i32> = raw_g.adjacency_list.keys().copied().collect();
     nodes.sort_unstable();
@@ -577,10 +578,10 @@ pub fn find_2cut_ports(raw_g: &Graph) -> Option<(i32, i32)> {
                     if low[curr] >= tin[parent] {
                         let comp1 = sz[curr];
                         let comp2 = (n - 1).saturating_sub(comp1);
-                        if comp1 >= 500 && comp2 >= 500 {
+                        if comp1 >= min_comp_sz && comp2 >= min_comp_sz {
                             let u_orig = nodes[u];
                             let v_orig = nodes[parent];
-                            if check_2cut_split(raw_g, u_orig, v_orig, 500) {
+                            if check_2cut_split(raw_g, u_orig, v_orig, min_comp_sz) {
                                 return Some((u_orig.min(v_orig), u_orig.max(v_orig)));
                             }
                         }
