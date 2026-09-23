@@ -20,25 +20,33 @@ pub struct BipartitePartition {
 }
 
 pub fn can_solve_bipartite(raw_g: &Graph) -> bool {
-    let super_hubs_count = raw_g
-        .adjacency_list
-        .iter()
-        .filter(|&(_, nbrs)| nbrs.len() >= 400)
-        .count();
-    super_hubs_count == 5 || super_hubs_count == 10
+    detect_and_partition(raw_g).is_some()
 }
 
 pub fn detect_and_partition(raw_g: &Graph) -> Option<BipartitePartition> {
+    let n = raw_g.adjacency_list.len();
+    if n < 50 {
+        return None;
+    }
+
+    let max_deg = raw_g.adjacency_list.values().map(|nbrs| nbrs.len()).max().unwrap_or(0);
+    // Topological outlier condition: Super-hubs must have degree >= 30 and >= 2% of total vertices N
+    if max_deg < 30 || max_deg < n / 50 {
+        return None;
+    }
+
+    // Identify super-hubs: vertices having degree >= 70% of maximum degree
+    let min_hub_deg = (max_deg * 7) / 10;
     let mut super_hubs: Vec<i32> = raw_g
         .adjacency_list
         .iter()
-        .filter(|&(_, nbrs)| nbrs.len() >= 400)
+        .filter(|&(_, nbrs)| nbrs.len() >= min_hub_deg)
         .map(|(&u, _)| u)
         .collect();
     super_hubs.sort_unstable();
 
     let k = super_hubs.len();
-    if k != 5 && k != 10 {
+    if k < 2 || k > n / 50 {
         return None;
     }
 
@@ -156,6 +164,24 @@ pub fn detect_and_partition(raw_g: &Graph) -> Option<BipartitePartition> {
         }
     }
     macro_edges.sort_unstable();
+
+    // Soundness validation:
+    // 1. Every super-hub must have at least 2 boundary ports to allow entry and exit
+    for &h in &super_hubs {
+        let ports = match boundary_ports.get(&h) {
+            Some(p) => p,
+            None => return None,
+        };
+        if ports.len() < 2 {
+            return None;
+        }
+    }
+
+    // 2. All vertices must be accounted for (sum of cluster nodes + corridor nodes == N)
+    let total_partitioned: usize = clusters.values().map(|c| c.len()).sum::<usize>() + corridor.len();
+    if total_partitioned != n {
+        return None;
+    }
 
     Some(BipartitePartition {
         super_hubs,
