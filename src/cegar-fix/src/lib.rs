@@ -17,6 +17,7 @@ pub use fallback::fallback_cegar;
 pub mod macro_decomp;
 pub use macro_decomp::corridor as macro_corridor;
 pub use macro_decomp::portfolio_788 as macro_788;
+pub use macro_decomp::dynamic_bipartite;
 
 pub mod pipeline;
 pub use pipeline::options;
