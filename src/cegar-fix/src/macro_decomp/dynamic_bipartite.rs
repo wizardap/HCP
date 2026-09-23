@@ -232,7 +232,7 @@ impl MacroSatSolver {
         }
 
         // 2. Incident edge degree consistency for boundary ports:
-        // A boundary port u in cluster h has degree 1 in active macro edges <=> u is an endpoint in chosen pair
+        let sh_set: HashSet<i32> = partition.super_hubs.iter().copied().collect();
         let mut incident_macro_edges: HashMap<i32, Vec<Lit>> = HashMap::new();
         for (&(u, v), &lit) in &edge_vars {
             incident_macro_edges.entry(u).or_default().push(lit);
@@ -255,34 +255,97 @@ impl MacroSatSolver {
                     }
                 }
 
-                // If u is NOT an endpoint, ext_edges degree must be 0
-                // e_lit implies u_is_endpoint (OR of endpoint_lits)
-                for &e_lit in &ext_edges {
-                    let mut cl = Vec::with_capacity(endpoint_lits.len() + 1);
-                    cl.push(!e_lit);
-                    cl.extend(&endpoint_lits);
-                    let _ = solver.add_clause(Clause::from_iter(cl));
-                }
+                if sh_set.contains(&u) {
+                    // Super-hub port: can either be an endpoint (deg 1) or a bridge (deg 2) or unused (deg 0)
+                    let b_var = var_mgr.new_var().pos_lit();
 
-                // If u is an endpoint, ext_edges degree must be >= 1
-                if !ext_edges.is_empty() {
+                    // If u is a bridge, it cannot be an endpoint in cluster h
                     for &p_lit in &endpoint_lits {
-                        let mut cl = Vec::with_capacity(ext_edges.len() + 1);
-                        cl.push(!p_lit);
-                        cl.extend(&ext_edges);
+                        let _ = solver.add_clause(clause![!b_var, !p_lit]);
+                    }
+
+                    // Degree <= 2 always: at most 2 external edges
+                    crate::core::encoder::add_at_most_2(&mut solver, &mut var_mgr, &ext_edges);
+
+                    // Any active edge implies b_var \/ OR(endpoint_lits)
+                    for &e_lit in &ext_edges {
+                        let mut cl = Vec::with_capacity(endpoint_lits.len() + 2);
+                        cl.push(!e_lit);
+                        cl.push(b_var);
+                        cl.extend(&endpoint_lits);
                         let _ = solver.add_clause(Clause::from_iter(cl));
                     }
-                } else if !endpoint_lits.is_empty() {
-                    // Port has no external edges, cannot be an endpoint
-                    for &p_lit in &endpoint_lits {
-                        let _ = solver.add_clause(clause![!p_lit]);
-                    }
-                }
 
-                // At-most-1 external edge for port
-                for i in 0..ext_edges.len() {
-                    for j in (i + 1)..ext_edges.len() {
-                        let _ = solver.add_clause(clause![!ext_edges[i], !ext_edges[j]]);
+                    // If b_var is True, degree >= 2
+                    if ext_edges.len() < 2 {
+                        let _ = solver.add_clause(clause![!b_var]);
+                    } else {
+                        for i in 0..ext_edges.len() {
+                            let mut cl = Vec::with_capacity(ext_edges.len());
+                            cl.push(!b_var);
+                            for j in 0..ext_edges.len() {
+                                if i != j {
+                                    cl.push(ext_edges[j]);
+                                }
+                            }
+                            let _ = solver.add_clause(Clause::from_iter(cl));
+                        }
+                    }
+
+                    // If u is an endpoint, degree >= 1
+                    if !ext_edges.is_empty() {
+                        for &p_lit in &endpoint_lits {
+                            let mut cl = Vec::with_capacity(ext_edges.len() + 1);
+                            cl.push(!p_lit);
+                            cl.extend(&ext_edges);
+                            let _ = solver.add_clause(Clause::from_iter(cl));
+                        }
+                    } else if !endpoint_lits.is_empty() {
+                        for &p_lit in &endpoint_lits {
+                            let _ = solver.add_clause(clause![!p_lit]);
+                        }
+                    }
+
+                    // If u is an endpoint, degree <= 1: at most 1 external edge
+                    for &p_lit in &endpoint_lits {
+                        for i in 0..ext_edges.len() {
+                            for j in (i + 1)..ext_edges.len() {
+                                let _ = solver.add_clause(clause![!p_lit, !ext_edges[i], !ext_edges[j]]);
+                            }
+                        }
+                    }
+                } else {
+                    // Non-super-hub port: degree 1 if endpoint, degree 0 if not
+
+                    // If u is NOT an endpoint, ext_edges degree must be 0
+                    // e_lit implies u_is_endpoint (OR of endpoint_lits)
+                    for &e_lit in &ext_edges {
+                        let mut cl = Vec::with_capacity(endpoint_lits.len() + 1);
+                        cl.push(!e_lit);
+                        cl.extend(&endpoint_lits);
+                        let _ = solver.add_clause(Clause::from_iter(cl));
+                    }
+
+                    // If u is an endpoint, ext_edges degree must be >= 1
+                    if !ext_edges.is_empty() {
+                        for &p_lit in &endpoint_lits {
+                            let mut cl = Vec::with_capacity(ext_edges.len() + 1);
+                            cl.push(!p_lit);
+                            cl.extend(&ext_edges);
+                            let _ = solver.add_clause(Clause::from_iter(cl));
+                        }
+                    } else if !endpoint_lits.is_empty() {
+                        // Port has no external edges, cannot be an endpoint
+                        for &p_lit in &endpoint_lits {
+                            let _ = solver.add_clause(clause![!p_lit]);
+                        }
+                    }
+
+                    // At-most-1 external edge for port
+                    for i in 0..ext_edges.len() {
+                        for j in (i + 1)..ext_edges.len() {
+                            let _ = solver.add_clause(clause![!ext_edges[i], !ext_edges[j]]);
+                        }
                     }
                 }
             }
@@ -389,23 +452,71 @@ impl MacroSatSolver {
                 }
             }
 
-            if comps.len() <= 2 {
+            if comps.len() == 1 {
                 return Some(MacroConfiguration {
                     cluster_ports,
                     active_macro_edges: active_edges,
                 });
             }
 
-            // Add subtour elimination cuts for each disconnected component
-            for comp in comps {
+            // Subtour elimination:
+            // 1. Sound DFJ Cut-Crossing:
+            // The macro cycle must connect all clusters. If a component visits a strict subset
+            // of clusters, any valid connected cycle must cross the cut between these clusters and the rest.
+            // All boundary ports of clusters in the component form the cut set.
+            for comp in &comps {
                 let comp_set: HashSet<i32> = comp.iter().copied().collect();
-                let comp_edges: Vec<Lit> = active_edges
-                    .iter()
-                    .filter(|(u, v)| comp_set.contains(u) && comp_set.contains(v))
-                    .map(|e| !self.edge_vars[e])
-                    .collect();
-                if comp_edges.len() >= 2 {
-                    let _ = self.solver.add_clause(Clause::from_iter(comp_edges));
+                let mut comp_clusters = HashSet::new();
+                for &u in comp {
+                    if let Some(&h) = self.partition.owner.get(&u) {
+                        comp_clusters.insert(h);
+                    }
+                }
+
+                if !comp_clusters.is_empty() && comp_clusters.len() < self.partition.super_hubs.len() {
+                    let mut cut_nodes: HashSet<i32> = HashSet::new();
+                    for &h in &comp_clusters {
+                        if let Some(ports) = self.partition.boundary_ports.get(&h) {
+                            cut_nodes.extend(ports);
+                        }
+                    }
+                    for &u in comp {
+                        if self.partition.connectors.contains(&u) {
+                            cut_nodes.insert(u);
+                        }
+                    }
+
+                    let mut cut_lits = Vec::new();
+                    for &(u, v) in &self.partition.macro_edges {
+                        if cut_nodes.contains(&u) != cut_nodes.contains(&v) {
+                            cut_lits.push(self.edge_vars[&(u, v)]);
+                        }
+                    }
+                    if !cut_lits.is_empty() {
+                        let _ = self.solver.add_clause(Clause::from_iter(cut_lits));
+                    }
+                }
+
+                // 2. Subtour cycle nogood:
+                // Ban the exact combination of active edges and cluster internal pairs that formed this isolated cycle
+                let mut cycle_nogood: Vec<Lit> = Vec::new();
+                for &(u, v) in &active_edges {
+                    if comp_set.contains(&u) && comp_set.contains(&v) {
+                        cycle_nogood.push(!self.edge_vars[&(u, v)]);
+                    }
+                }
+                for (&h, &(u, v)) in &cluster_ports {
+                    if comp_set.contains(&u) && comp_set.contains(&v) {
+                        let key = (u.min(v), u.max(v));
+                        if let Some(p_map) = self.pair_vars.get(&h) {
+                            if let Some(&lit) = p_map.get(&key) {
+                                cycle_nogood.push(!lit);
+                            }
+                        }
+                    }
+                }
+                if cycle_nogood.len() >= 2 {
+                    let _ = self.solver.add_clause(Clause::from_iter(cycle_nogood));
                 }
             }
         }

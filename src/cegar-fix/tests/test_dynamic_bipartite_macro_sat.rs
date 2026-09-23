@@ -17,6 +17,41 @@ fn find_graph(name: &str) -> String {
     format!("../../FHCPCS-col/{}", name)
 }
 
+fn assert_macro_connectivity(config: &cegar_fix::macro_decomp::dynamic_bipartite::MacroConfiguration) {
+    let mut macro_adj: std::collections::HashMap<i32, Vec<i32>> = std::collections::HashMap::new();
+    for &(u, v) in &config.active_macro_edges {
+        macro_adj.entry(u).or_default().push(v);
+        macro_adj.entry(v).or_default().push(u);
+    }
+    for &(u, v) in config.cluster_ports.values() {
+        macro_adj.entry(u).or_default().push(v);
+        macro_adj.entry(v).or_default().push(u);
+    }
+
+    assert!(!config.active_macro_edges.is_empty(), "Active macro edges cannot be empty");
+    let start = config.active_macro_edges[0].0;
+    let mut visited = std::collections::HashSet::new();
+    let mut queue = std::collections::VecDeque::new();
+    visited.insert(start);
+    queue.push_back(start);
+    while let Some(curr) = queue.pop_front() {
+        if let Some(nbrs) = macro_adj.get(&curr) {
+            for &nxt in nbrs {
+                if visited.insert(nxt) {
+                    queue.push_back(nxt);
+                }
+            }
+        }
+    }
+    assert_eq!(
+        visited.len(),
+        macro_adj.len(),
+        "Macro graph must have exactly 1 connected component (visited {} / {})",
+        visited.len(),
+        macro_adj.len()
+    );
+}
+
 #[test]
 fn test_macro_sat_graph746() {
     let graph_path = find_graph("graph746.col");
@@ -36,6 +71,7 @@ fn test_macro_sat_graph746() {
     }
 
     assert!(config.active_macro_edges.len() >= 7, "Macro cycle must have active external edges");
+    assert_macro_connectivity(&config);
 }
 
 #[test]
@@ -55,6 +91,7 @@ fn test_macro_sat_graph950() {
         assert!(ports.contains(&u_in), "u_in {} must be in boundary ports {:?}", u_in, ports);
         assert!(ports.contains(&u_out), "u_out {} must be in boundary ports {:?}", u_out, ports);
     }
+    assert_macro_connectivity(&config);
 }
 
 #[test]
