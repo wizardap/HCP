@@ -91,4 +91,36 @@ impl TourVerifier {
         writeln!(file, "EOF")?;
         Ok(())
     }
+
+    /// Verifies the tour using Takehide Soh's upstream `is_hamiltonian.py` script.
+    pub fn verify_upstream_python(graph_path: &str, tour: &[i32]) -> Result<bool, String> {
+        let tmp_path = format!(
+            "/tmp/verify_{}_{}.txt",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        {
+            let mut file = File::create(&tmp_path).map_err(|e| e.to_string())?;
+            writeln!(file, "solution:").map_err(|e| e.to_string())?;
+            let tour_str = tour
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join(" ");
+            writeln!(file, "{}", tour_str).map_err(|e| e.to_string())?;
+            writeln!(file, "s SATISFIABLE").map_err(|e| e.to_string())?;
+        }
+        let output = std::process::Command::new("python3")
+            .arg("/home/ubuntu/SAT-based-CEGAR/parse/is_hamiltonian.py")
+            .arg(graph_path)
+            .arg(&tmp_path)
+            .output()
+            .map_err(|e| e.to_string())?;
+        let _ = std::fs::remove_file(&tmp_path);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        Ok(stdout.trim().ends_with("True"))
+    }
 }

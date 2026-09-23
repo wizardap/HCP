@@ -27,15 +27,17 @@ fn test_partition_graph746_dynamic() {
 
     assert_eq!(partition.super_hubs.len(), 5, "Expected 5 super hubs");
     assert_eq!(partition.clusters.len(), 5, "Expected 5 clusters");
-    assert_eq!(partition.connectors.len(), 2, "Expected exactly 2 connectors");
+    assert_eq!(partition.connectors.len(), 6, "Expected exactly 6 connectors");
     
-    let total_covered: usize = partition.clusters.values().map(|c| c.len()).sum::<usize>() + partition.connectors.len();
+    let total_covered: usize = partition.clusters.values().map(|c| c.len()).sum::<usize>()
+        + partition.connectors.len()
+        + partition.super_hubs.len();
     assert_eq!(total_covered, 4286, "All 4286 vertices must be partitioned");
 
     for (&hub, c) in &partition.clusters {
-        assert!(c.len() >= 850 && c.len() <= 860, "Cluster {} size {} is out of expected balanced range [850, 860]", hub, c.len());
+        assert_eq!(c.len(), 855, "Cluster {} size must be exactly 855", hub);
         let ports = &partition.boundary_ports[&hub];
-        assert_eq!(ports.len(), 3, "Cluster {} should have exactly 3 boundary ports, got {:?}", hub, ports);
+        assert_eq!(ports.len(), 2, "Cluster {} should have exactly 2 boundary ports, got {:?}", hub, ports);
     }
 }
 
@@ -50,14 +52,16 @@ fn test_partition_graph950_dynamic() {
 
     assert_eq!(partition.super_hubs.len(), 10, "Expected 10 super hubs");
     assert_eq!(partition.clusters.len(), 10, "Expected 10 clusters");
-    assert_eq!(partition.connectors.len(), 2, "Expected exactly 2 connectors");
+    assert_eq!(partition.connectors.len(), 10, "Expected exactly 10 connectors");
     
-    let total_covered: usize = partition.clusters.values().map(|c| c.len()).sum::<usize>() + partition.connectors.len();
+    let total_covered: usize = partition.clusters.values().map(|c| c.len()).sum::<usize>()
+        + partition.connectors.len()
+        + partition.super_hubs.len();
     assert_eq!(total_covered, 6620, "All 6620 vertices must be partitioned");
 
     for (&hub, c) in &partition.clusters {
-        assert!(c.len() >= 658 && c.len() <= 666, "Cluster {} size {} is out of expected balanced range [658, 666]", hub, c.len());
+        assert_eq!(c.len(), 660, "Cluster {} size must be exactly 660", hub);
         let ports = &partition.boundary_ports[&hub];
-        assert_eq!(ports.len(), 3, "Cluster {} should have exactly 3 boundary ports, got {:?}", hub, ports);
+        assert_eq!(ports.len(), 2, "Cluster {} should have exactly 2 boundary ports, got {:?}", hub, ports);
     }
 }

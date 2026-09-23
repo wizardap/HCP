@@ -3,6 +3,7 @@ use crate::core::graph::Graph;
 use crate::core::tour_verifier::TourVerifier;
 use crate::fallback::fallback_cegar;
 use crate::macro_decomp::corridor as macro_corridor;
+use crate::macro_decomp::dynamic_bipartite;
 use crate::macro_decomp::portfolio_788 as macro_788;
 use crate::pipeline::options::Options;
 use rayon::prelude::*;
@@ -146,7 +147,13 @@ pub fn solve_single_graph(
         }
     }
 
-    // 2.5b. Degree-2 Alternating Pair Contraction
+    // 2.5b. Dense Bipartite Macro-Decomposition Cascade
+    if macro_tour_opt.is_none() && dynamic_bipartite::can_solve_bipartite(&g) {
+        println!("[Pipeline] Detected dense bipartite hub signature: invoking dynamic bipartite macro-decomposition...");
+        macro_tour_opt = dynamic_bipartite::solve_bipartite(&g, timeout_secs);
+    }
+
+    // 2.5c. Degree-2 Alternating Pair Contraction
     if macro_tour_opt.is_none() && macro_788::can_solve_alternating_pairs(&g) {
         println!("[Pipeline] Detected 2-colorable alternating pair structure: invoking alternating portfolio solver...");
         macro_tour_opt = macro_788::solve_alternating_pairs(&g, timeout_secs);
