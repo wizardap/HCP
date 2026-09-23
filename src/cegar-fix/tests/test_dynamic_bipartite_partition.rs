@@ -105,3 +105,27 @@ fn test_partition_graph963_to_990_dynamic() {
     }
 }
 
+#[test]
+fn test_partition_permuted_graph746() {
+    let perm_path = "scratch/graph746_permuted_seed42.col";
+    if !Path::new(perm_path).exists() {
+        return;
+    }
+    let g = file_operations::parse_graph_from_file(perm_path).expect("Failed to parse permuted graph");
+    assert!(dynamic_bipartite::can_solve_bipartite(&g), "Permuted graph must be detected as bipartite");
+    let p = dynamic_bipartite::detect_and_partition(&g).expect("Failed to partition permuted graph");
+    
+    assert_eq!(p.super_hubs.len(), 5);
+    assert_eq!(p.clusters.len(), 5);
+    assert_eq!(p.connectors.len(), 6);
+    let total_covered: usize = p.clusters.values().map(|c| c.len()).sum::<usize>()
+        + p.connectors.len()
+        + p.super_hubs.len();
+    assert_eq!(total_covered, 4286);
+    for (&hub, c) in &p.clusters {
+        assert_eq!(c.len(), 855);
+        assert_eq!(p.boundary_ports[&hub].len(), 2);
+    }
+}
+
+

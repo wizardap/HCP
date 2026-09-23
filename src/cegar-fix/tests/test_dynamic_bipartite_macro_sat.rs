@@ -116,3 +116,26 @@ fn test_macro_sat_block_pair() {
         assert_ne!(p1, p2, "Blocked pair should not be selected in subsequent configuration");
     }
 }
+
+#[test]
+fn test_macro_sat_permuted_graph746() {
+    let perm_path = "scratch/graph746_permuted_seed42.col";
+    if !Path::new(perm_path).exists() {
+        return;
+    }
+    let g = file_operations::parse_graph_from_file(perm_path).expect("Failed to parse permuted graph");
+    let partition = detect_and_partition(&g).expect("Failed to partition permuted graph");
+
+    let mut solver = MacroSatSolver::new(&partition, &g).expect("Failed to build MacroSatSolver");
+    let config = solver.solve_next_configuration().expect("Expected a valid macro configuration for permuted graph746");
+
+    assert_eq!(config.cluster_ports.len(), 5);
+    for &h in &partition.super_hubs {
+        let (u_in, u_out) = config.cluster_ports[&h];
+        assert_ne!(u_in, u_out);
+        let ports = &partition.boundary_ports[&h];
+        assert!(ports.contains(&u_in));
+        assert!(ports.contains(&u_out));
+    }
+    assert_macro_connectivity(&config);
+}
