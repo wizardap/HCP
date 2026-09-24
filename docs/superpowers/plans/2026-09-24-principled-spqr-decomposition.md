@@ -44,7 +44,7 @@
 - Consumes: `Graph` from `hcp_solver/core/graph.py`
 - Produces: `solve_general_hcp` without any imports from `..families`
 
-- [ ] **Step 1: Write test verifying no legacy cache files or family modules exist**
+- [x] **Step 1: Write test verifying no legacy cache files or family modules exist**
 
 Create `scratch/test_purge.py`:
 ```python
@@ -69,12 +69,12 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-- [ ] **Step 2: Run test to verify it fails before purge**
+- [x] **Step 2: Run test to verify it fails before purge**
 
 Run: `python3 scratch/test_purge.py`  
 Expected: FAIL (files still exist)
 
-- [ ] **Step 3: Delete legacy ad-hoc files and remove family imports from `pipeline.py`**
+- [x] **Step 3: Delete legacy ad-hoc files and remove family imports from `pipeline.py`**
 
 Execute:
 ```bash
@@ -85,12 +85,12 @@ rm -rf scratch/graph717/found_tour_graph717.hcp scratch/graph882/found_tour_grap
 
 In `hcp_solver/core/pipeline.py`, remove lines 299–327 (Stage 1 Macro-Decomposition Check that imported from `..families`).
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `python3 scratch/test_purge.py`  
 Expected: OK (3 tests passed)
 
-- [ ] **Step 5: Commit changes**
+- [x] **Step 5: Commit changes**
 
 ```bash
 git add hcp_solver/core/pipeline.py scratch/test_purge.py
@@ -115,7 +115,7 @@ git commit -m "refactor: purge ad-hoc python corridor solver and precomputed cac
   pub fn check_fast_invariants(g: &Graph) -> Result<(), &'static str>;
   ```
 
-- [ ] **Step 1: Write failing test for fast soundness filters**
+- [x] **Step 1: Write failing test for fast soundness filters**
 
 Create `src/cegar-fix/tests/test_fast_filters.rs`:
 ```rust
@@ -174,12 +174,12 @@ fn test_filter_accepts_valid_cycle() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `export PATH="$HOME/.cargo/bin:$PATH" && cargo test --manifest-path src/cegar-fix/Cargo.toml --test test_fast_filters`  
 Expected: FAIL (module `decomp::fast_filters` does not exist)
 
-- [ ] **Step 3: Implement `decomp::fast_filters`**
+- [x] **Step 3: Implement `decomp::fast_filters`**
 
 Create `src/cegar-fix/src/decomp/mod.rs`:
 ```rust
@@ -273,12 +273,12 @@ pub fn check_fast_invariants(g: &Graph) -> Result<(), &'static str> {
 
 Update `src/cegar-fix/src/lib.rs` to expose `pub mod decomp;`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `export PATH="$HOME/.cargo/bin:$PATH" && cargo test --manifest-path src/cegar-fix/Cargo.toml --test test_fast_filters`  
 Expected: PASS (all 5 tests pass)
 
-- [ ] **Step 5: Commit changes**
+- [x] **Step 5: Commit changes**
 
 ```bash
 git add src/cegar-fix/src/decomp/ src/cegar-fix/src/lib.rs src/cegar-fix/tests/test_fast_filters.rs
@@ -306,7 +306,7 @@ git commit -m "feat(decomp): implement fast topological invariants and unsat fil
   pub fn expand_series_tour(tour: &[i32], chain_map: &HashMap<(i32, i32), Vec<i32>>) -> Vec<i32>;
   ```
 
-- [ ] **Step 1: Write failing test for series contraction and expansion**
+- [x] **Step 1: Write failing test for series contraction and expansion**
 
 Create `src/cegar-fix/tests/test_spqr_series.rs`:
 ```rust
@@ -353,12 +353,12 @@ fn test_contract_theta_graph() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `export PATH="$HOME/.cargo/bin:$PATH" && cargo test --manifest-path src/cegar-fix/Cargo.toml --test test_spqr_series`  
 Expected: FAIL (module `spqr_series` does not exist)
 
-- [ ] **Step 3: Implement `spqr_series.rs`**
+- [x] **Step 3: Implement `spqr_series.rs`**
 
 Create `src/cegar-fix/src/decomp/spqr_series.rs`:
 ```rust
@@ -472,12 +472,12 @@ pub fn expand_series_tour(tour: &[i32], chain_map: &HashMap<(i32, i32), Vec<i32>
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `export PATH="$HOME/.cargo/bin:$PATH" && cargo test --manifest-path src/cegar-fix/Cargo.toml --test test_spqr_series`  
 Expected: PASS (both tests pass)
 
-- [ ] **Step 5: Commit changes**
+- [x] **Step 5: Commit changes**
 
 ```bash
 git add src/cegar-fix/src/decomp/spqr_series.rs src/cegar-fix/tests/test_spqr_series.rs
@@ -505,7 +505,7 @@ git commit -m "feat(decomp): implement general series contraction and expansion"
   pub fn extract_subcomponent_graph(g: &Graph, comp: &[i32], port_u: i32, port_v: i32) -> Graph;
   ```
 
-- [ ] **Step 1: Write failing test for 2-cut separation pairs**
+- [x] **Step 1: Write failing test for 2-cut separation pairs**
 
 Create `src/cegar-fix/tests/test_spqr_parallel.rs`:
 ```rust
@@ -531,12 +531,12 @@ fn test_find_separation_pair_two_blocks() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `export PATH="$HOME/.cargo/bin:$PATH" && cargo test --manifest-path src/cegar-fix/Cargo.toml --test test_spqr_parallel`  
 Expected: FAIL (module `spqr_parallel` does not exist)
 
-- [ ] **Step 3: Implement `spqr_parallel.rs`**
+- [x] **Step 3: Implement `spqr_parallel.rs`**
 
 Create `src/cegar-fix/src/decomp/spqr_parallel.rs`:
 ```rust
@@ -638,12 +638,12 @@ pub fn extract_subcomponent_graph(g: &Graph, comp: &[i32], port_u: i32, port_v: 
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `export PATH="$HOME/.cargo/bin:$PATH" && cargo test --manifest-path src/cegar-fix/Cargo.toml --test test_spqr_parallel`  
 Expected: PASS
 
-- [ ] **Step 5: Commit changes**
+- [x] **Step 5: Commit changes**
 
 ```bash
 git add src/cegar-fix/src/decomp/spqr_parallel.rs src/cegar-fix/tests/test_spqr_parallel.rs
@@ -668,7 +668,7 @@ git commit -m "feat(decomp): implement general 2-cut separation pair decompositi
   pub fn solve_hamiltonian_path(g: &Graph, port_u: i32, port_v: i32, timeout_secs: f64) -> Result<Vec<i32>, String>;
   ```
 
-- [ ] **Step 1: Write failing test for Hamiltonian cycle and path block solver**
+- [x] **Step 1: Write failing test for Hamiltonian cycle and path block solver**
 
 Create `src/cegar-fix/tests/test_block_solver.rs`:
 ```rust
@@ -698,12 +698,12 @@ fn test_solve_path_between_ports() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `export PATH="$HOME/.cargo/bin:$PATH" && cargo test --manifest-path src/cegar-fix/Cargo.toml --test test_block_solver`  
 Expected: FAIL (module `solver::block_solver` does not exist)
 
-- [ ] **Step 3: Implement `block_solver.rs`**
+- [x] **Step 3: Implement `block_solver.rs`**
 
 Create `src/cegar-fix/src/solver/mod.rs`:
 ```rust
@@ -927,12 +927,12 @@ fn extract_subcycles(nodes: &[i32], active_adj: &HashMap<i32, Vec<i32>>) -> Vec<
 
 Update `src/cegar-fix/src/lib.rs` to expose `pub mod solver;`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `export PATH="$HOME/.cargo/bin:$PATH" && cargo test --manifest-path src/cegar-fix/Cargo.toml --test test_block_solver`  
 Expected: PASS
 
-- [ ] **Step 5: Commit changes**
+- [x] **Step 5: Commit changes**
 
 ```bash
 git add src/cegar-fix/src/solver/ src/cegar-fix/src/lib.rs src/cegar-fix/tests/test_block_solver.rs
@@ -961,7 +961,7 @@ git commit -m "feat(solver): implement standardized block sat-cegar engine for c
   ) -> Result<Vec<i32>, String>;
   ```
 
-- [ ] **Step 1: Write failing test for tour stitcher**
+- [x] **Step 1: Write failing test for tour stitcher**
 
 Create `src/cegar-fix/tests/test_tour_stitcher.rs`:
 ```rust
@@ -991,12 +991,12 @@ fn test_stitch_reversed_subpath() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `export PATH="$HOME/.cargo/bin:$PATH" && cargo test --manifest-path src/cegar-fix/Cargo.toml --test test_tour_stitcher`  
 Expected: FAIL (module `assembly::tour_stitcher` does not exist)
 
-- [ ] **Step 3: Implement `tour_stitcher.rs`**
+- [x] **Step 3: Implement `tour_stitcher.rs`**
 
 Create `src/cegar-fix/src/assembly/mod.rs`:
 ```rust
@@ -1041,12 +1041,12 @@ pub fn stitch_subpath(
 
 Update `src/cegar-fix/src/lib.rs` to expose `pub mod assembly;`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `export PATH="$HOME/.cargo/bin:$PATH" && cargo test --manifest-path src/cegar-fix/Cargo.toml --test test_tour_stitcher`  
 Expected: PASS
 
-- [ ] **Step 5: Commit changes**
+- [x] **Step 5: Commit changes**
 
 ```bash
 git add src/cegar-fix/src/assembly/ src/cegar-fix/src/lib.rs src/cegar-fix/tests/test_tour_stitcher.rs
@@ -1065,7 +1065,7 @@ git commit -m "feat(assembly): implement sound subpath stitching into skeleton t
 - Consumes: All `decomp`, `solver`, `assembly`, `core` modules
 - Produces: Universal router-free `solve_single_graph`
 
-- [ ] **Step 1: Write integration test for principled SPQR pipeline**
+- [x] **Step 1: Write integration test for principled SPQR pipeline**
 
 Create `src/cegar-fix/tests/test_principled_pipeline.rs`:
 ```rust
@@ -1090,12 +1090,12 @@ fn test_pipeline_on_synthetic_2cut_graph() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it passes or check failure**
+- [x] **Step 2: Run test to verify it passes or check failure**
 
 Run: `export PATH="$HOME/.cargo/bin:$PATH" && cargo test --manifest-path src/cegar-fix/Cargo.toml --test test_principled_pipeline`  
 Expected: verify behavior with existing pipeline.
 
-- [ ] **Step 3: Refactor `solver_pipeline.rs` to use principled SPQR decomposition**
+- [x] **Step 3: Refactor `solver_pipeline.rs` to use principled SPQR decomposition**
 
 In `src/cegar-fix/src/pipeline/solver_pipeline.rs`:
 1. Call `crate::decomp::fast_filters::check_fast_invariants(&g)` right after loading graph. If error, return immediately as `UNSAT`.
@@ -1108,12 +1108,12 @@ In `src/cegar-fix/src/pipeline/solver_pipeline.rs`:
 5. Assemble tour using `tour_stitcher` and `expand_series_tour`.
 6. Run `verify_and_export`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `export PATH="$HOME/.cargo/bin:$PATH" && cargo test --manifest-path src/cegar-fix/Cargo.toml --test test_principled_pipeline`  
 Expected: PASS
 
-- [ ] **Step 5: Commit changes**
+- [x] **Step 5: Commit changes**
 
 ```bash
 git add src/cegar-fix/src/pipeline/solver_pipeline.rs src/cegar-fix/tests/test_principled_pipeline.rs
@@ -1132,7 +1132,7 @@ git commit -m "feat(pipeline): integrate principled spqr decomposition and fast 
 - Consumes: `solve_single_graph`
 - Produces: Verification that solver is 100% vertex-permutation invariant and reports UNSAT on non-Hamiltonian graphs.
 
-- [ ] **Step 1: Write permutation invariance and negative soundness test**
+- [x] **Step 1: Write permutation invariance and negative soundness test**
 
 Create `src/cegar-fix/tests/test_principled_invariance.rs`:
 ```rust
@@ -1186,12 +1186,12 @@ fn test_vertex_permutation_invariance() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it passes**
+- [x] **Step 2: Run test to verify it passes**
 
 Run: `export PATH="$HOME/.cargo/bin:$PATH" && cargo test --manifest-path src/cegar-fix/Cargo.toml --test test_principled_invariance`  
 Expected: PASS
 
-- [ ] **Step 3: Commit changes**
+- [x] **Step 3: Commit changes**
 
 ```bash
 git add src/cegar-fix/tests/test_principled_invariance.rs
@@ -1205,7 +1205,7 @@ git commit -m "test: add permutation invariance and petersen unsat tests"
 **Files:**
 - Test: Full cargo test sweep + FHCPCS sample verification (`FHCPCS-col/graph1.col` to `graph10.col`)
 
-- [ ] **Step 1: Run all unit and integration tests**
+- [x] **Step 1: Run all unit and integration tests**
 
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH"
@@ -1213,14 +1213,14 @@ cargo test --manifest-path src/cegar-fix/Cargo.toml
 ```
 Expected: all tests pass.
 
-- [ ] **Step 2: Run release build**
+- [x] **Step 2: Run release build**
 
 ```bash
 cargo build --manifest-path src/cegar-fix/Cargo.toml --release
 ```
 Expected: successful build of binary `src/cegar-fix/target/release/cegar-fix`.
 
-- [ ] **Step 3: Run verification sweep on sample benchmark graphs**
+- [x] **Step 3: Run verification sweep on sample benchmark graphs**
 
 ```bash
 python3 -c "
@@ -1234,7 +1234,7 @@ for gid in range(1, 11):
 ```
 Expected: graphs 1 to 10 all solved and certified.
 
-- [ ] **Step 4: Commit and finalize**
+- [x] **Step 4: Commit and finalize**
 
 ```bash
 git add docs/superpowers/plans/2026-09-24-principled-spqr-decomposition.md
