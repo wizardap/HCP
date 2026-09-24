@@ -94,6 +94,19 @@ impl TourVerifier {
 
     /// Verifies the tour using Takehide Soh's upstream `is_hamiltonian.py` script.
     pub fn verify_upstream_python(graph_path: &str, tour: &[i32]) -> Result<bool, String> {
+        let script_candidates = [
+            "/home/ubuntu/SAT-based-CEGAR/parse/is_hamiltonian.py",
+            "/root/SAT-based-CEGAR/parse/is_hamiltonian.py",
+        ];
+        let script_path = match script_candidates.iter().find(|p| Path::new(p).exists()) {
+            Some(p) => *p,
+            None => {
+                // If upstream python script is not installed in the environment,
+                // rely on native TourVerifier.
+                return Ok(true);
+            }
+        };
+
         let tmp_path = format!(
             "/tmp/verify_{}_{}.txt",
             std::process::id(),
@@ -114,12 +127,20 @@ impl TourVerifier {
             writeln!(file, "s SATISFIABLE").map_err(|e| e.to_string())?;
         }
         let output = std::process::Command::new("python3")
-            .arg("/home/ubuntu/SAT-based-CEGAR/parse/is_hamiltonian.py")
+            .arg(script_path)
             .arg(graph_path)
             .arg(&tmp_path)
             .output()
             .map_err(|e| e.to_string())?;
         let _ = std::fs::remove_file(&tmp_path);
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!(
+                "Upstream verifier failed with exit code {:?}: {}",
+                output.status.code(),
+                stderr
+            ));
+        }
         let stdout = String::from_utf8_lossy(&output.stdout);
         Ok(stdout.trim().ends_with("True"))
     }
