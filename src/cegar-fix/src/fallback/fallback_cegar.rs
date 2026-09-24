@@ -6,7 +6,6 @@ use rustsat::clause;
 use rustsat::instances::{BasicVarManager, ManageVars};
 use rustsat::solvers::{Solve, SolverResult};
 use rustsat::types::{Clause, Lit, TernaryVal};
-use rustsat_cadical::CaDiCaL;
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
@@ -56,7 +55,8 @@ pub fn solve_with_contraction(g: &Graph, timeout_secs: f64) -> Result<Vec<i32>, 
     edges.sort_unstable();
 
     // 3. Assign boolean variable to each undirected edge
-    let mut solver = CaDiCaL::default();
+    let deadline = t_start + std::time::Duration::from_secs_f64(timeout_secs);
+    let mut solver = crate::core::solver_utils::create_solver_with_deadline(deadline);
     let mut var_mgr = BasicVarManager::default();
     let mut edge_vars: HashMap<(i32, i32), Lit> = HashMap::new();
 
@@ -120,7 +120,7 @@ pub fn solve_with_contraction(g: &Graph, timeout_secs: f64) -> Result<Vec<i32>, 
 
         match res {
             SolverResult::Unsat => return Err("UNSAT".to_string()),
-            SolverResult::Interrupted => return Err("Solver interrupted".to_string()),
+            SolverResult::Interrupted => return Err("Timeout".to_string()),
             SolverResult::Sat => {
                 let sol = solver
                     .full_solution()
