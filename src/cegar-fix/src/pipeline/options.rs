@@ -51,7 +51,6 @@ impl Options {
         let timeout = matches.value_of_t::<f64>("timeout").unwrap_or(1800.0);
         let output_tour_file = matches
             .value_of("output-tour")
-            .or_else(|| matches.value_of("output"))
             .map(|s| s.to_string());
 
         // Check if batch mode is requested
