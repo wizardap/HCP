@@ -23,20 +23,38 @@ pub fn can_solve_bipartite(raw_g: &Graph) -> bool {
     detect_and_partition(raw_g).is_some()
 }
 
+// === PERFORMANCE KNOBS ===
+// These thresholds control the sensitivity of the dense bipartite hub
+// recognizer. They do NOT affect correctness — changing them only
+// changes which graphs are attempted by this decomposition vs.
+// falling through to the monolithic fallback.
+
+/// Minimum maximum-degree for a graph to have "super-hub" structure.
+const MIN_MAX_DEGREE: usize = 30;
+
+/// Super-hubs must have degree >= this fraction of the maximum degree.
+const HUB_DEGREE_FRACTION: f64 = 0.7;
+
+/// Maximum number of super-hubs as a fraction of N.
+const MAX_HUB_FRACTION: f64 = 0.02;
+
+/// Minimum graph size for hub-spoke decomposition to be meaningful.
+const MIN_GRAPH_SIZE: usize = 50;
+
 pub fn detect_and_partition(raw_g: &Graph) -> Option<BipartitePartition> {
     let n = raw_g.adjacency_list.len();
-    if n < 50 {
+    if n < MIN_GRAPH_SIZE {
         return None;
     }
 
     let max_deg = raw_g.adjacency_list.values().map(|nbrs| nbrs.len()).max().unwrap_or(0);
     // Topological outlier condition: Super-hubs must have degree >= 30 and >= 2% of total vertices N
-    if max_deg < 30 || max_deg < n / 50 {
+    if max_deg < MIN_MAX_DEGREE || max_deg < ((n as f64) * MAX_HUB_FRACTION) as usize {
         return None;
     }
 
     // Identify super-hubs: vertices having degree >= 70% of maximum degree
-    let min_hub_deg = (max_deg * 7) / 10;
+    let min_hub_deg = ((max_deg as f64) * HUB_DEGREE_FRACTION) as usize;
     let mut super_hubs: Vec<i32> = raw_g
         .adjacency_list
         .iter()
@@ -46,7 +64,7 @@ pub fn detect_and_partition(raw_g: &Graph) -> Option<BipartitePartition> {
     super_hubs.sort_unstable();
 
     let k = super_hubs.len();
-    if k < 2 || k > n / 50 {
+    if k < 2 || k > ((n as f64) * MAX_HUB_FRACTION) as usize {
         return None;
     }
 
@@ -166,7 +184,8 @@ pub fn detect_and_partition(raw_g: &Graph) -> Option<BipartitePartition> {
     macro_edges.sort_unstable();
 
     // Soundness validation:
-    // 1. Every super-hub must have at least 2 boundary ports to allow entry and exit
+    // 1. MATHEMATICAL REQUIREMENT: A Hamiltonian cycle must enter and exit each
+    // hub cluster, requiring >= 2 boundary ports per hub.
     for &h in &super_hubs {
         let ports = match boundary_ports.get(&h) {
             Some(p) => p,
@@ -177,7 +196,8 @@ pub fn detect_and_partition(raw_g: &Graph) -> Option<BipartitePartition> {
         }
     }
 
-    // 2. All vertices must be accounted for (sum of cluster nodes + corridor nodes == N)
+    // 2. MATHEMATICAL REQUIREMENT: Every vertex must belong to exactly one
+    // partition element. Missing vertices would create an incomplete tour.
     let total_partitioned: usize = clusters.values().map(|c| c.len()).sum::<usize>() + corridor.len();
     if total_partitioned != n {
         return None;
@@ -214,7 +234,11 @@ impl MacroSatSolver {
     }
 
     pub fn new(partition: &BipartitePartition, raw_g: &Graph) -> Result<Self, String> {
-        let mut solver = CaDiCaL::default();
+        Self::new_with_deadline(partition, raw_g, Instant::now() + std::time::Duration::from_secs(3600))
+    }
+
+    pub fn new_with_deadline(partition: &BipartitePartition, raw_g: &Graph, deadline: Instant) -> Result<Self, String> {
+        let mut solver = crate::core::solver_utils::create_solver_with_deadline(deadline);
         let mut var_mgr = BasicVarManager::default();
         let mut edge_vars = HashMap::new();
 
@@ -617,7 +641,7 @@ pub fn solve_cluster_path(
     }
     edges.sort_unstable();
 
-    let mut solver = CaDiCaL::default();
+    let mut solver = crate::core::solver_utils::create_solver_with_deadline(deadline);
     let mut var_mgr = BasicVarManager::default();
     let mut inc_edges: Vec<Vec<(usize, Lit)>> = vec![Vec::new(); m];
     let mut edge_lits: Vec<Lit> = Vec::with_capacity(edges.len());
@@ -881,7 +905,7 @@ pub fn solve_bipartite(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
         partition.connectors.len()
     );
 
-    let mut macro_solver = MacroSatSolver::new(&partition, raw_g).ok()?;
+    let mut macro_solver = MacroSatSolver::new_with_deadline(&partition, raw_g, deadline).ok()?;
 
     while Instant::now() < deadline {
         let config = match macro_solver.solve_next_configuration() {
