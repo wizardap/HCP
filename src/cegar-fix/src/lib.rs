@@ -11,6 +11,8 @@ pub mod decomp;
 
 pub mod solver;
 
+pub mod assembly;
+
 pub mod fallback;
 pub use fallback::contraction;
 pub use fallback::contraction::Degree2Contractor;
