@@ -419,3 +419,68 @@ fn test_deg2_separator_ports() {
     );
 }
 
+#[test]
+fn test_portfolio_partial_coverage_rejected() {
+    let mut edges = Vec::new();
+    let num_pairs = 10;
+    // 10 pairs: u_i and w_i (each with degree >= 3)
+    // Between u_i and w_i: a chain of 2 degree-2 vertices m1_i, m2_i
+    // (20 degree-2 vertices total out of 80 vertices = 25% > 15% MIN_DEG2_FRACTION)
+    for i in 0..num_pairs {
+        let u = 100 + 2 * i;
+        let w = 100 + 2 * i + 1;
+        let m1 = 200 + 2 * i;
+        let m2 = 200 + 2 * i + 1;
+        edges.push((u, m1));
+        edges.push((m1, m2));
+        edges.push((m2, w));
+    }
+
+    // Connect u_i and w_i to other pairs so u_i and w_i have degree >= 3
+    // All u have color 0, all w have color 1
+    for i in 0..num_pairs {
+        let curr_w = 100 + 2 * i + 1;
+        let next_u = 100 + 2 * ((i + 1) % num_pairs);
+        let next2_u = 100 + 2 * ((i + 2) % num_pairs);
+        edges.push((curr_w, next_u));
+        edges.push((curr_w, next2_u));
+    }
+
+    // Additional 40 vertices forming a bipartite 3-regular graph
+    // 20 on left (color 0), 20 on right (color 1)
+    for i in 0..20 {
+        let left = 300 + 2 * i;
+        let right1 = 300 + 2 * i + 1;
+        let right2 = 300 + 2 * ((i + 1) % 20) + 1;
+        let right3 = 300 + 2 * ((i + 2) % 20) + 1;
+        edges.push((left, right1));
+        edges.push((left, right2));
+        edges.push((left, right3));
+    }
+    // Connect left 300 to pair 0's w (101) and right 301 to pair 0's u (100)
+    edges.push((300, 101));
+    edges.push((301, 100));
+
+    let mut all_v: Vec<i32> = edges.iter().flat_map(|&(a, b)| vec![a, b]).collect();
+    all_v.sort();
+    all_v.dedup();
+    let n = all_v.len();
+    let v_map: HashMap<i32, i32> = all_v.iter().enumerate().map(|(idx, &v)| (v, idx as i32)).collect();
+    let remapped_edges: Vec<(i32, i32)> = edges.into_iter().map(|(a, b)| (v_map[&a], v_map[&b])).collect();
+
+    let g = build_graph_from_edges(n, &remapped_edges);
+    let deg2_count = g.adjacency_list.values().filter(|nbrs| nbrs.len() == 2).count();
+    let frac = deg2_count as f64 / n as f64;
+    assert!(frac >= 0.15, "Graph must have >= 15% degree-2 vertices");
+
+    // can_solve_alternating_pairs must return FALSE because the alternating pair model
+    // does not cover the 40 non-pair vertices!
+    let can_solve = macro_788::can_solve_alternating_pairs(&g);
+    assert!(
+        !can_solve,
+        "can_solve_alternating_pairs must reject graphs with partial vertex coverage"
+    );
+}
+
+
+

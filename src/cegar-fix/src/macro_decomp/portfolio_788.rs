@@ -254,8 +254,12 @@ fn extract_alternating_pairs(raw_g: &Graph) -> Option<AlternatingPairGraph> {
         }
     }
 
-    if color.len() < pairs.len() * 2 {
-        return None; // Disconnected pair graph
+    // MATHEMATICAL REQUIREMENT: Complete vertex coverage.
+    // The alternating pair model solves a directed cycle visiting only the pairs.
+    // Therefore, every vertex in the contracted graph must be a pair endpoint,
+    // and every pair endpoint must be reachable and 2-colored.
+    if g.adjacency_list.len() != pairs.len() * 2 || color.len() != g.adjacency_list.len() {
+        return None;
     }
 
     Some(AlternatingPairGraph {
