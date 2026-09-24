@@ -350,6 +350,9 @@ fn solve_block_b(
     }
 
     // Static chordless squares
+    if Instant::now() >= deadline {
+        return Err("Block B timed out during preprocessing".to_string());
+    }
     let mut squares = HashSet::new();
     for &a in &rem_list {
         let nbrs_a: Vec<i32> = adj_b.get(&a).cloned().unwrap_or_default().into_iter().collect();
@@ -551,27 +554,80 @@ pub fn find_2cut_ports(raw_g: &Graph) -> Option<(i32, i32)> {
     /// — only controls early exit from the search.
     const MIN_PROFITABLE_CORRIDOR: usize = 10;
 
-    let mut best: Option<(i32, i32, usize)> = None; // (u_orig, v_orig, min_comp)
+    find_2cut_ports_with_deadline(raw_g, None, MIN_PROFITABLE_CORRIDOR)
+}
+
+/// Discovers a 2-vertex separator respecting an optional deadline.
+pub fn find_2cut_ports_with_deadline(
+    raw_g: &Graph,
+    deadline: Option<Instant>,
+    min_profitable: usize,
+) -> Option<(i32, i32)> {
+    let n = raw_g.adjacency_list.len();
+    if n < 4 {
+        return None;
+    }
+
+    let mut nodes: Vec<i32> = raw_g.adjacency_list.keys().copied().collect();
+    nodes.sort_unstable();
+
+    let node_to_idx: HashMap<i32, usize> = nodes
+        .iter()
+        .enumerate()
+        .map(|(i, &node)| (node, i))
+        .collect();
+
+    let adj: Vec<Vec<usize>> = nodes
+        .iter()
+        .map(|&u| {
+            raw_g
+                .adjacency_list
+                .get(&u)
+                .map(|nbrs| {
+                    nbrs.iter()
+                        .filter_map(|nbr| node_to_idx.get(nbr).copied())
+                        .collect()
+                })
+                .unwrap_or_default()
+        })
+        .collect();
+
+    let mut candidates: Vec<usize> = (0..n).collect();
+    candidates.sort_by_key(|&u| adj[u].len());
+
+    let mut best: Option<(i32, i32, usize)> = None;
+
+    // Reuse DFS scratch buffers across candidates to avoid allocation overhead
+    let mut tin = vec![-1i32; n];
+    let mut low = vec![-1i32; n];
+    let mut sz = vec![0usize; n];
+    let mut stack = Vec::with_capacity(n);
 
     for &u in &candidates {
+        if let Some(dl) = deadline {
+            if Instant::now() >= dl {
+                return best.map(|(u, v, _)| (u, v));
+            }
+        }
+
         let deg_u = adj[u].len();
-        // MATHEMATICAL REQUIREMENT: degree < 3 cannot form a 2-vertex
-        // separator with two non-trivial components in a 2-connected graph.
         if deg_u < 3 {
             continue;
         }
 
         let root = if u != 0 { 0 } else { 1 };
-        let mut tin = vec![-1i32; n];
-        let mut low = vec![-1i32; n];
-        let mut sz = vec![0usize; n];
+        tin.fill(-1);
+        low.fill(-1);
+        sz.fill(0);
+        stack.clear();
+
         tin[u] = 0;
         let mut timer = 1i32;
         tin[root] = timer;
         low[root] = timer;
         sz[root] = 1;
 
-        let mut stack = vec![(root, usize::MAX, 0usize)];
+        stack.push((root, usize::MAX, 0usize));
 
         while let Some(&mut (curr, p, ref mut nbr_idx)) = stack.last_mut() {
             let nbrs = &adj[curr];
@@ -611,8 +667,7 @@ pub fn find_2cut_ports(raw_g: &Graph) -> Option<(i32, i32)> {
                                         u_orig.max(v_orig),
                                         min_comp,
                                     ));
-                                    // Early exit if we found a profitable corridor
-                                    if min_comp >= MIN_PROFITABLE_CORRIDOR {
+                                    if min_comp >= min_profitable {
                                         return best.map(|(u, v, _)| (u, v));
                                     }
                                 }
@@ -638,12 +693,16 @@ pub fn solve_2cut_corridor(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>>
     let t_start = Instant::now();
     let deadline = t_start + std::time::Duration::from_secs_f64(timeout_secs);
 
-    let (port_u, port_v) = match find_2cut_ports(raw_g) {
+    let (port_u, port_v) = match find_2cut_ports_with_deadline(raw_g, Some(deadline), 10) {
         Some(ports) => ports,
         None => {
             return None;
         }
     };
+    if Instant::now() >= deadline {
+        eprintln!("[macro_corridor] Timed out during separator search");
+        return None;
+    }
     println!("[macro_corridor] Identified 2-cut ports ({}, {})", port_u, port_v);
 
     // Split graph \ {port_u, port_v} into connected components
