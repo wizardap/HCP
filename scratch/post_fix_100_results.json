@@ -1,0 +1,620 @@
+[
+  {
+    "gid": 1,
+    "status": "SAT_VERIFIED",
+    "time": 0.036466735,
+    "vertices": 66
+  },
+  {
+    "gid": 2,
+    "status": "SAT_VERIFIED",
+    "time": 0.014567095,
+    "vertices": 70
+  },
+  {
+    "gid": 3,
+    "status": "SAT_VERIFIED",
+    "time": 0.135279374,
+    "vertices": 78
+  },
+  {
+    "gid": 4,
+    "status": "SAT_VERIFIED",
+    "time": 0.25757071,
+    "vertices": 84
+  },
+  {
+    "gid": 5,
+    "status": "SAT_VERIFIED",
+    "time": 0.111461106,
+    "vertices": 90
+  },
+  {
+    "gid": 6,
+    "status": "SAT_VERIFIED",
+    "time": 0.03946847,
+    "vertices": 94
+  },
+  {
+    "gid": 7,
+    "status": "SAT_VERIFIED",
+    "time": 0.048095376,
+    "vertices": 102
+  },
+  {
+    "gid": 8,
+    "status": "TIMEOUT",
+    "time": 30.050007421,
+    "vertices": 108,
+    "err": "TIMEOUT (elapsed: 30.05s)"
+  },
+  {
+    "gid": 9,
+    "status": "SAT_VERIFIED",
+    "time": 0.090082897,
+    "vertices": 114
+  },
+  {
+    "gid": 10,
+    "status": "SAT_VERIFIED",
+    "time": 0.019720707,
+    "vertices": 118
+  },
+  {
+    "gid": 11,
+    "status": "SAT_VERIFIED",
+    "time": 0.021947761,
+    "vertices": 126
+  },
+  {
+    "gid": 12,
+    "status": "TIMEOUT",
+    "time": 30.285038184,
+    "vertices": 132,
+    "err": "TIMEOUT (elapsed: 30.28s)"
+  },
+  {
+    "gid": 13,
+    "status": "SAT_VERIFIED",
+    "time": 0.282501399,
+    "vertices": 138
+  },
+  {
+    "gid": 14,
+    "status": "SAT_VERIFIED",
+    "time": 0.044113042,
+    "vertices": 142
+  },
+  {
+    "gid": 15,
+    "status": "SAT_VERIFIED",
+    "time": 0.448663213,
+    "vertices": 150
+  },
+  {
+    "gid": 16,
+    "status": "TIMEOUT",
+    "time": 30.046126736,
+    "vertices": 156,
+    "err": "TIMEOUT (elapsed: 30.05s)"
+  },
+  {
+    "gid": 17,
+    "status": "SAT_VERIFIED",
+    "time": 0.21257039,
+    "vertices": 162
+  },
+  {
+    "gid": 18,
+    "status": "SAT_VERIFIED",
+    "time": 0.022784577,
+    "vertices": 166
+  },
+  {
+    "gid": 19,
+    "status": "SAT_VERIFIED",
+    "time": 0.274792484,
+    "vertices": 170
+  },
+  {
+    "gid": 20,
+    "status": "SAT_VERIFIED",
+    "time": 0.47180279,
+    "vertices": 174
+  },
+  {
+    "gid": 21,
+    "status": "TIMEOUT",
+    "time": 30.015349751,
+    "vertices": 180,
+    "err": "TIMEOUT (elapsed: 30.02s)"
+  },
+  {
+    "gid": 22,
+    "status": "SAT_VERIFIED",
+    "time": 0.510848132,
+    "vertices": 186
+  },
+  {
+    "gid": 23,
+    "status": "SAT_VERIFIED",
+    "time": 0.122488269,
+    "vertices": 190
+  },
+  {
+    "gid": 24,
+    "status": "SAT_VERIFIED",
+    "time": 0.393725191,
+    "vertices": 198
+  },
+  {
+    "gid": 25,
+    "status": "TIMEOUT",
+    "time": 30.196213996,
+    "vertices": 204,
+    "err": "TIMEOUT (elapsed: 30.20s)"
+  },
+  {
+    "gid": 26,
+    "status": "SAT_VERIFIED",
+    "time": 0.257213894,
+    "vertices": 210
+  },
+  {
+    "gid": 27,
+    "status": "SAT_VERIFIED",
+    "time": 0.035093084,
+    "vertices": 214
+  },
+  {
+    "gid": 28,
+    "status": "SAT_VERIFIED",
+    "time": 0.665554897,
+    "vertices": 222
+  },
+  {
+    "gid": 29,
+    "status": "TIMEOUT",
+    "time": 30.040497215,
+    "vertices": 228,
+    "err": "TIMEOUT (elapsed: 30.04s)"
+  },
+  {
+    "gid": 30,
+    "status": "SAT_VERIFIED",
+    "time": 1.098370539,
+    "vertices": 234
+  },
+  {
+    "gid": 31,
+    "status": "SAT_VERIFIED",
+    "time": 0.082601369,
+    "vertices": 238
+  },
+  {
+    "gid": 32,
+    "status": "SAT_VERIFIED",
+    "time": 0.254683659,
+    "vertices": 246
+  },
+  {
+    "gid": 33,
+    "status": "TIMEOUT",
+    "time": 30.010234,
+    "vertices": 252,
+    "err": "TIMEOUT (elapsed: 30.01s)"
+  },
+  {
+    "gid": 34,
+    "status": "SAT_VERIFIED",
+    "time": 0.84928405,
+    "vertices": 258
+  },
+  {
+    "gid": 35,
+    "status": "SAT_VERIFIED",
+    "time": 0.185469423,
+    "vertices": 262
+  },
+  {
+    "gid": 36,
+    "status": "SAT_VERIFIED",
+    "time": 0.387099174,
+    "vertices": 270
+  },
+  {
+    "gid": 37,
+    "status": "TIMEOUT",
+    "time": 30.008051155,
+    "vertices": 276,
+    "err": "TIMEOUT (elapsed: 30.01s)"
+  },
+  {
+    "gid": 38,
+    "status": "SAT_VERIFIED",
+    "time": 2.658650228,
+    "vertices": 282
+  },
+  {
+    "gid": 39,
+    "status": "SAT_VERIFIED",
+    "time": 0.064345992,
+    "vertices": 286
+  },
+  {
+    "gid": 40,
+    "status": "SAT_VERIFIED",
+    "time": 0.938760431,
+    "vertices": 294
+  },
+  {
+    "gid": 41,
+    "status": "TIMEOUT",
+    "time": 30.004205,
+    "vertices": 300,
+    "err": "TIMEOUT (elapsed: 30.00s)"
+  },
+  {
+    "gid": 42,
+    "status": "SAT_VERIFIED",
+    "time": 1.272168338,
+    "vertices": 306
+  },
+  {
+    "gid": 43,
+    "status": "SAT_VERIFIED",
+    "time": 0.092750515,
+    "vertices": 310
+  },
+  {
+    "gid": 44,
+    "status": "SAT_VERIFIED",
+    "time": 0.991513817,
+    "vertices": 318
+  },
+  {
+    "gid": 45,
+    "status": "SAT_VERIFIED",
+    "time": 0.034260609,
+    "vertices": 324
+  },
+  {
+    "gid": 46,
+    "status": "SAT_VERIFIED",
+    "time": 3.213954405,
+    "vertices": 330
+  },
+  {
+    "gid": 47,
+    "status": "SAT_VERIFIED",
+    "time": 0.111417377,
+    "vertices": 334
+  },
+  {
+    "gid": 48,
+    "status": "SAT_VERIFIED",
+    "time": 0.576840954,
+    "vertices": 338
+  },
+  {
+    "gid": 49,
+    "status": "SAT_VERIFIED",
+    "time": 2.24880087,
+    "vertices": 342
+  },
+  {
+    "gid": 50,
+    "status": "TIMEOUT",
+    "time": 30.007312081,
+    "vertices": 348,
+    "err": "TIMEOUT (elapsed: 30.01s)"
+  },
+  {
+    "gid": 51,
+    "status": "SAT_VERIFIED",
+    "time": 2.9483885389999998,
+    "vertices": 354
+  },
+  {
+    "gid": 52,
+    "status": "SAT_VERIFIED",
+    "time": 0.162364574,
+    "vertices": 358
+  },
+  {
+    "gid": 53,
+    "status": "SAT_VERIFIED",
+    "time": 1.283651858,
+    "vertices": 366
+  },
+  {
+    "gid": 54,
+    "status": "TIMEOUT",
+    "time": 30.157084849,
+    "vertices": 372,
+    "err": "TIMEOUT (elapsed: 30.16s)"
+  },
+  {
+    "gid": 55,
+    "status": "SAT_VERIFIED",
+    "time": 6.087067068,
+    "vertices": 378
+  },
+  {
+    "gid": 56,
+    "status": "SAT_VERIFIED",
+    "time": 0.066105684,
+    "vertices": 382
+  },
+  {
+    "gid": 57,
+    "status": "SAT_VERIFIED",
+    "time": 3.250176561,
+    "vertices": 390
+  },
+  {
+    "gid": 58,
+    "status": "TIMEOUT",
+    "time": 30.005237122,
+    "vertices": 396,
+    "err": "TIMEOUT (elapsed: 30.01s)"
+  },
+  {
+    "gid": 59,
+    "status": "SAT_VERIFIED",
+    "time": 9.826670088,
+    "vertices": 400
+  },
+  {
+    "gid": 60,
+    "status": "SAT_VERIFIED",
+    "time": 9.805994312,
+    "vertices": 402
+  },
+  {
+    "gid": 61,
+    "status": "SAT_VERIFIED",
+    "time": 0.699616808,
+    "vertices": 406
+  },
+  {
+    "gid": 62,
+    "status": "SAT_VERIFIED",
+    "time": 0.742213187,
+    "vertices": 408
+  },
+  {
+    "gid": 63,
+    "status": "SAT_VERIFIED",
+    "time": 2.5449736979999997,
+    "vertices": 414
+  },
+  {
+    "gid": 64,
+    "status": "SAT_VERIFIED",
+    "time": 0.128801031,
+    "vertices": 416
+  },
+  {
+    "gid": 65,
+    "status": "TIMEOUT",
+    "time": 30.007392576,
+    "vertices": 420,
+    "err": "TIMEOUT (elapsed: 30.01s)"
+  },
+  {
+    "gid": 66,
+    "status": "SAT_VERIFIED",
+    "time": 12.544234716,
+    "vertices": 426
+  },
+  {
+    "gid": 67,
+    "status": "SAT_VERIFIED",
+    "time": 0.102132444,
+    "vertices": 430
+  },
+  {
+    "gid": 68,
+    "status": "SAT_VERIFIED",
+    "time": 12.539450843000001,
+    "vertices": 438
+  },
+  {
+    "gid": 69,
+    "status": "SAT_VERIFIED",
+    "time": 14.057286523,
+    "vertices": 444
+  },
+  {
+    "gid": 70,
+    "status": "SAT_VERIFIED",
+    "time": 8.421957558999999,
+    "vertices": 450
+  },
+  {
+    "gid": 71,
+    "status": "SAT_VERIFIED",
+    "time": 0.122516238,
+    "vertices": 454
+  },
+  {
+    "gid": 72,
+    "status": "SAT_VERIFIED",
+    "time": 11.985230483,
+    "vertices": 460
+  },
+  {
+    "gid": 73,
+    "status": "SAT_VERIFIED",
+    "time": 9.557245302,
+    "vertices": 462
+  },
+  {
+    "gid": 74,
+    "status": "SAT_VERIFIED",
+    "time": 0.25514022,
+    "vertices": 462
+  },
+  {
+    "gid": 75,
+    "status": "TIMEOUT",
+    "time": 30.003947108,
+    "vertices": 468,
+    "err": "TIMEOUT (elapsed: 30.00s)"
+  },
+  {
+    "gid": 76,
+    "status": "SAT_VERIFIED",
+    "time": 4.628566386,
+    "vertices": 471
+  },
+  {
+    "gid": 77,
+    "status": "SAT_VERIFIED",
+    "time": 8.242432785,
+    "vertices": 474
+  },
+  {
+    "gid": 78,
+    "status": "SAT_VERIFIED",
+    "time": 0.495051423,
+    "vertices": 478
+  },
+  {
+    "gid": 79,
+    "status": "SAT_VERIFIED",
+    "time": 15.307624203,
+    "vertices": 480
+  },
+  {
+    "gid": 80,
+    "status": "SAT_VERIFIED",
+    "time": 18.057965471,
+    "vertices": 486
+  },
+  {
+    "gid": 81,
+    "status": "TIMEOUT",
+    "time": 30.010735073,
+    "vertices": 492,
+    "err": "TIMEOUT (elapsed: 30.01s)"
+  },
+  {
+    "gid": 82,
+    "status": "SAT_VERIFIED",
+    "time": 0.132858872,
+    "vertices": 496
+  },
+  {
+    "gid": 83,
+    "status": "SAT_VERIFIED",
+    "time": 21.878702382,
+    "vertices": 498
+  },
+  {
+    "gid": 84,
+    "status": "SAT_VERIFIED",
+    "time": 20.859334660000002,
+    "vertices": 500
+  },
+  {
+    "gid": 85,
+    "status": "SAT_VERIFIED",
+    "time": 0.236169739,
+    "vertices": 502
+  },
+  {
+    "gid": 86,
+    "status": "SAT_VERIFIED",
+    "time": 4.878764781,
+    "vertices": 503
+  },
+  {
+    "gid": 87,
+    "status": "SAT_VERIFIED",
+    "time": 1.408912441,
+    "vertices": 507
+  },
+  {
+    "gid": 88,
+    "status": "SAT_VERIFIED",
+    "time": 6.406705539,
+    "vertices": 507
+  },
+  {
+    "gid": 89,
+    "status": "SAT_VERIFIED",
+    "time": 18.704569192,
+    "vertices": 510
+  },
+  {
+    "gid": 90,
+    "status": "SAT_VERIFIED",
+    "time": 22.619446814,
+    "vertices": 510
+  },
+  {
+    "gid": 91,
+    "status": "TIMEOUT",
+    "time": 30.013497692,
+    "vertices": 516,
+    "err": "TIMEOUT (elapsed: 30.01s)"
+  },
+  {
+    "gid": 92,
+    "status": "SAT_VERIFIED",
+    "time": 20.018394942,
+    "vertices": 522
+  },
+  {
+    "gid": 93,
+    "status": "SAT_VERIFIED",
+    "time": 0.360720192,
+    "vertices": 526
+  },
+  {
+    "gid": 94,
+    "status": "SAT_VERIFIED",
+    "time": 13.581602297,
+    "vertices": 534
+  },
+  {
+    "gid": 95,
+    "status": "TIMEOUT",
+    "time": 30.005353444,
+    "vertices": 540,
+    "err": "TIMEOUT (elapsed: 30.01s)"
+  },
+  {
+    "gid": 96,
+    "status": "SAT_VERIFIED",
+    "time": 15.641131807,
+    "vertices": 540
+  },
+  {
+    "gid": 97,
+    "status": "SAT_VERIFIED",
+    "time": 18.174663453,
+    "vertices": 546
+  },
+  {
+    "gid": 98,
+    "status": "SAT_VERIFIED",
+    "time": 0.315656556,
+    "vertices": 546
+  },
+  {
+    "gid": 99,
+    "status": "SAT_VERIFIED",
+    "time": 1.2586552420000001,
+    "vertices": 550
+  },
+  {
+    "gid": 100,
+    "status": "TIMEOUT",
+    "time": 30.002878344,
+    "vertices": 558,
+    "err": "TIMEOUT (elapsed: 30.00s)"
+  }
+]
