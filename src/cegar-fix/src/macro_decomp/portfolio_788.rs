@@ -175,69 +175,28 @@ fn sat_absorb_small_cycle(
     false
 }
 
-/// Checks if the graph has a high density of degree-2 chains that contract into
-/// a 2-colorable alternating pair transition graph.
-pub fn can_solve_alternating_pairs(raw_g: &Graph) -> bool {
-    let deg2_count = raw_g.adjacency_list.values().filter(|nbrs| nbrs.len() == 2).count();
-    let n = raw_g.adjacency_list.len();
-    if deg2_count < 10 || deg2_count * 3 < n {
-        return false;
-    }
-
-    let (g, contractor) = Degree2Contractor::contract(raw_g);
-    let mut v_partner: HashMap<i32, i32> = HashMap::new();
-    let mut pairs: Vec<(i32, i32)> = Vec::new();
-    let mut sorted_chains: Vec<(i32, i32)> = contractor.chain_map.keys().copied().collect();
-    sorted_chains.sort();
-
-    for (u, w) in sorted_chains {
-        if u < w {
-            pairs.push((u, w));
-            v_partner.insert(u, w);
-            v_partner.insert(w, u);
-        }
-    }
-
-    if pairs.is_empty() {
-        return false;
-    }
-
-    let mut color: HashMap<i32, u8> = HashMap::new();
-    let (u0, w0) = pairs[0];
-    color.insert(u0, 0);
-    color.insert(w0, 1);
-    let mut q = vec![u0, w0];
-
-    while let Some(curr) = q.pop() {
-        let curr_c = color[&curr];
-        if let Some(&vp) = v_partner.get(&curr) {
-            if !color.contains_key(&vp) {
-                color.insert(vp, 1 - curr_c);
-                q.push(vp);
-            }
-        }
-        if let Some(nbrs) = g.adjacency_list.get(&curr) {
-            let vp = v_partner.get(&curr).copied().unwrap_or(0);
-            for &nxt in nbrs {
-                if nxt != vp && !color.contains_key(&nxt) {
-                    color.insert(nxt, 1 - curr_c);
-                    q.push(nxt);
-                }
-            }
-        }
-    }
-
-    color.len() >= pairs.len() * 2
+struct AlternatingPairGraph {
+    contracted_g: Graph,
+    contractor: Degree2Contractor,
+    pairs: Vec<(i32, i32)>,
+    v_partner: HashMap<i32, i32>,
+    color: HashMap<i32, u8>,
 }
 
-/// Solves any graph with a 2-colorable alternating pair structure using degree-2 pair contraction
-/// and 3-worker reseeding portfolio CEGAR.
-pub fn solve_alternating_pairs(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
-    let t_start = Instant::now();
-    println!("[macro_alternating] Initializing degree-2 contraction and directed pair graph...");
+/// PERFORMANCE KNOB: Minimum fraction of degree-2 vertices for alternating
+/// pair decomposition to be profitable. Below this threshold, contraction
+/// yields too few pairs for directed CEGAR to outperform monolithic solving.
+const MIN_DEG2_FRACTION: f64 = 0.15;
+
+fn extract_alternating_pairs(raw_g: &Graph) -> Option<AlternatingPairGraph> {
+    let deg2_count = raw_g.adjacency_list.values().filter(|nbrs| nbrs.len() == 2).count();
+    let n = raw_g.adjacency_list.len();
+    let deg2_fraction = deg2_count as f64 / n as f64;
+    if deg2_fraction < MIN_DEG2_FRACTION {
+        return None;
+    }
 
     let (g, contractor) = Degree2Contractor::contract(raw_g);
-
     let mut v_partner: HashMap<i32, i32> = HashMap::new();
     let mut pairs: Vec<(i32, i32)> = Vec::new();
     let mut sorted_chains: Vec<(i32, i32)> = contractor.chain_map.keys().copied().collect();
@@ -255,6 +214,7 @@ pub fn solve_alternating_pairs(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i
         return None;
     }
 
+    // Standard BFS bipartite checker with conflict detection
     let mut color: HashMap<i32, u8> = HashMap::new();
     let (u0, w0) = pairs[0];
     color.insert(u0, 0);
@@ -263,22 +223,75 @@ pub fn solve_alternating_pairs(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i
 
     while let Some(curr) = q.pop() {
         let curr_c = color[&curr];
+
+        // Partner propagation with conflict check
         if let Some(&vp) = v_partner.get(&curr) {
-            if !color.contains_key(&vp) {
+            if let Some(&existing_color) = color.get(&vp) {
+                if existing_color == curr_c {
+                    return None; // Odd cycle via partner edge — not bipartite
+                }
+            } else {
                 color.insert(vp, 1 - curr_c);
                 q.push(vp);
             }
         }
+
+        // Neighbor propagation with conflict check
         if let Some(nbrs) = g.adjacency_list.get(&curr) {
-            let vp = v_partner.get(&curr).copied().unwrap_or(0);
+            let vp = v_partner.get(&curr).copied().unwrap_or(-1);
             for &nxt in nbrs {
-                if nxt != vp && !color.contains_key(&nxt) {
-                    color.insert(nxt, 1 - curr_c);
-                    q.push(nxt);
+                if nxt != vp {
+                    if let Some(&existing_color) = color.get(&nxt) {
+                        if existing_color == curr_c {
+                            return None; // Odd cycle — not bipartite
+                        }
+                    } else {
+                        color.insert(nxt, 1 - curr_c);
+                        q.push(nxt);
+                    }
                 }
             }
         }
     }
+
+    if color.len() < pairs.len() * 2 {
+        return None; // Disconnected pair graph
+    }
+
+    Some(AlternatingPairGraph {
+        contracted_g: g,
+        contractor,
+        pairs,
+        v_partner,
+        color,
+    })
+}
+
+/// Checks if the graph has a high density of degree-2 chains that contract into
+/// a 2-colorable alternating pair transition graph.
+pub fn can_solve_alternating_pairs(raw_g: &Graph) -> bool {
+    extract_alternating_pairs(raw_g).is_some()
+}
+
+/// Solves any graph with a 2-colorable alternating pair structure using degree-2 pair contraction
+/// and 3-worker reseeding portfolio CEGAR.
+pub fn solve_alternating_pairs(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>> {
+    let t_start = Instant::now();
+    let deadline = t_start + Duration::from_secs_f64(timeout_secs);
+    println!("[macro_alternating] Initializing degree-2 contraction and directed pair graph...");
+
+    let apg = match extract_alternating_pairs(raw_g) {
+        Some(apg) => apg,
+        None => return None,
+    };
+
+    let AlternatingPairGraph {
+        contracted_g: g,
+        contractor,
+        pairs,
+        v_partner,
+        color,
+    } = apg;
 
     let n_dir = pairs.len();
     let mut node_to_id: HashMap<i32, usize> = HashMap::new();
@@ -447,7 +460,7 @@ pub fn solve_alternating_pairs(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i
 
             let cancel_ref = cancel_flag.clone();
             solver.attach_terminator(move || {
-                if cancel_ref.load(Ordering::Relaxed) {
+                if cancel_ref.load(Ordering::Relaxed) || Instant::now() >= deadline {
                     ControlSignal::Terminate
                 } else {
                     ControlSignal::Continue
@@ -502,7 +515,7 @@ pub fn solve_alternating_pairs(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i
                         let _ = solver.add_cnf(accumulated_cuts);
                         let c_ref = cancel_flag.clone();
                         solver.attach_terminator(move || {
-                            if c_ref.load(Ordering::Relaxed) {
+                            if c_ref.load(Ordering::Relaxed) || Instant::now() >= deadline {
                                 ControlSignal::Terminate
                             } else {
                                 ControlSignal::Continue
