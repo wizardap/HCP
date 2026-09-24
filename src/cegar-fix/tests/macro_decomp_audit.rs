@@ -333,3 +333,89 @@ fn test_h_portfolio_positive() {
         "can_solve_alternating_pairs must still accept graph788 (bipartite pair structure)"
     );
 }
+
+#[test]
+fn test_asymmetric_small_component_returned() {
+    // 2-cut where component A has 6 vertices (< 10) and B has 30 vertices
+    // Separator ports: u = 0, v = 1 with degree 4 each
+    let n = 38;
+    let mut edges = Vec::new();
+
+    // Component A: 2..=7 (6 vertices)
+    for i in 2..7 {
+        edges.push((i, i + 1));
+    }
+    for i in 2..=5 {
+        edges.push((i, i + 2));
+    }
+
+    // Component B: 8..=37 (30 vertices)
+    for i in 8..37 {
+        edges.push((i, i + 1));
+    }
+    for i in 8..=35 {
+        edges.push((i, i + 2));
+    }
+
+    // Port 0 connections (deg 4)
+    edges.push((0, 2));
+    edges.push((0, 3));
+    edges.push((0, 8));
+    edges.push((0, 9));
+
+    // Port 1 connections (deg 4)
+    edges.push((1, 6));
+    edges.push((1, 7));
+    edges.push((1, 36));
+    edges.push((1, 37));
+
+    let g = build_graph_from_edges(n, &edges);
+    assert!(!g.has_articulation_points(), "Graph must be 2-connected");
+
+    let found = macro_corridor::find_2cut_ports(&g);
+    assert!(
+        found.is_some(),
+        "find_2cut_ports must return asymmetric 2-cut even with component size 6 < 10"
+    );
+}
+
+#[test]
+fn test_deg2_separator_ports() {
+    // Graph where unique 2-cut has deg(0) = deg(1) = 2
+    // Component A: K3 on {2, 3, 4}
+    // Component B: K3 on {5, 6, 7}
+    // Separator ports: 0 and 1
+    let n = 8;
+    let mut edges = Vec::new();
+
+    // K3 on A
+    edges.push((2, 3));
+    edges.push((3, 4));
+    edges.push((4, 2));
+
+    // K3 on B
+    edges.push((5, 6));
+    edges.push((6, 7));
+    edges.push((7, 5));
+
+    // Port 0 connections (deg 2)
+    edges.push((0, 2));
+    edges.push((0, 5));
+
+    // Port 1 connections (deg 2)
+    edges.push((1, 4));
+    edges.push((1, 7));
+
+    let g = build_graph_from_edges(n, &edges);
+    assert_eq!(g.adjacency_list[&0].len(), 2);
+    assert_eq!(g.adjacency_list[&1].len(), 2);
+    assert!(!g.has_articulation_points(), "Graph must be 2-connected");
+
+    let found = macro_corridor::find_2cut_ports(&g);
+    assert_eq!(
+        found,
+        Some((0, 1)),
+        "find_2cut_ports must find unique degree-2 separator (0, 1)"
+    );
+}
+

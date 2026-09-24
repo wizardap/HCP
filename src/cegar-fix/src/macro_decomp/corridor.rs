@@ -349,40 +349,44 @@ fn solve_block_b(
         }
     }
 
-    // Static chordless squares
-    if Instant::now() >= deadline {
-        return Err("Block B timed out during preprocessing".to_string());
-    }
-    let mut squares = HashSet::new();
-    for &a in &rem_list {
-        let nbrs_a: Vec<i32> = adj_b.get(&a).cloned().unwrap_or_default().into_iter().collect();
-        for i in 0..nbrs_a.len() {
-            let u = nbrs_a[i];
-            for j in (i + 1)..nbrs_a.len() {
-                let v = nbrs_a[j];
-                let u_nbrs = &adj_b[&u];
-                let v_nbrs = &adj_b[&v];
-                for &w in u_nbrs {
-                    if w != a && v_nbrs.contains(&w) && !nbrs_a.contains(&w) && !u_nbrs.contains(&v) {
-                        let mut sq = [a, u, w, v];
-                        sq.sort_unstable();
-                        if squares.insert((sq[0], sq[1], sq[2], sq[3])) {
-                            let e1 = (a.min(u), a.max(u));
-                            let e2 = (u.min(w), u.max(w));
-                            let e3 = (w.min(v), w.max(v));
-                            let e4 = (v.min(a), v.max(a));
-                            let _ = solver.add_clause(clause![
-                                !edge_to_var[&e1],
-                                !edge_to_var[&e2],
-                                !edge_to_var[&e3],
-                                !edge_to_var[&e4]
-                            ]);
+    // Static chordless squares (only valid when block size > 4; on 4-vertex blocks,
+    // the chordless square IS the Hamiltonian cycle itself).
+    if rem_list.len() > 4 {
+        if Instant::now() >= deadline {
+            return Err("Block B timed out during preprocessing".to_string());
+        }
+        let mut squares = HashSet::new();
+        for &a in &rem_list {
+            let nbrs_a: Vec<i32> = adj_b.get(&a).cloned().unwrap_or_default().into_iter().collect();
+            for i in 0..nbrs_a.len() {
+                let u = nbrs_a[i];
+                for j in (i + 1)..nbrs_a.len() {
+                    let v = nbrs_a[j];
+                    let u_nbrs = &adj_b[&u];
+                    let v_nbrs = &adj_b[&v];
+                    for &w in u_nbrs {
+                        if w != a && v_nbrs.contains(&w) && !nbrs_a.contains(&w) && !u_nbrs.contains(&v) {
+                            let mut sq = [a, u, w, v];
+                            sq.sort_unstable();
+                            if squares.insert((sq[0], sq[1], sq[2], sq[3])) {
+                                let e1 = (a.min(u), a.max(u));
+                                let e2 = (u.min(w), u.max(w));
+                                let e3 = (w.min(v), w.max(v));
+                                let e4 = (v.min(a), v.max(a));
+                                let _ = solver.add_clause(clause![
+                                    !edge_to_var[&e1],
+                                    !edge_to_var[&e2],
+                                    !edge_to_var[&e3],
+                                    !edge_to_var[&e4]
+                                ]);
+                            }
                         }
                     }
                 }
             }
         }
     }
+
 
     // CEGAR loop with 2-opt absorption
     let mut it = 0;
@@ -561,7 +565,7 @@ pub fn find_2cut_ports(raw_g: &Graph) -> Option<(i32, i32)> {
 pub fn find_2cut_ports_with_deadline(
     raw_g: &Graph,
     deadline: Option<Instant>,
-    min_profitable: usize,
+    _min_profitable: usize,
 ) -> Option<(i32, i32)> {
     let n = raw_g.adjacency_list.len();
     if n < 4 {
@@ -606,12 +610,13 @@ pub fn find_2cut_ports_with_deadline(
     for &u in &candidates {
         if let Some(dl) = deadline {
             if Instant::now() >= dl {
-                return best.filter(|&(_, _, min_c)| min_c >= min_profitable).map(|(u, v, _)| (u, v));
+                return best.map(|(u, v, _)| (u, v));
             }
         }
 
         let deg_u = adj[u].len();
-        if deg_u < 3 {
+        // In a 2-connected graph, any vertex in a 2-vertex separator has degree >= 2
+        if deg_u < 2 {
             continue;
         }
 
@@ -680,8 +685,7 @@ pub fn find_2cut_ports_with_deadline(
         }
     }
 
-    best.filter(|&(_, _, min_c)| min_c >= min_profitable)
-        .map(|(u, v, _)| (u, v))
+    best.map(|(u, v, _)| (u, v))
 }
 
 /// Checks if the graph has a 2-vertex separator splitting it into two large components.
