@@ -606,7 +606,7 @@ pub fn find_2cut_ports_with_deadline(
     for &u in &candidates {
         if let Some(dl) = deadline {
             if Instant::now() >= dl {
-                return best.map(|(u, v, _)| (u, v));
+                return best.filter(|&(_, _, min_c)| min_c >= min_profitable).map(|(u, v, _)| (u, v));
             }
         }
 
@@ -667,7 +667,8 @@ pub fn find_2cut_ports_with_deadline(
                                         u_orig.max(v_orig),
                                         min_comp,
                                     ));
-                                    if min_comp >= min_profitable {
+                                    // A 50-50 split is theoretically optimal and cannot be improved
+                                    if min_comp >= n / 2 {
                                         return best.map(|(u, v, _)| (u, v));
                                     }
                                 }
@@ -679,7 +680,8 @@ pub fn find_2cut_ports_with_deadline(
         }
     }
 
-    best.map(|(u, v, _)| (u, v))
+    best.filter(|&(_, _, min_c)| min_c >= min_profitable)
+        .map(|(u, v, _)| (u, v))
 }
 
 /// Checks if the graph has a 2-vertex separator splitting it into two large components.
