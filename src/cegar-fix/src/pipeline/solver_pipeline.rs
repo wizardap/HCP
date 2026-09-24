@@ -134,41 +134,51 @@ pub fn solve_single_graph(
     }
 
     // 2.5 Topological Macro-Decomposition Cascade
+    //
+    // PERFORMANCE KNOB: Maximum fraction of total timeout allocated to
+    // macro-decomposition fast-paths. The fallback solver always receives
+    // at least timeout * (1 - MACRO_BUDGET_RATIO).
+    const MACRO_BUDGET_RATIO: f64 = 0.4;
+
+    let macro_budget_secs = timeout_secs * MACRO_BUDGET_RATIO;
     let mut macro_tour_opt: Option<Vec<i32>> = None;
 
     // 2.5a. 2-Cut Articulation Separator (Corridor family)
-    if vertex_count >= 1000 {
+    // Sub-budget: 40% of macro budget
+    {
+        let corridor_timeout = macro_budget_secs * 0.4;
         if let Some((u, v)) = macro_corridor::can_solve_2cut(&g) {
             println!(
                 "[Pipeline] Detected 2-cut articulation separator ({}, {}): invoking corridor decomposition...",
                 u, v
             );
-            macro_tour_opt = macro_corridor::solve_2cut_corridor(&g, timeout_secs);
+            macro_tour_opt = macro_corridor::solve_2cut_corridor(&g, corridor_timeout);
         }
     }
 
     // 2.5b. Dense Bipartite Macro-Decomposition Cascade
-    if macro_tour_opt.is_none() && dynamic_bipartite::can_solve_bipartite(&g) {
-        println!("[Pipeline] Detected dense bipartite hub signature: invoking dynamic bipartite macro-decomposition...");
-        macro_tour_opt = dynamic_bipartite::solve_bipartite(&g, timeout_secs);
+    // Sub-budget: 30% of macro budget
+    if macro_tour_opt.is_none() {
+        let bipartite_timeout = macro_budget_secs * 0.3;
+        if dynamic_bipartite::can_solve_bipartite(&g) {
+            println!("[Pipeline] Detected dense bipartite hub signature: invoking dynamic bipartite macro-decomposition...");
+            macro_tour_opt = dynamic_bipartite::solve_bipartite(&g, bipartite_timeout);
+        }
     }
 
     // 2.5c. Degree-2 Alternating Pair Contraction
-    if macro_tour_opt.is_none() && macro_788::can_solve_alternating_pairs(&g) {
-        println!("[Pipeline] Detected 2-colorable alternating pair structure: invoking alternating portfolio solver...");
-        macro_tour_opt = macro_788::solve_alternating_pairs(&g, timeout_secs);
+    // Sub-budget: remaining macro budget
+    if macro_tour_opt.is_none() {
+        let elapsed = start_time.elapsed().as_secs_f64();
+        let portfolio_timeout = (macro_budget_secs - elapsed).max(0.5);
+        if macro_788::can_solve_alternating_pairs(&g) {
+            println!("[Pipeline] Detected 2-colorable alternating pair structure: invoking alternating portfolio solver...");
+            macro_tour_opt = macro_788::solve_alternating_pairs(&g, portfolio_timeout);
+        }
     }
 
     if let Some(tour) = macro_tour_opt {
         return verify_and_export(&g, &tour, start_time, output_tour_path);
-    } else {
-        let elapsed = start_time.elapsed().as_secs_f64();
-        if elapsed >= timeout_secs {
-            return Err(SolverPipelineError {
-                message: format!("TIMEOUT (elapsed: {:.2}s)", elapsed),
-                vertex_count,
-            });
-        }
     }
 
     // 3. Solve with Stage 3 Fallback CEGAR (Degree-2 Contraction + Forced Shortcuts + Safe 2-Opt)
