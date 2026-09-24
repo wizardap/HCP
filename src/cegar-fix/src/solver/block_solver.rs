@@ -56,24 +56,27 @@ fn extract_subcycles(nodes: &[i32], active_adj: &HashMap<i32, Vec<i32>>) -> Vec<
 /// and DFJ subcycle elimination cuts.
 pub fn solve_hamiltonian_cycle(g: &Graph, timeout_secs: f64) -> Result<Vec<i32>, String> {
     let deadline = Instant::now() + Duration::from_secs_f64(timeout_secs);
-    let nodes: Vec<i32> = g.adjacency_list.keys().copied().collect();
+    let mut nodes: Vec<i32> = g.adjacency_list.keys().copied().collect();
+    nodes.sort_unstable();
     let n = nodes.len();
     if n < 3 {
         return Err("Graph has fewer than 3 vertices".to_string());
     }
 
-    // Collect deduplicated undirected edges and adjacency sets
+    // Collect deduplicated undirected edges and sorted adjacency
     let mut edges: Vec<(i32, i32)> = Vec::new();
-    let mut adj_set: HashMap<i32, HashSet<i32>> = HashMap::new();
+    let mut adj_sorted: HashMap<i32, Vec<i32>> = HashMap::new();
 
-    for (&u, neighbors) in &g.adjacency_list {
-        let set: HashSet<i32> = neighbors.iter().copied().collect();
-        for &w in &set {
+    for &u in &nodes {
+        let mut neighbors: Vec<i32> = g.adjacency_list[&u].clone();
+        neighbors.sort_unstable();
+        neighbors.dedup();
+        for &w in &neighbors {
             if u < w {
                 edges.push((u, w));
             }
         }
-        adj_set.insert(u, set);
+        adj_sorted.insert(u, neighbors);
     }
     edges.sort_unstable();
 
@@ -89,10 +92,12 @@ pub fn solve_hamiltonian_cycle(g: &Graph, timeout_secs: f64) -> Result<Vec<i32>,
 
     let mut solver = create_solver_with_deadline(deadline);
 
+    let mut base_clauses: Vec<Clause> = Vec::new();
+
     // Add degree-2 constraints for each vertex
     for &u in &nodes {
         let mut inc: Vec<Lit> = Vec::new();
-        if let Some(nbrs) = adj_set.get(&u) {
+        if let Some(nbrs) = adj_sorted.get(&u) {
             for &v in nbrs {
                 if let Some(&lit) = edge_vars.get(&(u, v)) {
                     inc.push(lit);
@@ -104,11 +109,11 @@ pub fn solve_hamiltonian_cycle(g: &Graph, timeout_secs: f64) -> Result<Vec<i32>,
         if deg < 2 {
             return Err("UNSAT".to_string());
         } else if deg == 2 {
-            let _ = solver.add_clause(clause![inc[0]]);
-            let _ = solver.add_clause(clause![inc[1]]);
+            base_clauses.push(clause![inc[0]]);
+            base_clauses.push(clause![inc[1]]);
         } else {
             // At-least-1
-            let _ = solver.add_clause(Clause::from_iter(inc.iter().copied()));
+            base_clauses.push(Clause::from_iter(inc.iter().copied()));
 
             // At-least-2: for each edge i, clause containing all other incident edges
             for i in 0..deg {
@@ -118,12 +123,30 @@ pub fn solve_hamiltonian_cycle(g: &Graph, timeout_secs: f64) -> Result<Vec<i32>,
                         cl.push(inc[j]);
                     }
                 }
-                let _ = solver.add_clause(Clause::from_iter(cl));
+                base_clauses.push(Clause::from_iter(cl));
             }
 
             // At-most-2
-            add_at_most_2(&mut solver, &mut var_mgr, &inc);
+            if deg <= 8 {
+                for i in 0..deg {
+                    for j in (i + 1)..deg {
+                        for k in (j + 1)..deg {
+                            let mut cl = Clause::new();
+                            cl.add(!inc[i]);
+                            cl.add(!inc[j]);
+                            cl.add(!inc[k]);
+                            base_clauses.push(cl);
+                        }
+                    }
+                }
+            } else {
+                add_at_most_2(&mut solver, &mut var_mgr, &inc);
+            }
         }
+    }
+
+    for cl in &base_clauses {
+        let _ = solver.add_clause_ref(cl);
     }
 
     // CEGAR loop with DFJ subcycle cuts
@@ -171,7 +194,7 @@ pub fn solve_hamiltonian_cycle(g: &Graph, timeout_secs: f64) -> Result<Vec<i32>,
                         let cyc_set: HashSet<i32> = cyc.iter().copied().collect();
                         let mut cut_lits = Vec::new();
                         for &u in cyc {
-                            if let Some(nbrs) = adj_set.get(&u) {
+                            if let Some(nbrs) = adj_sorted.get(&u) {
                                 for &v in nbrs {
                                     if !cyc_set.contains(&v) {
                                         if let Some(&lit) = edge_vars.get(&(u, v)) {
@@ -186,7 +209,8 @@ pub fn solve_hamiltonian_cycle(g: &Graph, timeout_secs: f64) -> Result<Vec<i32>,
                         if cut_lits.is_empty() {
                             return Err("UNSAT".to_string());
                         }
-                        let _ = solver.add_clause(Clause::from_iter(cut_lits));
+                        let cl = Clause::from_iter(cut_lits);
+                        let _ = solver.add_clause(cl);
 
                         // Cycle edge blocking clause: \bigvee_{e in C} \neg e
                         let mut block_lits = Vec::new();
@@ -198,7 +222,8 @@ pub fn solve_hamiltonian_cycle(g: &Graph, timeout_secs: f64) -> Result<Vec<i32>,
                             }
                         }
                         if !block_lits.is_empty() {
-                            let _ = solver.add_clause(Clause::from_iter(block_lits));
+                            let cl = Clause::from_iter(block_lits);
+                            let _ = solver.add_clause(cl);
                         }
                     }
                 }

@@ -6,6 +6,7 @@ use crate::decomp::fast_filters::check_fast_invariants;
 use crate::decomp::spqr_parallel::{extract_subcomponent_graph, find_separation_pairs};
 use crate::decomp::spqr_series::{contract_series_chains, expand_series_tour};
 use crate::fallback::fallback_cegar;
+use crate::macro_decomp::corridor as macro_corridor;
 use crate::pipeline::options::Options;
 use crate::solver::block_solver::{solve_hamiltonian_cycle, solve_hamiltonian_path};
 use rayon::prelude::*;
@@ -286,8 +287,20 @@ pub fn solve_single_graph(
         });
     }
 
-    let skeleton_tour_res = if cur_g.adjacency_list.len() <= 300 {
-        match solve_hamiltonian_cycle(&cur_g, remaining_timeout.min(10.0)) {
+    // For large graphs (> 250 vertices) with 2-cut separators (e.g. corridor topologies),
+    // use 2-cut corridor decomposition before falling back to full CEGAR
+    if g.adjacency_list.len() > 250 {
+        if let Some((_u, _v)) = macro_corridor::can_solve_2cut(&g) {
+            let corridor_timeout = (remaining_timeout - 5.0).max(1.0);
+            if let Some(macro_tour) = macro_corridor::solve_2cut_corridor(&g, corridor_timeout) {
+                return verify_and_export(&g, &macro_tour, start_time, output_tour_path);
+            }
+        }
+    }
+
+    let skeleton_tour_res = if cur_g.adjacency_list.len() <= 50 {
+        let exploratory_budget = (remaining_timeout * 0.2).min(2.0);
+        match solve_hamiltonian_cycle(&cur_g, exploratory_budget) {
             Ok(tour) => Ok(tour),
             Err(err) => {
                 let rem2 = timeout_secs - start_time.elapsed().as_secs_f64();
