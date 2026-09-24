@@ -9,6 +9,8 @@ pub use core::tour_verifier::TourVerifier;
 
 pub mod decomp;
 
+pub mod solver;
+
 pub mod fallback;
 pub use fallback::contraction;
 pub use fallback::contraction::Degree2Contractor;
