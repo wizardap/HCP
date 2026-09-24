@@ -482,5 +482,68 @@ fn test_portfolio_partial_coverage_rejected() {
     );
 }
 
+#[test]
+fn test_dynamic_bipartite_small_n() {
+    // Graph with N = 70 (in 50..100) with 2 super-hubs of degree 31.
+    // Under old code, k=2 was rejected because k <= (70 * 0.02) as usize = 1.
+    let n = 70;
+    let mut edges = Vec::new();
+
+    // Hub 0 connects to 2..=31 (30 vertices) + 64 (connector) = deg 31
+    for i in 2..=31 {
+        edges.push((0, i));
+    }
+    // Hub 1 connects to 32..=61 (30 vertices) + 65 (connector) = deg 31
+    for i in 32..=61 {
+        edges.push((1, i));
+    }
+
+    // Cluster 0 dense connections (deg >= 5 so not low_deg)
+    for i in 2..=31 {
+        let nxt1 = 2 + ((i - 2 + 1) % 30);
+        let nxt2 = 2 + ((i - 2 + 2) % 30);
+        let nxt3 = 2 + ((i - 2 + 3) % 30);
+        let nxt4 = 2 + ((i - 2 + 4) % 30);
+        edges.push((i, nxt1));
+        edges.push((i, nxt2));
+        edges.push((i, nxt3));
+        edges.push((i, nxt4));
+    }
+
+    // Cluster 1 dense connections (deg >= 5)
+    for i in 32..=61 {
+        let nxt1 = 32 + ((i - 32 + 1) % 30);
+        let nxt2 = 32 + ((i - 32 + 2) % 30);
+        let nxt3 = 32 + ((i - 32 + 3) % 30);
+        let nxt4 = 32 + ((i - 32 + 4) % 30);
+        edges.push((i, nxt1));
+        edges.push((i, nxt2));
+        edges.push((i, nxt3));
+        edges.push((i, nxt4));
+    }
+
+    // Connectors: 62..=69 (8 vertices) with degree <= 4
+    for i in 62..69 {
+        edges.push((i, i + 1));
+    }
+    edges.push((69, 62));
+
+    // Connectors bridge between cluster 0, cluster 1, and hubs
+    edges.push((62, 2));  // port in cluster 0
+    edges.push((63, 15)); // port in cluster 0
+    edges.push((66, 32)); // port in cluster 1
+    edges.push((67, 45)); // port in cluster 1
+    edges.push((64, 0));  // to hub 0
+    edges.push((65, 1));  // to hub 1
+
+    let g = build_graph_from_edges(n, &edges);
+    let p_opt = cegar_fix::macro_decomp::dynamic_bipartite::detect_and_partition(&g);
+    assert!(
+        p_opt.is_some(),
+        "detect_and_partition must accept valid N=70 graph with 2 super-hubs"
+    );
+}
+
+
 
 

@@ -64,7 +64,8 @@ pub fn detect_and_partition(raw_g: &Graph) -> Option<BipartitePartition> {
     super_hubs.sort_unstable();
 
     let k = super_hubs.len();
-    if k < 2 || k > ((n as f64) * MAX_HUB_FRACTION) as usize {
+    let max_k = (((n as f64) * MAX_HUB_FRACTION) as usize).max(2);
+    if k < 2 || k > max_k {
         return None;
     }
 
