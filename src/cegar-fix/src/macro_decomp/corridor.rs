@@ -261,6 +261,22 @@ fn solve_block_b(
     assert!(rem.contains(&port_u), "port_u must be uncontracted");
     assert!(rem.contains(&port_v), "port_v must be uncontracted");
 
+    if rem.len() == 2 {
+        let mut path = Vec::with_capacity(v_b.len());
+        path.push(port_v);
+        if let Some(intermediates) = contractor.chain_map.get(&(port_v, port_u)) {
+            path.extend(intermediates);
+        }
+        path.push(port_u);
+        if path.len() == v_b.len() {
+            println!("[macro_corridor] Block B solved via degree-2 chain: path len = {}", path.len());
+            return Ok(path);
+        } else {
+            return Err(format!("Block B chain length {} != expected {}", path.len(), v_b.len()));
+        }
+    }
+
+
     let virt_edge = (port_u.min(port_v), port_u.max(port_v));
     let mut forbidden_delete = contractor.forced_edges.clone();
     forbidden_delete.insert(virt_edge);

@@ -377,7 +377,17 @@ fn test_asymmetric_small_component_returned() {
         found.is_some(),
         "find_2cut_ports must return asymmetric 2-cut even with component size 6 < 10"
     );
+
+    let tour_opt = macro_corridor::solve_2cut_corridor(&g, 5.0);
+    assert!(
+        tour_opt.is_some(),
+        "solve_2cut_corridor must solve asymmetric 2-cut graph"
+    );
+    let tour = tour_opt.unwrap();
+    let (valid, err) = TourVerifier::verify(&g, &tour);
+    assert!(valid, "Tour must be certified: {}", err);
 }
+
 
 #[test]
 fn test_deg2_separator_ports() {
@@ -417,7 +427,17 @@ fn test_deg2_separator_ports() {
         Some((0, 1)),
         "find_2cut_ports must find unique degree-2 separator (0, 1)"
     );
+
+    let tour_opt = macro_corridor::solve_2cut_corridor(&g, 5.0);
+    assert!(
+        tour_opt.is_some(),
+        "solve_2cut_corridor must solve graph with deg-2 separator"
+    );
+    let tour = tour_opt.unwrap();
+    let (valid, err) = TourVerifier::verify(&g, &tour);
+    assert!(valid, "Tour must be certified: {}", err);
 }
+
 
 #[test]
 fn test_portfolio_partial_coverage_rejected() {
@@ -543,6 +563,28 @@ fn test_dynamic_bipartite_small_n() {
         "detect_and_partition must accept valid N=70 graph with 2 super-hubs"
     );
 }
+
+#[test]
+fn test_2cut_corridor_solves_cycle_graphs() {
+    for n in [4, 5, 6, 7, 8, 9, 10, 15, 20] {
+        let mut edges = Vec::new();
+        for i in 0..n {
+            edges.push((i as i32, ((i + 1) % n) as i32));
+        }
+        let g = build_graph_from_edges(n, &edges);
+        let tour_opt = macro_corridor::solve_2cut_corridor(&g, 5.0);
+        assert!(
+            tour_opt.is_some(),
+            "solve_2cut_corridor must solve C{} without failure",
+            n
+        );
+        let tour = tour_opt.unwrap();
+        let (valid, err) = TourVerifier::verify(&g, &tour);
+        assert!(valid, "Tour for C{} must be certified: {}", n, err);
+    }
+}
+
+
 
 
 
