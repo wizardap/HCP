@@ -6,7 +6,6 @@ use rustsat::clause;
 use rustsat::instances::{BasicVarManager, ManageVars};
 use rustsat::solvers::{Solve, SolverResult};
 use rustsat::types::{Clause, Lit};
-use rustsat_cadical::CaDiCaL;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::time::Instant;
 
@@ -36,7 +35,7 @@ fn solve_block_a(
     let mut edge_list: Vec<(i32, i32)> = edges.into_iter().collect();
     edge_list.sort_unstable();
 
-    let mut solver = CaDiCaL::default();
+    let mut solver = crate::core::solver_utils::create_solver_with_deadline(deadline);
     let mut var_mgr = BasicVarManager::default();
     let mut edge_to_var = HashMap::new();
     let mut inc_edges: HashMap<i32, Vec<Lit>> = HashMap::new();
@@ -83,7 +82,8 @@ fn solve_block_a(
         match solver.solve() {
             Ok(SolverResult::Sat) => {}
             Ok(SolverResult::Unsat) => return Err("Block A UNSAT".to_string()),
-            _ => return Err("Block A solver error or timeout".to_string()),
+            Ok(SolverResult::Interrupted) => return Err("Block A timeout".to_string()),
+            Err(e) => return Err(format!("Block A solver error: {:?}", e)),
         }
 
         let sol = solver.full_solution().map_err(|e| format!("Failed to get solution: {:?}", e))?;
@@ -278,7 +278,7 @@ fn solve_block_b(
     let mut edge_list: Vec<(i32, i32)> = edges.into_iter().collect();
     edge_list.sort_unstable();
 
-    let mut solver = CaDiCaL::default();
+    let mut solver = crate::core::solver_utils::create_solver_with_deadline(deadline);
     let mut var_mgr = BasicVarManager::default();
     let mut edge_to_var = HashMap::new();
     let mut inc_edges: HashMap<i32, Vec<Lit>> = HashMap::new();
@@ -388,7 +388,8 @@ fn solve_block_b(
         match solver.solve() {
             Ok(SolverResult::Sat) => {}
             Ok(SolverResult::Unsat) => return Err("Block B UNSAT".to_string()),
-            _ => return Err("Block B solver error or timeout".to_string()),
+            Ok(SolverResult::Interrupted) => return Err("Block B timeout".to_string()),
+            Err(e) => return Err(format!("Block B solver error: {:?}", e)),
         }
 
         let sol = solver.full_solution().map_err(|e| format!("Failed to get solution: {:?}", e))?;
@@ -466,8 +467,8 @@ fn solve_block_b(
 }
 
 /// Checks whether removing `port_u` and `port_v` partitions the graph into
-/// at least 2 components where each of the two largest has size >= min_comp_size.
-fn check_2cut_split(raw_g: &Graph, port_u: i32, port_v: i32, min_comp_size: usize) -> bool {
+/// exactly 2 non-empty components.
+fn check_2cut_split(raw_g: &Graph, port_u: i32, port_v: i32) -> bool {
     let mut rem_nodes: HashSet<i32> = raw_g.adjacency_list.keys().copied().collect();
     rem_nodes.remove(&port_u);
     rem_nodes.remove(&port_v);
@@ -496,18 +497,25 @@ fn check_2cut_split(raw_g: &Graph, port_u: i32, port_v: i32, min_comp_size: usiz
         }
     }
 
-    comp_sizes.len() >= 2 && comp_sizes.iter().filter(|&&sz| sz >= min_comp_size).count() >= 2
+    // MATHEMATICAL REQUIREMENT: By the Chvátal-Erdős toughness theorem,
+    // a Hamiltonian graph satisfies c(G \ S) <= |S|. For |S| = 2,
+    // exactly 2 components is the only valid case for decomposition.
+    comp_sizes.len() == 2 && comp_sizes.iter().all(|&sz| sz >= 1)
 }
 
-/// Dynamically discovers a 2-vertex separator {port_u, port_v} whose removal
-/// splits the graph into two large components (each with >= 500 vertices)
+/// Dynamically discovers a 2-vertex separator {port_u, port_v} whose
+/// removal splits the graph into exactly two non-empty components,
 /// using Tarjan's linear-time articulation point algorithm on G \ {u}.
+///
+/// Candidates are sorted by degree ascending for efficiency. The
+/// algorithm selects the most balanced 2-cut found (largest minimum
+/// component).
 pub fn find_2cut_ports(raw_g: &Graph) -> Option<(i32, i32)> {
     let n = raw_g.adjacency_list.len();
-    if n < 100 {
+    if n < 4 {
+        // MATHEMATICAL REQUIREMENT: A 2-vertex separator requires >= 4 vertices.
         return None;
     }
-    let min_comp_sz = (n / 10).max(30);
 
     let mut nodes: Vec<i32> = raw_g.adjacency_list.keys().copied().collect();
     nodes.sort_unstable();
@@ -533,11 +541,23 @@ pub fn find_2cut_ports(raw_g: &Graph) -> Option<(i32, i32)> {
         })
         .collect();
 
-    // Iterate over candidate vertices u with degree in 3..=10
-    // (A 2-cut separating large components must have degree >= 2, and in HCP graphs degree >= 3)
-    for u in 0..n {
+    // Sort candidate indices by degree ascending — low-degree vertices
+    // are cheaper to probe and more likely to yield 2-cuts.
+    let mut candidates: Vec<usize> = (0..n).collect();
+    candidates.sort_by_key(|&u| adj[u].len());
+
+    /// PERFORMANCE KNOB: Minimum corridor size for decomposition to
+    /// likely outperform monolithic solving. Does NOT filter candidates
+    /// — only controls early exit from the search.
+    const MIN_PROFITABLE_CORRIDOR: usize = 10;
+
+    let mut best: Option<(i32, i32, usize)> = None; // (u_orig, v_orig, min_comp)
+
+    for &u in &candidates {
         let deg_u = adj[u].len();
-        if deg_u < 3 || deg_u > 10 {
+        // MATHEMATICAL REQUIREMENT: degree < 3 cannot form a 2-vertex
+        // separator with two non-trivial components in a 2-connected graph.
+        if deg_u < 3 {
             continue;
         }
 
@@ -545,7 +565,7 @@ pub fn find_2cut_ports(raw_g: &Graph) -> Option<(i32, i32)> {
         let mut tin = vec![-1i32; n];
         let mut low = vec![-1i32; n];
         let mut sz = vec![0usize; n];
-        tin[u] = 0; // Mark u visited so DFS excludes u
+        tin[u] = 0;
         let mut timer = 1i32;
         tin[root] = timer;
         low[root] = timer;
@@ -578,11 +598,24 @@ pub fn find_2cut_ports(raw_g: &Graph) -> Option<(i32, i32)> {
                     if low[curr] >= tin[parent] {
                         let comp1 = sz[curr];
                         let comp2 = (n - 1).saturating_sub(comp1);
-                        if comp1 >= min_comp_sz && comp2 >= min_comp_sz {
+                        if comp1 >= 1 && comp2 >= 1 {
                             let u_orig = nodes[u];
                             let v_orig = nodes[parent];
-                            if check_2cut_split(raw_g, u_orig, v_orig, min_comp_sz) {
-                                return Some((u_orig.min(v_orig), u_orig.max(v_orig)));
+                            if check_2cut_split(raw_g, u_orig, v_orig) {
+                                let min_comp = comp1.min(comp2);
+                                let is_better = best
+                                    .map_or(true, |(_, _, prev_min)| min_comp > prev_min);
+                                if is_better {
+                                    best = Some((
+                                        u_orig.min(v_orig),
+                                        u_orig.max(v_orig),
+                                        min_comp,
+                                    ));
+                                    // Early exit if we found a profitable corridor
+                                    if min_comp >= MIN_PROFITABLE_CORRIDOR {
+                                        return best.map(|(u, v, _)| (u, v));
+                                    }
+                                }
                             }
                         }
                     }
@@ -591,7 +624,7 @@ pub fn find_2cut_ports(raw_g: &Graph) -> Option<(i32, i32)> {
         }
     }
 
-    None
+    best.map(|(u, v, _)| (u, v))
 }
 
 /// Checks if the graph has a 2-vertex separator splitting it into two large components.
