@@ -7,6 +7,8 @@ pub use core::encoder::Encoder;
 pub use core::tour_verifier;
 pub use core::tour_verifier::TourVerifier;
 
+pub mod decomp;
+
 pub mod fallback;
 pub use fallback::contraction;
 pub use fallback::contraction::Degree2Contractor;
