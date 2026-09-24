@@ -296,34 +296,6 @@ def solve_general_hcp(
         if verbose:
             print(f"[*] Universal HCP Engine: Solving '{name}' (|V|={N}, |E|={M})...")
 
-        # Stage 1: Macro-Decomposition Check (for massive challenge instances |V| >= 4000)
-        if N >= 4000:
-            from ..families.dense_bipartite import DenseBipartiteSolver
-            from ..families.corridor_solver import CorridorContractionSolver
-            from ..families.block_splicer import BlockContractionDPSolver
-
-            macro_solver = None
-            if DenseBipartiteSolver.can_solve(G):
-                macro_solver = DenseBipartiteSolver
-            elif BlockContractionDPSolver.can_solve(G):
-                macro_solver = BlockContractionDPSolver
-            elif CorridorContractionSolver.can_solve(G):
-                macro_solver = CorridorContractionSolver
-
-            if macro_solver is not None:
-                if verbose:
-                    print(f"[*] Stage 1: Macro-topology matched {macro_solver.__name__}.")
-                try:
-                    tour = macro_solver.solve(G, from_scratch=from_scratch, verify=False)
-                    ok, msg = verify_tour(tour, G)
-                    if ok:
-                        if verbose:
-                            elapsed = time.time() - t_start
-                            print(f"[✓] Successfully solved via {macro_solver.__name__} in {elapsed:.3f}s!")
-                        return tour
-                except Exception as e:
-                    if verbose:
-                        print(f"[*] Macro-solver fallback to core CEGAR: {e}")
 
         # Stage 2: Direct High-Performance Rust cegar-fix execution
         rem_timeout = max(5.0, timeout_sec - (time.time() - t_start))
