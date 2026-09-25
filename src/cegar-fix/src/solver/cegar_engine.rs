@@ -138,7 +138,7 @@ pub fn solve_cycle_with_forced_edges(
             }
 
             // At-most-2
-            if deg <= 8 {
+            if deg <= 32 {
                 for i in 0..deg {
                     for j in (i + 1)..deg {
                         for k in (j + 1)..deg {

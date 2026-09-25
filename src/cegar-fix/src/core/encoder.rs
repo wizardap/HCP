@@ -778,7 +778,7 @@ pub fn add_at_most_2(
     if n <= 2 {
         return;
     }
-    if n <= 8 {
+    if n <= 32 {
         for i in 0..n {
             for j in (i + 1)..n {
                 for k in (j + 1)..n {
