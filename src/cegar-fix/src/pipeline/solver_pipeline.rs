@@ -9,7 +9,7 @@ use crate::macro_decomp::corridor as macro_corridor;
 use crate::macro_decomp::dynamic_bipartite;
 use crate::macro_decomp::portfolio_788 as macro_788;
 use crate::pipeline::options::Options;
-use crate::solver::cegar_engine::{solve_cycle, solve_path};
+use crate::solver::cegar_engine::{solve_cycle, solve_cycle_with_forced_edges, solve_path};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -314,7 +314,11 @@ pub fn solve_single_graph(
         });
     }
 
-    let skeleton_tour_res = solve_cycle(&cur_g, rem_skeleton);
+    let mut forced_edges: HashSet<(i32, i32)> = chain_map.keys().copied().collect();
+    for (u, v, _) in &stitched_cuts {
+        forced_edges.insert((*u.min(v), *u.max(v)));
+    }
+    let skeleton_tour_res = solve_cycle_with_forced_edges(&cur_g, rem_skeleton, &forced_edges);
 
     let mut tour = match skeleton_tour_res {
         Ok(t) => t,

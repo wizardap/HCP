@@ -56,6 +56,15 @@ fn extract_subcycles(nodes: &[i32], active_adj: &HashMap<i32, Vec<i32>>) -> Vec<
 
 /// Solves Hamiltonian cycle on `g` using deterministic SAT-CEGAR with 2-opt merging and DFJ cuts.
 pub fn solve_cycle(g: &Graph, timeout_secs: f64) -> Result<Vec<i32>, String> {
+    solve_cycle_with_forced_edges(g, timeout_secs, &HashSet::new())
+}
+
+/// Solves Hamiltonian cycle on `g` requiring all edges in `forced_edges` to be selected.
+pub fn solve_cycle_with_forced_edges(
+    g: &Graph,
+    timeout_secs: f64,
+    forced_edges: &HashSet<(i32, i32)>,
+) -> Result<Vec<i32>, String> {
     let deadline = Instant::now() + Duration::from_secs_f64(timeout_secs);
     let mut nodes: Vec<i32> = g.adjacency_list.keys().copied().collect();
     nodes.sort_unstable();
@@ -147,11 +156,22 @@ pub fn solve_cycle(g: &Graph, timeout_secs: f64) -> Result<Vec<i32>, String> {
         }
     }
 
+    // Force each specified edge as a unit clause
+    for &fe in forced_edges {
+        let e = (fe.0.min(fe.1), fe.0.max(fe.1));
+        if let Some(&lit) = edge_vars.get(&e) {
+            base_clauses.push(clause![lit]);
+        }
+    }
+
     for cl in &base_clauses {
         let _ = solver.add_clause_ref(cl);
     }
 
-    let forbidden_edges: HashSet<(i32, i32)> = HashSet::new();
+    let mut forbidden_edges: HashSet<(i32, i32)> = HashSet::new();
+    for &fe in forced_edges {
+        forbidden_edges.insert((fe.0.min(fe.1), fe.0.max(fe.1)));
+    }
 
     // CEGAR loop with DFJ subcycle cuts and 2-opt merge acceleration
     loop {

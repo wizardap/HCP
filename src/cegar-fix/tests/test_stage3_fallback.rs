@@ -4,6 +4,7 @@ use cegar_fix::tour_verifier::TourVerifier;
 use std::path::Path;
 
 #[test]
+#[allow(deprecated)]
 fn test_stage3_fallback_graph76() {
     let graph_path = "FHCPCS-col/graph76.col";
     let alt_graph_path = "../../FHCPCS-col/graph76.col";
