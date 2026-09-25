@@ -45,7 +45,7 @@
   - `pub fn solve_cycle(g: &Graph, timeout_secs: f64) -> Result<Vec<i32>, String>`
   - `pub fn solve_path(g: &Graph, port_u: i32, port_v: i32, timeout_secs: f64) -> Result<Vec<i32>, String>`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/cegar-fix/tests/test_cegar_engine.rs`:
 ```rust
@@ -116,7 +116,7 @@ fn test_solve_cycle_unsat() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 ```bash
@@ -124,7 +124,7 @@ export PATH="$HOME/.cargo/bin:$PATH" && cargo test --manifest-path src/cegar-fix
 ```
 Expected: FAIL (module `cegar_engine` not found).
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Create `src/cegar-fix/src/solver/cegar_engine.rs`:
 ```rust
@@ -436,7 +436,7 @@ pub mod block_solver;
 pub mod cegar_engine;
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run:
 ```bash
@@ -444,7 +444,7 @@ export PATH="$HOME/.cargo/bin:$PATH" && cargo test --manifest-path src/cegar-fix
 ```
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 ```bash
@@ -467,7 +467,7 @@ git commit -m "feat(solver): implement unified deterministic cegar engine with 2
 - Produces:
   - Clean `solve_single_graph` flow driven purely by `deadline: Instant`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Modify `src/cegar-fix/tests/test_principled_pipeline.rs` to verify that `solve_single_graph` resolves graphs of various sizes without relying on artificial vertex-size thresholds or budget ratios:
 ```rust
@@ -481,14 +481,14 @@ fn test_pipeline_zero_budget_dispatch() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify current state**
+- [x] **Step 2: Run test to verify current state**
 
 Run:
 ```bash
 export PATH="$HOME/.cargo/bin:$PATH" && cargo test --manifest-path src/cegar-fix/Cargo.toml --test test_principled_pipeline
 ```
 
-- [ ] **Step 3: Refactor `solver_pipeline.rs`**
+- [x] **Step 3: Refactor `solver_pipeline.rs`**
 
 In `src/cegar-fix/src/pipeline/solver_pipeline.rs`:
 1. Calculate `deadline = start_time + std::time::Duration::from_secs_f64(timeout_secs);` at the top of `solve_single_graph`.
@@ -545,7 +545,7 @@ In `src/cegar-fix/src/pipeline/solver_pipeline.rs`:
 ```
 5. In Step 5 (tour stitching reroute and expansion fallback), use `cegar_engine::solve_path` and `cegar_engine::solve_cycle`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run:
 ```bash
@@ -553,7 +553,7 @@ export PATH="$HOME/.cargo/bin:$PATH" && cargo test --manifest-path src/cegar-fix
 ```
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 ```bash
@@ -575,7 +575,7 @@ git commit -m "refactor(pipeline): transition to zero-budget monotonic deadline 
 - Consumes: `crate::solver::cegar_engine`
 - Produces: Backward compatibility for existing test suites while eliminating duplicate code paths.
 
-- [ ] **Step 1: Write test verifying backward compatibility**
+- [x] **Step 1: Write test verifying backward compatibility**
 
 Verify that all existing tests in `test_block_solver.rs` and `test_stage3_fallback.rs` route directly into the unified engine:
 ```rust
@@ -587,12 +587,12 @@ fn test_block_solver_compatibility() {
 }
 ```
 
-- [ ] **Step 2: Update `block_solver.rs` and `fallback_cegar.rs`**
+- [x] **Step 2: Update `block_solver.rs` and `fallback_cegar.rs`**
 
 Replace implementation in `block_solver.rs` with thin wrappers pointing to `cegar_engine::{solve_cycle, solve_path}`.
 Replace implementation in `fallback_cegar.rs` with a wrapper delegating to `cegar_engine::solve_cycle`.
 
-- [ ] **Step 3: Run all test suites to verify**
+- [x] **Step 3: Run all test suites to verify**
 
 Run:
 ```bash
@@ -600,7 +600,7 @@ export PATH="$HOME/.cargo/bin:$PATH" && cargo test --manifest-path src/cegar-fix
 ```
 Expected: All 18 test suites pass without compilation warnings.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 Run:
 ```bash
@@ -620,7 +620,7 @@ git commit -m "refactor(solver): retire legacy duplicate engines in favor of uni
 - Consumes: Release binary `target/release/cegar-fix`
 - Produces: Verified tour files and zero-regression report.
 
-- [ ] **Step 1: Build release binary**
+- [x] **Step 1: Build release binary**
 
 Run:
 ```bash
@@ -628,7 +628,7 @@ export PATH="$HOME/.cargo/bin:$PATH" && cargo build --manifest-path src/cegar-fi
 ```
 Expected: Build succeeds with 0 errors.
 
-- [ ] **Step 2: Run verification on sample benchmark graphs (graph1 to graph10)**
+- [x] **Step 2: Run verification on sample benchmark graphs (graph1 to graph10)**
 
 Run:
 ```bash
