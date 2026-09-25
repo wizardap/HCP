@@ -63,4 +63,11 @@ fn test_pipeline_series_cycle() {
     assert!(valid, "Cycle tour must be verified: {}", err);
 }
 
+use cegar_fix::pipeline::solver_pipeline::find_graph_file;
 
+#[test]
+fn test_pipeline_zero_budget_dispatch() {
+    let p = find_graph_file(1).expect("graph1.col must be found");
+    let res = solve_single_graph(&p, 10.0, None);
+    assert!(res.is_ok(), "graph1 should solve cleanly: {:?}", res.err());
+}

@@ -5,12 +5,11 @@ use crate::core::tour_verifier::TourVerifier;
 use crate::decomp::fast_filters::check_fast_invariants;
 use crate::decomp::spqr_parallel::{extract_subcomponent_graph, find_separation_pairs};
 use crate::decomp::spqr_series::{contract_series_chains, expand_series_tour};
-use crate::fallback::fallback_cegar;
 use crate::macro_decomp::corridor as macro_corridor;
 use crate::macro_decomp::dynamic_bipartite;
 use crate::macro_decomp::portfolio_788 as macro_788;
 use crate::pipeline::options::Options;
-use crate::solver::block_solver::{solve_hamiltonian_cycle, solve_hamiltonian_path};
+use crate::solver::cegar_engine::{solve_cycle, solve_path};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -138,50 +137,29 @@ pub fn solve_single_graph(
             vertex_count,
         });
     }
+    let deadline = start_time + std::time::Duration::from_secs_f64(timeout_secs);
 
     // Step 1.5: Topological Macro-Decomposition Cascade
-    // Fast path for graphs exhibiting highly structured topologies (dense bipartite hubs, 2-cut corridors, alternating 2-colorable).
-    if g.adjacency_list.len() > 100 {
-        let macro_budget_secs = if g.adjacency_list.len() > 250 {
-            (timeout_secs - start_time.elapsed().as_secs_f64() - 2.0).max(1.0)
-        } else {
-            (timeout_secs * 0.6).max(5.0)
-        };
-        let mut macro_tour_opt: Option<Vec<i32>> = None;
+    // Fast path for graphs exhibiting highly structured topologies.
+    // Dispatch checks run in O(V+E) time; if matched, the solver receives the full remaining deadline.
+    {
+        let rem = (deadline - Instant::now()).as_secs_f64();
+        if rem > 0.1 {
+            let mut macro_tour_opt: Option<Vec<i32>> = None;
 
-        // 1.5a. Dense Bipartite Macro-Decomposition Cascade
-        {
-            let elapsed = start_time.elapsed().as_secs_f64();
-            let bipartite_timeout = (macro_budget_secs - elapsed).max(0.5);
             if dynamic_bipartite::can_solve_bipartite(&g) {
-                macro_tour_opt = dynamic_bipartite::solve_bipartite(&g, bipartite_timeout);
+                macro_tour_opt = dynamic_bipartite::solve_bipartite(&g, rem);
+            } else if let Some((_u, _v)) = macro_corridor::can_solve_2cut(&g) {
+                macro_tour_opt = macro_corridor::solve_2cut_corridor(&g, rem);
+            } else if macro_788::can_solve_alternating_pairs(&g) {
+                macro_tour_opt = macro_788::solve_alternating_pairs(&g, rem);
             }
-        }
 
-        // 1.5b. 2-Cut Articulation Separator (Corridor family)
-        if macro_tour_opt.is_none() {
-            let elapsed = start_time.elapsed().as_secs_f64();
-            let corridor_timeout = (macro_budget_secs - elapsed).max(0.5);
-            if let Some((_u, _v)) = macro_corridor::can_solve_2cut(&g) {
-                macro_tour_opt = macro_corridor::solve_2cut_corridor(&g, corridor_timeout);
+            if let Some(tour) = macro_tour_opt {
+                return verify_and_export(&g, &tour, start_time, output_tour_path);
             }
-        }
-
-        // 1.5c. Degree-2 Alternating Pair Contraction
-        if macro_tour_opt.is_none() {
-            let elapsed = start_time.elapsed().as_secs_f64();
-            let portfolio_timeout = (macro_budget_secs - elapsed).max(0.5);
-            if macro_788::can_solve_alternating_pairs(&g) {
-                macro_tour_opt = macro_788::solve_alternating_pairs(&g, portfolio_timeout);
-            }
-        }
-
-        if let Some(tour) = macro_tour_opt {
-            return verify_and_export(&g, &tour, start_time, output_tour_path);
         }
     }
-
-    let deadline = start_time + std::time::Duration::from_secs_f64(timeout_secs);
 
     // Step 2: Contract series chains using crate::decomp::spqr_series::contract_series_chains
     let series_decomp = contract_series_chains(&g);
@@ -266,8 +244,14 @@ pub fn solve_single_graph(
         // Isolate smaller component G_sub
         let sub_g = extract_subcomponent_graph(&cur_g, smaller_comp, u, v);
 
-        let rem_time = (deadline - Instant::now()).as_secs_f64().max(0.1);
-        let subpath = match solve_hamiltonian_path(&sub_g, u, v, rem_time) {
+        let rem_time = (deadline - Instant::now()).as_secs_f64();
+        if rem_time <= 0.0 {
+            return Err(SolverPipelineError {
+                message: format!("TIMEOUT (elapsed: {:.2}s)", start_time.elapsed().as_secs_f64()),
+                vertex_count,
+            });
+        }
+        let subpath = match solve_path(&sub_g, u, v, rem_time) {
             Ok(p) => p,
             Err(e) => {
                 let is_timeout = start_time.elapsed().as_secs_f64() >= timeout_secs
@@ -321,33 +305,16 @@ pub fn solve_single_graph(
         }
     }
 
-    // Step 4: Solve skeleton using solve_hamiltonian_cycle or fallback_cegar
-    let elapsed = start_time.elapsed().as_secs_f64();
-    let remaining_timeout = timeout_secs - elapsed;
-    if remaining_timeout <= 0.0 {
+    // Step 4: Solve skeleton using unified cegar_engine
+    let rem_skeleton = (deadline - Instant::now()).as_secs_f64();
+    if rem_skeleton <= 0.0 {
         return Err(SolverPipelineError {
-            message: format!("TIMEOUT (elapsed: {:.2}s)", elapsed),
+            message: format!("TIMEOUT (elapsed: {:.2}s)", start_time.elapsed().as_secs_f64()),
             vertex_count,
         });
     }
 
-
-    let skeleton_tour_res = if cur_g.adjacency_list.len() <= 50 {
-        let exploratory_budget = (remaining_timeout * 0.2).min(2.0);
-        match solve_hamiltonian_cycle(&cur_g, exploratory_budget) {
-            Ok(tour) => Ok(tour),
-            Err(err) => {
-                let rem2 = timeout_secs - start_time.elapsed().as_secs_f64();
-                if rem2 > 0.0 && !err.to_uppercase().contains("UNSAT") {
-                    fallback_cegar::solve_with_contraction(&cur_g, rem2)
-                } else {
-                    Err(err)
-                }
-            }
-        }
-    } else {
-        fallback_cegar::solve_with_contraction(&cur_g, remaining_timeout)
-    };
+    let skeleton_tour_res = solve_cycle(&cur_g, rem_skeleton);
 
     let mut tour = match skeleton_tour_res {
         Ok(t) => t,
@@ -380,8 +347,14 @@ pub fn solve_single_graph(
                 // If the skeleton cycle didn't traverse (u, v), solve as Hamiltonian path in skeleton \ (u, v)
                 let mut cur_without_uv = cur_g.clone();
                 cur_without_uv.remove_edge_if_exists(u, v);
-                let rem3 = (deadline - Instant::now()).as_secs_f64().max(0.1);
-                let path = solve_hamiltonian_path(&cur_without_uv, u, v, rem3)
+                let rem3 = (deadline - Instant::now()).as_secs_f64();
+                if rem3 <= 0.0 {
+                    return Err(SolverPipelineError {
+                        message: format!("TIMEOUT (elapsed: {:.2}s)", start_time.elapsed().as_secs_f64()),
+                        vertex_count,
+                    });
+                }
+                let path = solve_path(&cur_without_uv, u, v, rem3)
                     .map_err(|e| SolverPipelineError {
                         message: format!("Failed to route through ports ({}, {}): {}", u, v, e),
                         vertex_count,
@@ -400,13 +373,13 @@ pub fn solve_single_graph(
     }
 
     // If tour is incomplete (e.g. some contracted edges were bypassed in the skeleton cycle),
-    // fall back to full fallback CEGAR on g
+    // fall back to solving g directly with cegar_engine
     if tour.len() != vertex_count {
         let rem = (deadline - Instant::now()).as_secs_f64();
         if rem > 0.0 {
-            tour = fallback_cegar::solve_with_contraction(&g, rem).map_err(|e| {
+            tour = solve_cycle(&g, rem).map_err(|e| {
                 SolverPipelineError {
-                    message: format!("Fallback solver error: {}", e),
+                    message: format!("Solver fallback error: {}", e),
                     vertex_count,
                 }
             })?;
