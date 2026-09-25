@@ -149,10 +149,10 @@ pub fn solve_single_graph(
 
             if dynamic_bipartite::can_solve_bipartite(&g) {
                 macro_tour_opt = dynamic_bipartite::solve_bipartite(&g, rem);
-            } else if let Some((_u, _v)) = macro_corridor::can_solve_2cut(&g) {
-                macro_tour_opt = macro_corridor::solve_2cut_corridor(&g, rem);
             } else if macro_788::can_solve_alternating_pairs(&g) {
                 macro_tour_opt = macro_788::solve_alternating_pairs(&g, rem);
+            } else if let Some((_u, _v)) = macro_corridor::can_solve_2cut(&g) {
+                macro_tour_opt = macro_corridor::solve_2cut_corridor(&g, rem);
             }
 
             if let Some(tour) = macro_tour_opt {
