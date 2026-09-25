@@ -7,6 +7,8 @@ use crate::decomp::spqr_parallel::{extract_subcomponent_graph, find_separation_p
 use crate::decomp::spqr_series::{contract_series_chains, expand_series_tour};
 use crate::fallback::fallback_cegar;
 use crate::macro_decomp::corridor as macro_corridor;
+use crate::macro_decomp::dynamic_bipartite;
+use crate::macro_decomp::portfolio_788 as macro_788;
 use crate::pipeline::options::Options;
 use crate::solver::block_solver::{solve_hamiltonian_cycle, solve_hamiltonian_path};
 use rayon::prelude::*;
@@ -135,6 +137,48 @@ pub fn solve_single_graph(
             message: err_msg.to_string(),
             vertex_count,
         });
+    }
+
+    // Step 1.5: Topological Macro-Decomposition Cascade
+    // Fast path for graphs exhibiting highly structured topologies (dense bipartite hubs, 2-cut corridors, alternating 2-colorable).
+    if g.adjacency_list.len() > 100 {
+        let macro_budget_secs = if g.adjacency_list.len() > 250 {
+            (timeout_secs - start_time.elapsed().as_secs_f64() - 2.0).max(1.0)
+        } else {
+            (timeout_secs * 0.6).max(5.0)
+        };
+        let mut macro_tour_opt: Option<Vec<i32>> = None;
+
+        // 1.5a. Dense Bipartite Macro-Decomposition Cascade
+        {
+            let elapsed = start_time.elapsed().as_secs_f64();
+            let bipartite_timeout = (macro_budget_secs - elapsed).max(0.5);
+            if dynamic_bipartite::can_solve_bipartite(&g) {
+                macro_tour_opt = dynamic_bipartite::solve_bipartite(&g, bipartite_timeout);
+            }
+        }
+
+        // 1.5b. 2-Cut Articulation Separator (Corridor family)
+        if macro_tour_opt.is_none() {
+            let elapsed = start_time.elapsed().as_secs_f64();
+            let corridor_timeout = (macro_budget_secs - elapsed).max(0.5);
+            if let Some((_u, _v)) = macro_corridor::can_solve_2cut(&g) {
+                macro_tour_opt = macro_corridor::solve_2cut_corridor(&g, corridor_timeout);
+            }
+        }
+
+        // 1.5c. Degree-2 Alternating Pair Contraction
+        if macro_tour_opt.is_none() {
+            let elapsed = start_time.elapsed().as_secs_f64();
+            let portfolio_timeout = (macro_budget_secs - elapsed).max(0.5);
+            if macro_788::can_solve_alternating_pairs(&g) {
+                macro_tour_opt = macro_788::solve_alternating_pairs(&g, portfolio_timeout);
+            }
+        }
+
+        if let Some(tour) = macro_tour_opt {
+            return verify_and_export(&g, &tour, start_time, output_tour_path);
+        }
     }
 
     let deadline = start_time + std::time::Duration::from_secs_f64(timeout_secs);
@@ -287,16 +331,6 @@ pub fn solve_single_graph(
         });
     }
 
-    // For large graphs (> 250 vertices) with 2-cut separators (e.g. corridor topologies),
-    // use 2-cut corridor decomposition before falling back to full CEGAR
-    if g.adjacency_list.len() > 250 {
-        if let Some((_u, _v)) = macro_corridor::can_solve_2cut(&g) {
-            let corridor_timeout = (remaining_timeout - 5.0).max(1.0);
-            if let Some(macro_tour) = macro_corridor::solve_2cut_corridor(&g, corridor_timeout) {
-                return verify_and_export(&g, &macro_tour, start_time, output_tour_path);
-            }
-        }
-    }
 
     let skeleton_tour_res = if cur_g.adjacency_list.len() <= 50 {
         let exploratory_budget = (remaining_timeout * 0.2).min(2.0);
