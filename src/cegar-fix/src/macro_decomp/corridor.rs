@@ -187,70 +187,7 @@ fn solve_corridor_block(
     for ce in &contractor.forced_edges {
         let _ = solver.add_clause(clause![edge_to_var[ce]]);
     }
-
-    // Static chordless triangles
-    let mut rem_list: Vec<i32> = rem.iter().copied().collect();
-    rem_list.sort_unstable();
-
-    for &u in &rem_list {
-        if let Some(nbrs) = adj_contracted.get(&u) {
-            for &v in nbrs {
-                if v > u {
-                    if let Some(w_nbrs) = adj_contracted.get(&v) {
-                        for &w in w_nbrs {
-                            if w > v && nbrs.contains(&w) {
-                                let e1 = (u.min(v), u.max(v));
-                                let e2 = (v.min(w), v.max(w));
-                                let e3 = (w.min(u), w.max(u));
-                                let _ = solver.add_clause(clause![
-                                    !edge_to_var[&e1],
-                                    !edge_to_var[&e2],
-                                    !edge_to_var[&e3]
-                                ]);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Static chordless squares
-    if rem_list.len() > 4 {
-        if Instant::now() >= deadline {
-            return Err(format!("{} timed out during preprocessing", block_name));
-        }
-        let mut squares = HashSet::new();
-        for &a in &rem_list {
-            let nbrs_a: Vec<i32> = adj_contracted.get(&a).cloned().unwrap_or_default().into_iter().collect();
-            for i in 0..nbrs_a.len() {
-                let u = nbrs_a[i];
-                for j in (i + 1)..nbrs_a.len() {
-                    let v = nbrs_a[j];
-                    let u_nbrs = &adj_contracted[&u];
-                    let v_nbrs = &adj_contracted[&v];
-                    for &w in u_nbrs {
-                        if w != a && v_nbrs.contains(&w) && !nbrs_a.contains(&w) && !u_nbrs.contains(&v) {
-                            let mut sq = [a, u, w, v];
-                            sq.sort_unstable();
-                            if squares.insert((sq[0], sq[1], sq[2], sq[3])) {
-                                let e1 = (a.min(u), a.max(u));
-                                let e2 = (u.min(w), u.max(w));
-                                let e3 = (w.min(v), w.max(v));
-                                let e4 = (v.min(a), v.max(a));
-                                let _ = solver.add_clause(clause![
-                                    !edge_to_var[&e1],
-                                    !edge_to_var[&e2],
-                                    !edge_to_var[&e3],
-                                    !edge_to_var[&e4]
-                                ]);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    // Preprocessing complete. Enter CEGAR loop with 2-opt absorption
 
     // CEGAR loop with 2-opt absorption
     let mut it = 0;
