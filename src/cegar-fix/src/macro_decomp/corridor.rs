@@ -100,6 +100,8 @@ fn solve_corridor_block(
     }
 
     let rem: HashSet<i32> = contracted_gb.adjacency_list.keys().copied().collect();
+    let mut rem_sorted: Vec<i32> = rem.iter().copied().collect();
+    rem_sorted.sort_unstable();
     println!("[macro_corridor] {} contracted: {} -> {} vertices", block_name, block_nodes.len(), rem.len());
 
     assert!(rem.contains(&start_port), "start_port must be uncontracted");
@@ -159,7 +161,7 @@ fn solve_corridor_block(
     }
 
     // Degree 2 constraints on contracted vertices
-    for &u in &rem {
+    for &u in &rem_sorted {
         let lits = inc_edges.get(&u).cloned().unwrap_or_default();
         let deg = lits.len();
         if deg < 2 {
@@ -212,7 +214,7 @@ fn solve_corridor_block(
 
         let mut visited = HashSet::new();
         let mut cycles = Vec::new();
-        for &u in &rem {
+        for &u in &rem_sorted {
             if !visited.contains(&u) {
                 let mut cyc = Vec::new();
                 let mut curr = u;
@@ -569,13 +571,9 @@ pub fn solve_2cut_corridor(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>>
         v_b.len()
     );
 
-    // Solve Block A and Block B in parallel via Rayon
-    println!("[macro_corridor] Solving Block A and Block B concurrently via Rayon...");
-    let (res_a, res_b) = rayon::join(
-        || solve_corridor_block(&raw_g.adjacency_list, &v_a, port_u, port_v, "Block A", deadline),
-        || solve_corridor_block(&raw_g.adjacency_list, &v_b, port_v, port_u, "Block B", deadline),
-    );
-
+    // Solve Block A and Block B sequentially
+    println!("[macro_corridor] Solving Block A and Block B sequentially...");
+    let res_a = solve_corridor_block(&raw_g.adjacency_list, &v_a, port_u, port_v, "Block A", deadline);
     let p_a = match res_a {
         Ok(path) => path,
         Err(e) => {
@@ -585,6 +583,7 @@ pub fn solve_2cut_corridor(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i32>>
     };
     println!("[macro_corridor] Block A solved: path len = {}", p_a.len());
 
+    let res_b = solve_corridor_block(&raw_g.adjacency_list, &v_b, port_v, port_u, "Block B", deadline);
     let p_b = match res_b {
         Ok(path) => path,
         Err(e) => {
