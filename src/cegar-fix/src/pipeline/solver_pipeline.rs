@@ -5,9 +5,6 @@ use crate::core::tour_verifier::TourVerifier;
 use crate::decomp::fast_filters::check_fast_invariants;
 use crate::decomp::spqr_parallel::{extract_subcomponent_graph, find_separation_pairs};
 use crate::decomp::spqr_series::{contract_series_chains, expand_series_tour};
-use crate::macro_decomp::corridor as macro_corridor;
-use crate::macro_decomp::dynamic_bipartite;
-use crate::macro_decomp::portfolio_788 as macro_788;
 use crate::pipeline::options::Options;
 use crate::solver::cegar_engine::{solve_cycle, solve_cycle_with_forced_edges, solve_path};
 use rayon::prelude::*;
@@ -107,14 +104,12 @@ pub fn verify_and_export(
 
 /// Unified solving pipeline function:
 /// 1. Load graph from `graph_path` using `file_operations::parse_graph_from_file(graph_path)`.
-/// 2. Check for cut vertices / articulation points (`g.has_articulation_points()`).
-/// 3. Try `HybridOrchestrator::solve(&g, &opts)` with timeout.
-/// 4. If not solved or returns None, try `fallback_cegar::solve_with_contraction(&g, remaining_timeout)`.
-/// 5. If tour found, verify with `TourVerifier::verify(&g, &tour)`.
-/// 6. If sound:
-///    - Write TSPLIB HCP file if `output_tour_path` is specified.
-///    - Return `Ok((tour, elapsed_time, vertex_count))`.
-/// 7. Else return `Err(reason)`.
+/// 2. Check fast topological invariants via `decomp::fast_filters::check_fast_invariants`.
+/// 3. Apply SPQR series degree-2 chain contraction via `decomp::spqr_series`.
+/// 4. Apply SPQR 2-cut separation pair decomposition via `decomp::spqr_parallel`.
+/// 5. Solve rigid skeleton via unified `solver::cegar_engine`.
+/// 6. Reversibly unroll cuts and chains via `assembly::tour_stitcher`.
+/// 7. Verify with `TourVerifier::verify` and optionally export TSPLIB HCP.
 pub fn solve_single_graph(
     graph_path: &str,
     timeout_secs: f64,
@@ -138,28 +133,6 @@ pub fn solve_single_graph(
         });
     }
     let deadline = start_time + std::time::Duration::from_secs_f64(timeout_secs);
-
-    // Step 1.5: Topological Macro-Decomposition Cascade
-    // Fast path for graphs exhibiting highly structured topologies.
-    // Dispatch checks run in O(V+E) time; if matched, the solver receives the full remaining deadline.
-    {
-        let rem = (deadline - Instant::now()).as_secs_f64();
-        if rem > 0.1 {
-            let mut macro_tour_opt: Option<Vec<i32>> = None;
-
-            if dynamic_bipartite::can_solve_bipartite(&g) {
-                macro_tour_opt = dynamic_bipartite::solve_bipartite(&g, rem);
-            } else if macro_788::can_solve_alternating_pairs(&g) {
-                macro_tour_opt = macro_788::solve_alternating_pairs(&g, rem);
-            } else if let Some((_u, _v)) = macro_corridor::can_solve_2cut(&g) {
-                macro_tour_opt = macro_corridor::solve_2cut_corridor(&g, rem);
-            }
-
-            if let Some(tour) = macro_tour_opt {
-                return verify_and_export(&g, &tour, start_time, output_tour_path);
-            }
-        }
-    }
 
     // Step 2: Contract series chains using crate::decomp::spqr_series::contract_series_chains
     let series_decomp = contract_series_chains(&g);
