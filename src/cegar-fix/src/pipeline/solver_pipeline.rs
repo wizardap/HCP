@@ -2,7 +2,9 @@ use crate::assembly::tour_stitcher::stitch_subpath;
 use crate::core::file_operations;
 use crate::core::graph::Graph;
 use crate::core::tour_verifier::TourVerifier;
+use crate::decomp::alternating_pairs;
 use crate::decomp::fast_filters::check_fast_invariants;
+use crate::decomp::hub_cluster;
 use crate::decomp::spqr_parallel::{extract_subcomponent_graph, find_separation_pairs};
 use crate::decomp::spqr_series::{contract_series_chains, expand_series_tour};
 use crate::pipeline::options::Options;
@@ -134,18 +136,28 @@ pub fn solve_single_graph(
     }
     let deadline = start_time + std::time::Duration::from_secs_f64(timeout_secs);
 
+    // Step 1.5: Fast Topological Decomposition Dispatch
+    let rem_timeout = (deadline - Instant::now()).as_secs_f64();
+    if rem_timeout > 1.0 {
+        if hub_cluster::can_solve_bipartite(&g) {
+            if let Some(tour) = hub_cluster::solve_bipartite(&g, rem_timeout) {
+                return verify_and_export(&g, &tour, start_time, output_tour_path);
+            }
+        } else if alternating_pairs::can_solve_alternating_pairs(&g) {
+            if let Some(tour) = alternating_pairs::solve_alternating_pairs(&g, rem_timeout) {
+                return verify_and_export(&g, &tour, start_time, output_tour_path);
+            }
+        }
+    }
+
     // Step 2: Contract series chains using crate::decomp::spqr_series::contract_series_chains
     let series_decomp = contract_series_chains(&g);
 
     // Guard against over-contraction (if contracted graph has < 3 vertices, use original graph)
     let (work_g, chain_map) = if series_decomp.contracted_g.adjacency_list.len() >= 3 {
-        // If contracted_g has no 2-cut on small graphs, but g itself does, prefer g
-        let pairs = if series_decomp.contracted_g.adjacency_list.len() <= 250 {
-            find_separation_pairs(&series_decomp.contracted_g)
-        } else {
-            Vec::new()
-        };
-        if pairs.is_empty() && g.adjacency_list.len() <= 100 {
+        // If contracted_g has no 2-cut, but g itself does, prefer g
+        let pairs = find_separation_pairs(&series_decomp.contracted_g);
+        if pairs.is_empty() {
             let orig_pairs = find_separation_pairs(&g);
             let has_nontrivial = orig_pairs.iter().any(|p| {
                 p.components.len() == 2 && p.components[0].len() >= 2 && p.components[1].len() >= 2
@@ -166,7 +178,7 @@ pub fn solve_single_graph(
     let mut cur_g = work_g;
     let mut stitched_cuts: Vec<(i32, i32, Vec<i32>)> = Vec::new();
 
-    while cur_g.adjacency_list.len() >= 4 && cur_g.adjacency_list.len() <= 250 {
+    while cur_g.adjacency_list.len() >= 4 {
         let elapsed = start_time.elapsed().as_secs_f64();
         if elapsed >= timeout_secs {
             return Err(SolverPipelineError {

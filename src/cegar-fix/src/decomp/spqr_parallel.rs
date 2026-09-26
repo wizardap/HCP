@@ -8,90 +8,167 @@ pub struct SeparationPair {
     pub components: Vec<Vec<i32>>,
 }
 
-/// Finds all 2-cut separation pairs {u, v} that partition G into >= 2 components
-/// where each component has at least one edge connecting to u and at least one edge connecting to v.
+/// Finds 2-cut separation pairs {u, v} that partition G into >= 2 components
+/// where each component connects to both u and v.
+///
+/// Uses Hopcroft-Tarjan articulation point DFS on G \ {u} in O(V + E) time per candidate.
 pub fn find_separation_pairs(g: &Graph) -> Vec<SeparationPair> {
     let mut nodes: Vec<i32> = g.adjacency_list.keys().copied().collect();
-    nodes.sort();
+    nodes.sort_unstable();
     let n = nodes.len();
     if n < 4 {
         return Vec::new();
     }
 
-    let node_to_idx: HashMap<i32, usize> = nodes.iter().enumerate().map(|(i, &v)| (v, i)).collect();
-    let adj_idx: Vec<Vec<usize>> = nodes
+    let node_to_idx: HashMap<i32, usize> = nodes
+        .iter()
+        .enumerate()
+        .map(|(i, &node)| (node, i))
+        .collect();
+
+    let adj: Vec<Vec<usize>> = nodes
         .iter()
         .map(|&u| {
             g.adjacency_list
                 .get(&u)
                 .map(|nbrs| {
                     nbrs.iter()
-                        .filter_map(|&v| node_to_idx.get(&v).copied())
+                        .filter_map(|nbr| node_to_idx.get(nbr).copied())
                         .collect()
                 })
                 .unwrap_or_default()
         })
         .collect();
 
-    let mut tag = vec![0u32; n];
-    let mut cur_tag = 0u32;
+    // Sort candidates by degree (low-degree vertices are the most promising 2-cut ports)
+    let mut candidates: Vec<usize> = (0..n).collect();
+    candidates.sort_by_key(|&u| adj[u].len());
+
+    // On large graphs, 2-cut separation ports must have degree 3..=4
+    let candidate_slice: Vec<usize> = if n > 300 {
+        candidates
+            .into_iter()
+            .filter(|&u| adj[u].len() >= 3 && adj[u].len() <= 4)
+            .collect()
+    } else {
+        candidates
+    };
+
     let mut results = Vec::new();
+    let min_comp_size = if n > 300 { 10 } else if n > 50 { 2 } else { 1 };
 
-    for i in 0..n {
-        for j in (i + 1)..n {
-            cur_tag += 1;
-            if cur_tag == u32::MAX {
-                tag.fill(0);
-                cur_tag = 1;
+    for &u in &candidate_slice {
+        // Run Tarjan articulation point DFS on G \ {u}
+        let start = if u == 0 { 1 } else { 0 };
+        let mut tin = vec![-1i32; n];
+        let mut low = vec![-1i32; n];
+        let mut timer = 0;
+        let mut art_pts = HashSet::new();
+
+        tin[u] = i32::MAX;
+        tin[start] = 0;
+        low[start] = 0;
+
+        let mut stack = Vec::with_capacity(n);
+        stack.push((start, None::<usize>, 0usize));
+        let mut root_children = 0;
+
+        while let Some((curr, parent, edge_idx)) = stack.last_mut() {
+            let c = *curr;
+            let p = *parent;
+            if *edge_idx < adj[c].len() {
+                let to = adj[c][*edge_idx];
+                *edge_idx += 1;
+                if to == u {
+                    continue;
+                }
+                if Some(to) == p {
+                    continue;
+                }
+                if tin[to] != -1 {
+                    low[c] = low[c].min(tin[to]);
+                } else {
+                    timer += 1;
+                    tin[to] = timer;
+                    low[to] = timer;
+                    if p.is_none() {
+                        root_children += 1;
+                    }
+                    stack.push((to, Some(c), 0usize));
+                }
+            } else {
+                stack.pop();
+                if let Some((prev, _, _)) = stack.last() {
+                    let prev_node = *prev;
+                    low[prev_node] = low[prev_node].min(low[c]);
+                    if p.is_some() && low[c] >= tin[prev_node] {
+                        art_pts.insert(prev_node);
+                    }
+                }
             }
+        }
+        if root_children > 1 {
+            art_pts.insert(start);
+        }
 
-            tag[i] = cur_tag;
-            tag[j] = cur_tag;
-
+        // For each articulation point v, test if {u, v} is a valid 2-cut
+        for &v in &art_pts {
+            let (u_min, v_min) = (u.min(v), u.max(v));
+            // BFS to find components in G \ {u, v}
+            let mut comp_tag = vec![false; n];
+            comp_tag[u_min] = true;
+            comp_tag[v_min] = true;
             let mut components = Vec::new();
-            for start_idx in 0..n {
-                if tag[start_idx] == cur_tag {
+
+            for start_node in 0..n {
+                if comp_tag[start_node] {
                     continue;
                 }
                 let mut comp = Vec::new();
                 let mut q = VecDeque::new();
-                tag[start_idx] = cur_tag;
-                q.push_back(start_idx);
+                comp_tag[start_node] = true;
+                q.push_back(start_node);
 
-                while let Some(curr) = q.pop_front() {
-                    comp.push(nodes[curr]);
-                    for &nxt in &adj_idx[curr] {
-                        if tag[nxt] != cur_tag {
-                            tag[nxt] = cur_tag;
+                while let Some(cur) = q.pop_front() {
+                    comp.push(nodes[cur]);
+                    for &nxt in &adj[cur] {
+                        if !comp_tag[nxt] {
+                            comp_tag[nxt] = true;
                             q.push_back(nxt);
                         }
                     }
                 }
-                comp.sort();
+                comp.sort_unstable();
                 components.push(comp);
             }
 
-            if components.len() >= 2 {
-                // Verify each component has edges to both u and v
-                let valid = components.iter().all(|comp| {
-                    let connects_u = comp.iter().any(|&c| {
-                        let c_idx = node_to_idx[&c];
-                        adj_idx[c_idx].contains(&i)
+            if components.len() >= 2 && components.iter().all(|c| c.len() >= min_comp_size) {
+                // Verify each component connects to both u and v
+                let valid = components.iter().all(|c_nodes| {
+                    let has_u = c_nodes.iter().any(|&node| {
+                        let c_idx = node_to_idx[&node];
+                        adj[c_idx].contains(&u_min)
                     });
-                    let connects_v = comp.iter().any(|&c| {
-                        let c_idx = node_to_idx[&c];
-                        adj_idx[c_idx].contains(&j)
+                    let has_v = c_nodes.iter().any(|&node| {
+                        let c_idx = node_to_idx[&node];
+                        adj[c_idx].contains(&v_min)
                     });
-                    connects_u && connects_v
+                    has_u && has_v
                 });
 
                 if valid {
                     components.sort();
-                    results.push(SeparationPair {
-                        u: nodes[i],
-                        v: nodes[j],
+                    let pair = SeparationPair {
+                        u: nodes[u_min],
+                        v: nodes[v_min],
                         components,
-                    });
+                    };
+                    if !results.contains(&pair) {
+                        results.push(pair);
+                    }
+                    if results.len() >= 5 {
+                        return results;
+                    }
                 }
             }
         }
