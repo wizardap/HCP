@@ -1,12 +1,11 @@
-use crate::core::encoder::add_at_most_2;
 use crate::core::graph::Graph;
 use crate::core::solver_utils::create_solver_with_deadline;
 use crate::core::tour_verifier::TourVerifier;
-use crate::fallback::cycle_merge::safe_2opt_merge;
 use rustsat::clause;
 use rustsat::instances::{BasicVarManager, ManageVars};
 use rustsat::solvers::{Solve, SolverResult};
 use rustsat::types::{Clause, Lit, TernaryVal};
+use rustsat_cadical::CaDiCaL;
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
@@ -318,3 +317,161 @@ pub fn solve_path(
         Err("Cycle orientation mismatch with specified ports".to_string())
     }
 }
+
+/// Merges two cycles if there exist vertices u1, u2 on c1 and v1, v2 on c2
+/// such that deleting (u1, u2) and (v1, v2) and reconnecting forms a single cycle.
+/// Never deletes edges present in `forbidden_delete`.
+fn merge_two_cycles(
+    c1: &[i32],
+    c2: &[i32],
+    adj: &HashMap<i32, HashSet<i32>>,
+    forbidden_delete: &HashSet<(i32, i32)>,
+) -> Option<Vec<i32>> {
+    let n1 = c1.len();
+    let n2 = c2.len();
+    if n1 == 0 || n2 == 0 {
+        return None;
+    }
+
+    for i in 0..n1 {
+        let u1 = c1[i];
+        let u2 = c1[(i + 1) % n1];
+        let e1 = (u1.min(u2), u1.max(u2));
+        if forbidden_delete.contains(&e1) {
+            continue;
+        }
+
+        let u1_nbrs = match adj.get(&u1) {
+            Some(s) => s,
+            None => continue,
+        };
+        let u2_nbrs = match adj.get(&u2) {
+            Some(s) => s,
+            None => continue,
+        };
+
+        for j in 0..n2 {
+            let v1 = c2[j];
+            let v2 = c2[(j + 1) % n2];
+            let e2 = (v1.min(v2), v1.max(v2));
+            if forbidden_delete.contains(&e2) {
+                continue;
+            }
+
+            // Case 1: (u1, v1) and (u2, v2)
+            if u1_nbrs.contains(&v1) && u2_nbrs.contains(&v2) {
+                let mut tour = Vec::with_capacity(n1 + n2);
+                for k in 1..=n1 {
+                    tour.push(c1[(i + k) % n1]);
+                }
+                for k in 0..n2 {
+                    let idx = (j + n2 - (k % n2)) % n2;
+                    tour.push(c2[idx]);
+                }
+                return Some(tour);
+            }
+
+            // Case 2: (u1, v2) and (u2, v1)
+            if u1_nbrs.contains(&v2) && u2_nbrs.contains(&v1) {
+                let mut tour = Vec::with_capacity(n1 + n2);
+                for k in 1..=n1 {
+                    tour.push(c1[(i + k) % n1]);
+                }
+                for k in 0..n2 {
+                    let idx = (j + 1 + k) % n2;
+                    tour.push(c2[idx]);
+                }
+                return Some(tour);
+            }
+        }
+    }
+
+    None
+}
+
+/// Attempts greedy 2-opt pairwise merge on disjoint cycles.
+/// Never deletes any edge in `forbidden_delete`.
+fn safe_2opt_merge(
+    cycles: &[Vec<i32>],
+    adj: &HashMap<i32, HashSet<i32>>,
+    forbidden_delete: &HashSet<(i32, i32)>,
+) -> Option<Vec<i32>> {
+    let mut curr = cycles.to_vec();
+    let mut merged_any = true;
+
+    while merged_any && curr.len() > 1 {
+        merged_any = false;
+        curr.sort_by(|a, b| b.len().cmp(&a.len()));
+
+        let num_cycles = curr.len();
+        let mut merge_step = None;
+
+        'search: for i in 0..num_cycles {
+            for j in (i + 1)..num_cycles {
+                if let Some(res) = merge_two_cycles(&curr[i], &curr[j], adj, forbidden_delete) {
+                    merge_step = Some((i, j, res));
+                    break 'search;
+                }
+            }
+        }
+
+        if let Some((i, j, res)) = merge_step {
+            curr.remove(j);
+            curr[i] = res;
+            merged_any = true;
+        }
+    }
+
+    if curr.len() == 1 {
+        Some(curr.into_iter().next().unwrap())
+    } else {
+        None
+    }
+}
+
+/// Sequential counter encoding for at-most-2 cardinality constraint.
+fn add_at_most_2(
+    solver: &mut CaDiCaL,
+    var_mgr: &mut BasicVarManager,
+    edge_lits: &[Lit],
+) {
+    let n = edge_lits.len();
+    if n <= 2 {
+        return;
+    }
+    if n <= 32 {
+        for i in 0..n {
+            for j in (i + 1)..n {
+                for k in (j + 1)..n {
+                    let _ = solver.add_clause(clause![!edge_lits[i], !edge_lits[j], !edge_lits[k]]);
+                }
+            }
+        }
+        return;
+    }
+
+    let mut s: Vec<Vec<Lit>> = Vec::with_capacity(n - 1);
+    for _ in 0..(n - 1) {
+        let s0 = var_mgr.new_var().pos_lit();
+        let s1 = var_mgr.new_var().pos_lit();
+        s.push(vec![s0, s1]);
+    }
+
+    // Base clauses (i = 0)
+    let _ = solver.add_clause(clause![!edge_lits[0], s[0][0]]);
+    let _ = solver.add_clause(clause![!s[0][1]]);
+
+    // Step clauses (i = 1..n-1)
+    for i in 1..(n - 1) {
+        let _ = solver.add_clause(clause![!s[i - 1][0], s[i][0]]);
+        let _ = solver.add_clause(clause![!s[i - 1][1], s[i][1]]);
+
+        let _ = solver.add_clause(clause![!edge_lits[i], s[i][0]]);
+        let _ = solver.add_clause(clause![!edge_lits[i], !s[i - 1][0], s[i][1]]);
+        let _ = solver.add_clause(clause![!edge_lits[i], !s[i - 1][1]]);
+    }
+
+    // Final clause for last literal
+    let _ = solver.add_clause(clause![!edge_lits[n - 1], !s[n - 2][1]]);
+}
+
