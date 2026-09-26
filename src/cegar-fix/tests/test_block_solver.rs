@@ -1,6 +1,6 @@
 use cegar_fix::core::graph::Graph;
 use cegar_fix::core::tour_verifier::TourVerifier;
-use cegar_fix::solver::block_solver::{solve_hamiltonian_cycle, solve_hamiltonian_path};
+use cegar_fix::solver::cegar_engine::{solve_cycle as solve_hamiltonian_cycle, solve_path as solve_hamiltonian_path};
 
 #[test]
 fn test_solve_cycle_triangle() {

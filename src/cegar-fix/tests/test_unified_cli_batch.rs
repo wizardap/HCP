@@ -38,7 +38,7 @@ fn test_solve_single_graph_graph1() {
 }
 
 #[test]
-fn test_solve_single_graph_graph76_fallback() {
+fn test_solve_single_graph_graph76() {
     let graph_path = find_graph_file(76).expect("graph76.col must exist");
     let tour_out = "target/test_tour_graph76.hcp";
     if Path::new(tour_out).exists() {
@@ -46,7 +46,7 @@ fn test_solve_single_graph_graph76_fallback() {
     }
 
     let result = solve_single_graph(&graph_path, 30.0, Some(tour_out));
-    assert!(result.is_ok(), "graph76 must be solved via fallback CEGAR: {:?}", result.err());
+    assert!(result.is_ok(), "graph76 must be solved: {:?}", result.err());
 
     let (tour, _elapsed, vertices) = result.unwrap();
     assert_eq!(vertices, 471);
