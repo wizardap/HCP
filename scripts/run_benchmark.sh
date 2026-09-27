@@ -71,10 +71,8 @@ locate_runlim() {
 
 # --- Function: Ensure Solver Binary is Built ---
 ensure_solver() {
-    if [ ! -f "$SOLVER_BIN" ]; then
-        echo "[INFO] Solver binary not found at $SOLVER_BIN. Building release binary..."
-        (cd "$PROJECT_ROOT/src/cegar-fix" && cargo build --release)
-    fi
+    echo "[INFO] Ensuring solver binary is built and up-to-date..."
+    (cd "$PROJECT_ROOT/src/cegar-fix" && cargo build --release)
     if [ ! -x "$SOLVER_BIN" ]; then
         echo "[ERROR] Solver binary at $SOLVER_BIN is not executable."
         exit 1
@@ -167,8 +165,8 @@ for ((gid = START_ID; gid <= END_ID; gid++)); do
 
     # Check for resume capability
     if is_graph_completed "$gid"; then
-        EXISTING_STATUS=$(awk -F',' -v target="$gid" 'NR > 1 && $1 == target {print $2; exit}' "$CSV_FILE")
-        EXISTING_TIME=$(awk -F',' -v target="$gid" 'NR > 1 && $1 == target {print $3; exit}' "$CSV_FILE")
+        EXISTING_STATUS=$(awk -F',' -v target="$gid" 'NR > 1 && $1 == target {print $2; exit}' "$CSV_FILE" 2>/dev/null || true)
+        EXISTING_TIME=$(awk -F',' -v target="$gid" 'NR > 1 && $1 == target {print $3; exit}' "$CSV_FILE" 2>/dev/null || true)
         echo "[RESUME] [$PROCESSED_COUNT/$TOTAL_COUNT] Graph $gid already completed (Status: $EXISTING_STATUS, Solve Time: ${EXISTING_TIME}s). Skipping."
         continue
     fi
@@ -189,9 +187,12 @@ for ((gid = START_ID; gid <= END_ID; gid++)); do
         -o "$TOUR_FILE" > "$SOLVER_LOG" 2>&1 || EXIT_CODE=$?
 
     # --- Metrics Extraction from runlim ---
-    RUNLIM_STATUS=$(grep "^\[runlim\] status:" "$RUNLIM_LOG" 2>/dev/null | awk '{$1=""; print $0}' | sed 's/^[ \t]*//' || echo "unknown")
-    RUNLIM_REAL=$(grep "^\[runlim\] real:" "$RUNLIM_LOG" 2>/dev/null | awk '{print $3}' || echo "0.0")
-    RUNLIM_SPACE=$(grep "^\[runlim\] space:" "$RUNLIM_LOG" 2>/dev/null | awk '{print $3}' || echo "0")
+    RUNLIM_STATUS=$(grep "^\[runlim\] status:" "$RUNLIM_LOG" 2>/dev/null | awk '{$1=""; print $0}' | sed 's/^[ \t]*//' || true)
+    if [ -z "$RUNLIM_STATUS" ]; then RUNLIM_STATUS="unknown"; fi
+    RUNLIM_REAL=$(grep "^\[runlim\] real:" "$RUNLIM_LOG" 2>/dev/null | awk '{print $3}' || true)
+    if [ -z "$RUNLIM_REAL" ]; then RUNLIM_REAL="0.0"; fi
+    RUNLIM_SPACE=$(grep "^\[runlim\] space:" "$RUNLIM_LOG" 2>/dev/null | awk '{print $3}' || true)
+    if [ -z "$RUNLIM_SPACE" ]; then RUNLIM_SPACE="0"; fi
 
     # --- Status and Timing Determination ---
     STATUS="UNKNOWN"
@@ -213,14 +214,19 @@ for ((gid = START_ID; gid <= END_ID; gid++)); do
         STATUS="SAT"
         SAT_COUNT=$((SAT_COUNT + 1))
         # Extract solve time before verification
-        EXTRACTED_SOLVE=$(grep "^solve_time_sec:" "$SOLVER_LOG" 2>/dev/null | awk '{print $2}')
+        EXTRACTED_SOLVE=$(grep "^solve_time_sec:" "$SOLVER_LOG" 2>/dev/null | awk '{print $2}' || true)
         if [ -n "$EXTRACTED_SOLVE" ]; then
             SOLVE_TIME="$EXTRACTED_SOLVE"
         else
-            # Fallback to overall time if solve_time_sec not found
-            SOLVE_TIME="$RUNLIM_REAL"
+            # Fallback to overall time if solve_time_sec not present
+            OVERALL_FALLBACK=$(grep "^overall time = " "$SOLVER_LOG" 2>/dev/null | awk '{print $4}' | sed 's/s$//' || true)
+            if [ -n "$OVERALL_FALLBACK" ]; then
+                SOLVE_TIME="$OVERALL_FALLBACK"
+            else
+                SOLVE_TIME="$RUNLIM_REAL"
+            fi
         fi
-        EXTRACTED_VERIFY=$(grep "^verify_time_sec:" "$SOLVER_LOG" 2>/dev/null | awk '{print $2}')
+        EXTRACTED_VERIFY=$(grep "^verify_time_sec:" "$SOLVER_LOG" 2>/dev/null | awk '{print $2}' || true)
         if [ -n "$EXTRACTED_VERIFY" ]; then
             VERIFY_TIME="$EXTRACTED_VERIFY"
         fi
