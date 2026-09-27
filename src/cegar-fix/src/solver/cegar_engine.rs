@@ -172,6 +172,9 @@ pub fn solve_cycle_with_forced_edges(
         forbidden_edges.insert((fe.0.min(fe.1), fe.0.max(fe.1)));
     }
 
+    let t_start = Instant::now();
+    let mut iter_count = 0;
+
     // CEGAR loop with DFJ subcycle cuts and 2-opt merge acceleration
     loop {
         if Instant::now() >= deadline {
@@ -187,6 +190,7 @@ pub fn solve_cycle_with_forced_edges(
             SolverResult::Unsat => return Err("UNSAT".to_string()),
             SolverResult::Interrupted => return Err("TIMEOUT".to_string()),
             SolverResult::Sat => {
+                iter_count += 1;
                 let sol = solver
                     .full_solution()
                     .map_err(|e| format!("Failed to get full solution: {:?}", e))?;
@@ -207,6 +211,17 @@ pub fn solve_cycle_with_forced_edges(
 
                 let cycles = extract_subcycles(&nodes, &active_adj);
 
+                if iter_count % 10 == 0 || cycles.len() <= 8 {
+                    let largest = cycles.iter().map(|c| c.len()).max().unwrap_or(0);
+                    println!(
+                        "  [cegar_engine] Iter {:3} ({:.2}s): {} cycles (largest={})",
+                        iter_count,
+                        t_start.elapsed().as_secs_f64(),
+                        cycles.len(),
+                        largest
+                    );
+                }
+
                 if cycles.len() == 1 && cycles[0].len() == n {
                     let (ok, err) = TourVerifier::verify(g, &cycles[0]);
                     if ok {
@@ -216,12 +231,18 @@ pub fn solve_cycle_with_forced_edges(
                     }
                 }
 
-                // Heuristic 2-opt merge acceleration for 2..=4 cycles
-                if cycles.len() >= 2 && cycles.len() <= 4 {
+                // Heuristic 2-opt/3-opt merge acceleration for 2..=32 cycles
+                if cycles.len() >= 2 && cycles.len() <= 32 {
                     if let Some(merged) = safe_2opt_merge(&cycles, &adj_sets, &forbidden_edges) {
                         if merged.len() == n {
                             let (ok, _) = TourVerifier::verify(g, &merged);
                             if ok {
+                                println!(
+                                    "  [cegar_engine] 2-opt merged {} cycles into 1 valid tour at iter {} ({:.2}s)!",
+                                    cycles.len(),
+                                    iter_count,
+                                    t_start.elapsed().as_secs_f64()
+                                );
                                 return Ok(merged);
                             }
                         }
@@ -249,8 +270,21 @@ pub fn solve_cycle_with_forced_edges(
                         if cut_lits.is_empty() {
                             return Err("UNSAT".to_string());
                         }
-                        let cl = Clause::from_iter(cut_lits);
+                        let cl = Clause::from_iter(cut_lits.clone());
                         let _ = solver.add_clause(cl);
+
+                        if cut_lits.len() <= 10 {
+                            for i in 0..cut_lits.len() {
+                                let mut cl = Vec::with_capacity(cut_lits.len());
+                                cl.push(!cut_lits[i]);
+                                for j in 0..cut_lits.len() {
+                                    if i != j {
+                                        cl.push(cut_lits[j]);
+                                    }
+                                }
+                                let _ = solver.add_clause(Clause::from_iter(cl));
+                            }
+                        }
 
                         // Cycle edge blocking clause: \bigvee_{e in C} \neg e
                         let mut block_lits = Vec::new();
@@ -272,20 +306,18 @@ pub fn solve_cycle_with_forced_edges(
     }
 }
 
-/// Solves Hamiltonian path between `port_u` and `port_v` on `g`.
-/// Reduces the path problem to Hamiltonian cycle by adding a dummy vertex `w`
-/// connected strictly to `port_u` and `port_v`.
-pub fn solve_path(
+/// Solves Hamiltonian path between `port_u` and `port_v` on `g` with forced edges.
+pub fn solve_path_with_forced_edges(
     g: &Graph,
     port_u: i32,
     port_v: i32,
     timeout_secs: f64,
+    forced_edges: &HashSet<(i32, i32)>,
 ) -> Result<Vec<i32>, String> {
     if port_u == port_v {
         return Err("Path ports must be distinct".to_string());
     }
 
-    // Allocate dummy vertex ID higher than any existing vertex ID
     let max_id = g.adjacency_list.keys().copied().max().unwrap_or(0);
     let dummy_w = max_id + 1;
 
@@ -293,9 +325,8 @@ pub fn solve_path(
     augmented_g.add_edge(dummy_w, port_u);
     augmented_g.add_edge(dummy_w, port_v);
 
-    let cycle = solve_cycle(&augmented_g, timeout_secs)?;
+    let cycle = solve_cycle_with_forced_edges(&augmented_g, timeout_secs, forced_edges)?;
 
-    // Extract path between port_u and port_v excluding dummy_w
     let dummy_pos = cycle
         .iter()
         .position(|&x| x == dummy_w)
@@ -307,7 +338,6 @@ pub fn solve_path(
         raw_path.push(cycle[(dummy_pos + i) % cycle_len]);
     }
 
-    // Ensure path starts at port_u and ends at port_v
     if raw_path.first() == Some(&port_u) && raw_path.last() == Some(&port_v) {
         Ok(raw_path)
     } else if raw_path.first() == Some(&port_v) && raw_path.last() == Some(&port_u) {
@@ -316,6 +346,18 @@ pub fn solve_path(
     } else {
         Err("Cycle orientation mismatch with specified ports".to_string())
     }
+}
+
+/// Solves Hamiltonian path between `port_u` and `port_v` on `g`.
+/// Reduces the path problem to Hamiltonian cycle by adding a dummy vertex `w`
+/// connected strictly to `port_u` and `port_v`.
+pub fn solve_path(
+    g: &Graph,
+    port_u: i32,
+    port_v: i32,
+    timeout_secs: f64,
+) -> Result<Vec<i32>, String> {
+    solve_path_with_forced_edges(g, port_u, port_v, timeout_secs, &HashSet::new())
 }
 
 /// Merges two cycles if there exist vertices u1, u2 on c1 and v1, v2 on c2
@@ -332,6 +374,8 @@ fn merge_two_cycles(
     if n1 == 0 || n2 == 0 {
         return None;
     }
+
+    let c2_pos: HashMap<i32, usize> = c2.iter().enumerate().map(|(idx, &v)| (v, idx)).collect();
 
     for i in 0..n1 {
         let u1 = c1[i];
@@ -350,42 +394,146 @@ fn merge_two_cycles(
             None => continue,
         };
 
-        for j in 0..n2 {
-            let v1 = c2[j];
-            let v2 = c2[(j + 1) % n2];
-            let e2 = (v1.min(v2), v1.max(v2));
-            if forbidden_delete.contains(&e2) {
-                continue;
-            }
+        for &v1 in u1_nbrs {
+            if let Some(&j) = c2_pos.get(&v1) {
+                // Forward orientation: cut (v1, v2) where v2 = c2[(j + 1) % n2]
+                let v2 = c2[(j + 1) % n2];
+                let e2 = (v1.min(v2), v1.max(v2));
+                if !forbidden_delete.contains(&e2) && u2_nbrs.contains(&v2) {
+                    let mut tour = Vec::with_capacity(n1 + n2);
+                    for k in 1..=n1 {
+                        tour.push(c1[(i + k) % n1]);
+                    }
+                    for k in 0..n2 {
+                        let idx = (j + n2 - (k % n2)) % n2;
+                        tour.push(c2[idx]);
+                    }
+                    return Some(tour);
+                }
 
-            // Case 1: (u1, v1) and (u2, v2)
-            if u1_nbrs.contains(&v1) && u2_nbrs.contains(&v2) {
-                let mut tour = Vec::with_capacity(n1 + n2);
-                for k in 1..=n1 {
-                    tour.push(c1[(i + k) % n1]);
+                // Backward orientation: cut (v0, v1) where v0 = c2[(j + n2 - 1) % n2]
+                let v0 = c2[(j + n2 - 1) % n2];
+                let e0 = (v0.min(v1), v0.max(v1));
+                if !forbidden_delete.contains(&e0) && u2_nbrs.contains(&v0) {
+                    let j_prev = (j + n2 - 1) % n2;
+                    let mut tour = Vec::with_capacity(n1 + n2);
+                    for k in 1..=n1 {
+                        tour.push(c1[(i + k) % n1]);
+                    }
+                    for k in 0..n2 {
+                        let idx = (j_prev + 1 + k) % n2;
+                        tour.push(c2[idx]);
+                    }
+                    return Some(tour);
                 }
-                for k in 0..n2 {
-                    let idx = (j + n2 - (k % n2)) % n2;
-                    tour.push(c2[idx]);
-                }
-                return Some(tour);
-            }
-
-            // Case 2: (u1, v2) and (u2, v1)
-            if u1_nbrs.contains(&v2) && u2_nbrs.contains(&v1) {
-                let mut tour = Vec::with_capacity(n1 + n2);
-                for k in 1..=n1 {
-                    tour.push(c1[(i + k) % n1]);
-                }
-                for k in 0..n2 {
-                    let idx = (j + 1 + k) % n2;
-                    tour.push(c2[idx]);
-                }
-                return Some(tour);
             }
         }
     }
 
+    None
+}
+
+/// 3-opt cycle merge:
+/// Splits c1 at (B, C) and (D, A), with chord (C, A) in c1,
+/// and splits c2 at (x, y) with cross-edges (B, x) and (y, D).
+/// Inserts c2 into c1 and reverses one of c1's segments using chord (C, A).
+fn merge_two_cycles_3opt(
+    c1: &[i32],
+    c2: &[i32],
+    adj: &HashMap<i32, HashSet<i32>>,
+    forbidden_delete: &HashSet<(i32, i32)>,
+) -> Option<Vec<i32>> {
+    let n1 = c1.len();
+    let n2 = c2.len();
+    if n1 < 4 || n2 == 0 {
+        return None;
+    }
+    let pos1: HashMap<i32, usize> = c1.iter().enumerate().map(|(i, &u)| (u, i)).collect();
+
+    for idx2 in 0..n2 {
+        let x = c2[idx2];
+        for &(y, rev) in &[(c2[(idx2 + 1) % n2], false), (c2[(idx2 + n2 - 1) % n2], true)] {
+            let e_xy = (x.min(y), x.max(y));
+            if forbidden_delete.contains(&e_xy) {
+                continue;
+            }
+            let nbrs_x: Vec<i32> = adj
+                .get(&x)
+                .map(|s| s.iter().filter(|v| pos1.contains_key(v)).copied().collect())
+                .unwrap_or_default();
+            let nbrs_y: Vec<i32> = adj
+                .get(&y)
+                .map(|s| s.iter().filter(|v| pos1.contains_key(v)).copied().collect())
+                .unwrap_or_default();
+            if nbrs_x.is_empty() || nbrs_y.is_empty() {
+                continue;
+            }
+
+            for &b in &nbrs_x {
+                let idx_b = pos1[&b];
+                let c = c1[(idx_b + 1) % n1];
+                let e_bc = (b.min(c), b.max(c));
+                if forbidden_delete.contains(&e_bc) {
+                    continue;
+                }
+
+                for &d in &nbrs_y {
+                    if d == b || d == c {
+                        continue;
+                    }
+                    let idx_d = pos1[&d];
+                    let a = c1[(idx_d + 1) % n1];
+                    if a == b || a == c || a == d {
+                        continue;
+                    }
+                    let e_da = (d.min(a), d.max(a));
+                    if forbidden_delete.contains(&e_da) {
+                        continue;
+                    }
+
+                    if adj.get(&c).map_or(false, |s| s.contains(&a)) {
+                        let mut p1 = Vec::new();
+                        let mut curr = (idx_d + 1) % n1;
+                        loop {
+                            p1.push(c1[curr]);
+                            if c1[curr] == b {
+                                break;
+                            }
+                            curr = (curr + 1) % n1;
+                        }
+
+                        let mut p2 = Vec::new();
+                        let mut curr2 = (idx_b + 1) % n1;
+                        loop {
+                            p2.push(c1[curr2]);
+                            if c1[curr2] == d {
+                                break;
+                            }
+                            curr2 = (curr2 + 1) % n1;
+                        }
+
+                        if p1.len() + p2.len() == n1 {
+                            let mut q_path = Vec::with_capacity(n2);
+                            if !rev {
+                                for k in 0..n2 {
+                                    q_path.push(c2[(idx2 + n2 - (k % n2)) % n2]);
+                                }
+                            } else {
+                                for k in 0..n2 {
+                                    q_path.push(c2[(idx2 + k) % n2]);
+                                }
+                            }
+                            p2.reverse();
+                            let mut res = p1;
+                            res.extend(q_path);
+                            res.extend(p2);
+                            return Some(res);
+                        }
+                    }
+                }
+            }
+        }
+    }
     None
 }
 
@@ -422,6 +570,54 @@ fn safe_2opt_merge(
         }
     }
 
+    let mut merged_3opt = true;
+    while merged_3opt && curr.len() > 1 && curr.len() <= 6 {
+        merged_3opt = false;
+        curr.sort_by(|a, b| b.len().cmp(&a.len()));
+        let num_cycles = curr.len();
+        let mut merge_step = None;
+        'search_3opt: for i in 0..num_cycles {
+            for j in (i + 1)..num_cycles {
+                if let Some(res) = merge_two_cycles_3opt(&curr[i], &curr[j], adj, forbidden_delete) {
+                    merge_step = Some((i, j, res));
+                    break 'search_3opt;
+                }
+                if let Some(res) = merge_two_cycles_3opt(&curr[j], &curr[i], adj, forbidden_delete) {
+                    merge_step = Some((j, i, res));
+                    break 'search_3opt;
+                }
+            }
+        }
+        if let Some((i, j, res)) = merge_step {
+            let max_idx = i.max(j);
+            let min_idx = i.min(j);
+            curr.remove(max_idx);
+            curr[min_idx] = res;
+            merged_3opt = true;
+
+            let mut merged_2opt = true;
+            while merged_2opt && curr.len() > 1 {
+                merged_2opt = false;
+                curr.sort_by(|a, b| b.len().cmp(&a.len()));
+                let n_c = curr.len();
+                let mut step_2opt = None;
+                'search_inner: for a in 0..n_c {
+                    for b in (a + 1)..n_c {
+                        if let Some(r) = merge_two_cycles(&curr[a], &curr[b], adj, forbidden_delete) {
+                            step_2opt = Some((a, b, r));
+                            break 'search_inner;
+                        }
+                    }
+                }
+                if let Some((a, b, r)) = step_2opt {
+                    curr.remove(b);
+                    curr[a] = r;
+                    merged_2opt = true;
+                }
+            }
+        }
+    }
+
     if curr.len() == 1 {
         Some(curr.into_iter().next().unwrap())
     } else {
@@ -430,7 +626,7 @@ fn safe_2opt_merge(
 }
 
 /// Sequential counter encoding for at-most-2 cardinality constraint.
-fn add_at_most_2(
+pub fn add_at_most_2(
     solver: &mut CaDiCaL,
     var_mgr: &mut BasicVarManager,
     edge_lits: &[Lit],

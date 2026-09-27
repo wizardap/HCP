@@ -3,7 +3,7 @@ use crate::core::tour_verifier::TourVerifier;
 use crate::decomp::spqr_series::{contract_series_chains, expand_series_tour};
 use rustsat::clause;
 use rustsat::instances::{BasicVarManager, Cnf, ManageVars};
-use rustsat::solvers::{ControlSignal, PhaseLit, Solve, SolverResult, Terminate};
+use rustsat::solvers::{ControlSignal, Solve, SolverResult, Terminate};
 use rustsat::types::{Clause, Lit};
 use rustsat_cadical::CaDiCaL;
 use std::collections::{HashMap, HashSet};
@@ -13,9 +13,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 enum WorkerCmd {
-    Solve(Vec<Lit>),
+    Solve,
     AddCnf(Cnf),
-    Reseed(Cnf, Vec<Lit>),
     Stop,
 }
 
@@ -26,154 +25,93 @@ enum WorkerMsg {
     Cancelled,
 }
 
-fn absorb_2opt(
-    giant: &mut Vec<usize>,
-    small_cycles: &[Vec<usize>],
-    dir_adj: &[Vec<usize>],
-) -> (usize, Vec<Vec<usize>>) {
-    let mut current_giant = giant.clone();
-    let mut remaining = Vec::new();
-    let mut total_absorbed = 0;
-
-    for _pass in 0..10 {
-        let mut pass_absorbed = 0;
-        let candidates = if remaining.is_empty() && total_absorbed == 0 {
-            small_cycles.to_vec()
-        } else {
-            remaining.clone()
-        };
-        remaining.clear();
-
-        for small in candidates {
-            let n_g = current_giant.len();
-            let n_s = small.len();
-            let small_set: HashSet<usize> = small.iter().copied().collect();
-            let giant_pos: HashMap<usize, usize> = current_giant.iter().enumerate().map(|(i, &v)| (v, i)).collect();
-            let small_pos: HashMap<usize, usize> = small.iter().enumerate().map(|(i, &v)| (v, i)).collect();
-
-            let mut found_swap = None;
-
-            for &u1 in &current_giant {
-                for &v2 in &dir_adj[u1] {
-                    if small_set.contains(&v2) {
-                        let i1 = giant_pos[&u1];
-                        let v1 = current_giant[(i1 + 1) % n_g];
-
-                        let j2 = small_pos[&v2];
-                        let u2 = small[(j2 + n_s - 1) % n_s];
-
-                        if dir_adj[u2].contains(&v1) {
-                            found_swap = Some((i1, j2));
-                            break;
-                        }
-                    }
-                }
-                if found_swap.is_some() {
-                    break;
-                }
-            }
-
-            if let Some((i1, j2)) = found_swap {
-                let mut new_giant = Vec::with_capacity(n_g + n_s);
-                for k in 0..=i1 {
-                    new_giant.push(current_giant[k]);
-                }
-                for k in 0..n_s {
-                    new_giant.push(small[(j2 + k) % n_s]);
-                }
-                for k in (i1 + 1)..n_g {
-                    new_giant.push(current_giant[k]);
-                }
-                current_giant = new_giant;
-                pass_absorbed += 1;
-                total_absorbed += 1;
-            } else {
-                remaining.push(small);
-            }
-        }
-
-        if pass_absorbed == 0 {
-            break;
-        }
-    }
-
-    *giant = current_giant;
-    (total_absorbed, remaining)
-}
-
-fn sat_absorb_small_cycle(
-    giant: &mut Vec<usize>,
-    small: &[usize],
-    dir_adj: &[Vec<usize>],
-) -> bool {
-    let n_g = giant.len();
-    let n_s = small.len();
-    if n_g < 3 || n_s < 3 {
+fn is_valid_dir_cycle(cyc: &[usize], dir_adj: &[Vec<usize>]) -> bool {
+    let n = cyc.len();
+    if n < 3 {
         return false;
     }
+    for i in 0..n {
+        let u = cyc[i];
+        let v = cyc[(i + 1) % n];
+        if !dir_adj[u].contains(&v) {
+            return false;
+        }
+    }
+    true
+}
 
-    let giant_pos: HashMap<usize, usize> = giant.iter().enumerate().map(|(i, &v)| (v, i)).collect();
-    let small_pos: HashMap<usize, usize> = small.iter().enumerate().map(|(i, &v)| (v, i)).collect();
-    let small_set: HashSet<usize> = small.iter().copied().collect();
+fn merge_two_dir_cycles(
+    c1: &[usize],
+    c2: &[usize],
+    dir_adj: &[Vec<usize>],
+) -> Option<Vec<usize>> {
+    let n1 = c1.len();
+    let n2 = c2.len();
+    if n1 == 0 || n2 == 0 {
+        return None;
+    }
+    let c2_pos: HashMap<usize, usize> = c2.iter().enumerate().map(|(idx, &v)| (v, idx)).collect();
 
-    for &u1 in giant.iter() {
-        for &v2 in &dir_adj[u1] {
-            if small_set.contains(&v2) {
-                let i1 = giant_pos[&u1];
-                let j2 = small_pos[&v2];
-
-                for step in 1..n_s {
-                    let u2 = small[(j2 + step) % n_s];
-                    let w2 = small[(j2 + step + 1) % n_s];
-
-                    for &w1 in &dir_adj[u2] {
-                        if giant_pos.contains_key(&w1) {
-                            let k1 = giant_pos[&w1];
-                            let prev_k1 = giant[(k1 + n_g - 1) % n_g];
-
-                            if dir_adj[prev_k1].contains(&w2) {
-                                if (i1 < k1 && k1 <= n_g) || (i1 > k1) {
-                                    let mut new_giant = Vec::with_capacity(n_g + n_s);
-                                    let mut curr = 0;
-                                    while curr <= i1 {
-                                        new_giant.push(giant[curr]);
-                                        curr += 1;
-                                    }
-                                    let mut s_idx = j2;
-                                    loop {
-                                        new_giant.push(small[s_idx]);
-                                        if s_idx == (j2 + step) % n_s {
-                                            break;
-                                        }
-                                        s_idx = (s_idx + 1) % n_s;
-                                    }
-                                    curr = k1;
-                                    let end_curr = if i1 < k1 { n_g } else { i1 };
-                                    while curr < end_curr {
-                                        new_giant.push(giant[curr]);
-                                        curr += 1;
-                                    }
-                                    if i1 > k1 {
-                                        let mut s_rem = w2;
-                                        while s_rem != v2 {
-                                            new_giant.push(s_rem);
-                                            let s_pos = small_pos[&s_rem];
-                                            s_rem = small[(s_pos + 1) % n_s];
-                                        }
-                                    }
-                                    if new_giant.len() == n_g + n_s {
-                                        *giant = new_giant;
-                                        return true;
-                                    }
-                                }
-                            }
-                        }
+    for i in 0..n1 {
+        let u1 = c1[i];
+        let u2 = c1[(i + 1) % n1];
+        for &v1 in &dir_adj[u1] {
+            if let Some(&j) = c2_pos.get(&v1) {
+                let j_prev = (j + n2 - 1) % n2;
+                let v_prev = c2[j_prev];
+                if dir_adj[v_prev].contains(&u2) {
+                    let mut merged = Vec::with_capacity(n1 + n2);
+                    for k in 0..=i {
+                        merged.push(c1[k]);
+                    }
+                    for k in 0..n2 {
+                        merged.push(c2[(j + k) % n2]);
+                    }
+                    for k in (i + 1)..n1 {
+                        merged.push(c1[k]);
+                    }
+                    if is_valid_dir_cycle(&merged, dir_adj) {
+                        return Some(merged);
                     }
                 }
             }
         }
     }
-    false
+    None
+}
+
+fn pairwise_dir_merge(
+    cycles: &[Vec<usize>],
+    dir_adj: &[Vec<usize>],
+) -> Vec<Vec<usize>> {
+    let mut curr = cycles.to_vec();
+    let mut merged_any = true;
+    while merged_any && curr.len() > 1 {
+        merged_any = false;
+        curr.sort_by(|a, b| b.len().cmp(&a.len()));
+        let n_cycles = curr.len();
+        let mut merge_step = None;
+        'search: for i in 0..n_cycles {
+            for j in (i + 1)..n_cycles {
+                if let Some(res) = merge_two_dir_cycles(&curr[i], &curr[j], dir_adj) {
+                    merge_step = Some((i, j, res));
+                    break 'search;
+                }
+                if let Some(res) = merge_two_dir_cycles(&curr[j], &curr[i], dir_adj) {
+                    merge_step = Some((j, i, res));
+                    break 'search;
+                }
+            }
+        }
+        if let Some((i, j, res)) = merge_step {
+            let max_idx = i.max(j);
+            let min_idx = i.min(j);
+            curr.remove(max_idx);
+            curr[min_idx] = res;
+            merged_any = true;
+        }
+    }
+    curr
 }
 
 struct AlternatingPairGraph {
@@ -377,7 +315,6 @@ pub fn solve_alternating_pairs(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i
         cnf.add_clause(Clause::from_iter(lits));
     }
 
-    let backbone_hints: Vec<Lit> = Vec::new();
     let num_workers = 3;
     let (tx_res, rx_res) = mpsc::channel::<WorkerMsg>();
     let mut worker_senders: Vec<mpsc::Sender<WorkerCmd>> = Vec::new();
@@ -392,7 +329,6 @@ pub fn solve_alternating_pairs(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i
 
         let tx_res_clone = tx_res.clone();
         let cnf_clone = cnf.clone();
-        let backbone_hints_clone = backbone_hints.clone();
 
         let handle = thread::spawn(move || {
             let mut solver = CaDiCaL::default();
@@ -409,14 +345,10 @@ pub fn solve_alternating_pairs(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i
                 2 => {
                     let _ = solver.set_option("seed", 1337);
                     let _ = solver.set_option("restartint", 200);
-                    let _ = solver.set_option("walk", 1);
                 }
                 _ => {}
             }
 
-            for &lit in &backbone_hints_clone {
-                let _ = solver.phase_lit(lit);
-            }
             let _ = solver.add_cnf(cnf_clone.clone());
 
             let cancel_ref = cancel_flag.clone();
@@ -430,11 +362,8 @@ pub fn solve_alternating_pairs(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i
 
             while let Ok(cmd) = rx_cmd.recv() {
                 match cmd {
-                    WorkerCmd::Solve(phase_hints) => {
+                    WorkerCmd::Solve => {
                         cancel_flag.store(false, Ordering::SeqCst);
-                        for &lit in &phase_hints {
-                            let _ = solver.phase_lit(lit);
-                        }
                         let res = solver.solve();
                         if cancel_flag.load(Ordering::Relaxed) {
                             let _ = tx_res_clone.send(WorkerMsg::Cancelled);
@@ -450,39 +379,6 @@ pub fn solve_alternating_pairs(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i
                     WorkerCmd::AddCnf(cuts) => {
                         let _ = solver.add_cnf(cuts);
                     }
-                    WorkerCmd::Reseed(accumulated_cuts, hints) => {
-                        solver = CaDiCaL::default();
-                        let _ = solver.set_option("chrono", 1);
-                        match worker_id {
-                            0 => {
-                                let _ = solver.set_option("seed", 777);
-                                let _ = solver.set_option("restartint", 50);
-                            }
-                            1 => {
-                                let _ = solver.set_option("seed", 42);
-                                let _ = solver.set_option("restartint", 100);
-                            }
-                            2 => {
-                                let _ = solver.set_option("seed", 1337);
-                                let _ = solver.set_option("restartint", 200);
-                                let _ = solver.set_option("walk", 1);
-                            }
-                            _ => {}
-                        }
-                        for &lit in &hints {
-                            let _ = solver.phase_lit(lit);
-                        }
-                        let _ = solver.add_cnf(cnf_clone.clone());
-                        let _ = solver.add_cnf(accumulated_cuts);
-                        let c_ref = cancel_flag.clone();
-                        solver.attach_terminator(move || {
-                            if c_ref.load(Ordering::Relaxed) || Instant::now() >= deadline {
-                                ControlSignal::Terminate
-                            } else {
-                                ControlSignal::Continue
-                            }
-                        });
-                    }
                     WorkerCmd::Stop => break,
                 }
             }
@@ -490,7 +386,6 @@ pub fn solve_alternating_pairs(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i
         worker_handles.push(handle);
     }
 
-    let mut current_hints = backbone_hints;
     let mut accumulated_cuts = Cnf::new();
     let mut result_tour = None;
 
@@ -505,7 +400,7 @@ pub fn solve_alternating_pairs(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i
             flag.store(false, Ordering::SeqCst);
         }
         for tx in &worker_senders {
-            let _ = tx.send(WorkerCmd::Solve(current_hints.clone()));
+            let _ = tx.send(WorkerCmd::Solve);
         }
 
         let mut winning_sol = None;
@@ -567,24 +462,9 @@ pub fn solve_alternating_pairs(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i
         }
 
         cycles.sort_by_key(|c| std::cmp::Reverse(c.len()));
+        let raw_cycles = cycles.clone();
 
-        let mut giant = cycles[0].clone();
-        let (absorbed, remaining) = absorb_2opt(&mut giant, &cycles[1..], &dir_adj);
-        let mut absorbed_3opt = 0;
-        let mut final_remaining = Vec::new();
-        for small in remaining {
-            if sat_absorb_small_cycle(&mut giant, &small, &dir_adj) {
-                absorbed_3opt += 1;
-            } else {
-                final_remaining.push(small);
-            }
-        }
-        if absorbed > 0 || absorbed_3opt > 0 {
-            cycles.clear();
-            cycles.push(giant);
-            cycles.extend(final_remaining);
-            cycles.sort_by_key(|c| std::cmp::Reverse(c.len()));
-        }
+        cycles = pairwise_dir_merge(&cycles, &dir_adj);
 
         let lens: Vec<usize> = cycles.iter().map(|c| c.len()).collect();
         let top5: Vec<usize> = lens.iter().take(5).copied().collect();
@@ -611,49 +491,59 @@ pub fn solve_alternating_pairs(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i
                 result_tour = Some(full_tour);
                 break;
             }
-            break;
         }
 
-        current_hints.clear();
-        for c in &cycles {
-            for i in 0..c.len() {
-                let u = c[i];
-                let v = c[(i + 1) % c.len()];
-                if let Some(&lit) = arc_lit_map.get(&(u, v)) {
-                    current_hints.push(lit);
-                }
-            }
-        }
+
 
         let mut cuts = Cnf::new();
-        for c in &cycles {
+        for c in &raw_cycles {
             if c.len() < n_dir {
                 let mut lits = Vec::new();
                 for i in 0..c.len() {
                     let u = c[i];
                     let v = c[(i + 1) % c.len()];
-                    lits.push(!arc_lit_map[&(u, v)]);
+                    if let Some(&lit) = arc_lit_map.get(&(u, v)) {
+                        lits.push(!lit);
+                    }
                 }
-                cuts.add_clause(Clause::from_iter(lits));
+                if !lits.is_empty() {
+                    cuts.add_clause(Clause::from_iter(lits));
+                }
 
-                if c.len() <= 16 {
-                    let c_set: HashSet<usize> = c.iter().copied().collect();
-                    let mut out_lits = Vec::new();
-                    for &u in c {
-                        for &v in &dir_adj[u] {
-                            if !c_set.contains(&v) { out_lits.push(arc_lit_map[&(u, v)]); }
+                let c_set: HashSet<usize> = c.iter().copied().collect();
+                let mut out_lits = Vec::new();
+                for &u in c {
+                    for &v in &dir_adj[u] {
+                        if !c_set.contains(&v) {
+                            if let Some(&lit) = arc_lit_map.get(&(u, v)) {
+                                out_lits.push(lit);
+                            }
                         }
                     }
-                    if !out_lits.is_empty() { cuts.add_clause(Clause::from_iter(out_lits)); }
+                }
+                out_lits.sort_unstable();
+                out_lits.dedup();
+                if !out_lits.is_empty() {
+                    cuts.add_clause(Clause::from_iter(out_lits.iter().copied()));
+                }
 
-                    let mut in_lits = Vec::new();
-                    for &v in c {
-                        for &u in &in_arcs[v] {
-                            if !c_set.contains(&u) { in_lits.push(arc_lit_map[&(u, v)]); }
+                let mut in_lits = Vec::new();
+                for &v in c {
+                    for &u in &in_arcs[v] {
+                        if !c_set.contains(&u) {
+                            if let Some(&lit) = arc_lit_map.get(&(u, v)) {
+                                in_lits.push(lit);
+                            }
                         }
                     }
-                    if !in_lits.is_empty() { cuts.add_clause(Clause::from_iter(in_lits)); }
                 }
+                in_lits.sort_unstable();
+                in_lits.dedup();
+                if !in_lits.is_empty() {
+                    cuts.add_clause(Clause::from_iter(in_lits.iter().copied()));
+                }
+
+
             }
         }
 
@@ -661,20 +551,8 @@ pub fn solve_alternating_pairs(raw_g: &Graph, timeout_secs: f64) -> Option<Vec<i
             accumulated_cuts.add_clause(cl.clone());
         }
 
-        let round_dt = t_round.elapsed();
-        if round_dt > Duration::from_secs(15) || (round % 10 == 0 && round > 0) {
-            println!(
-                "[alternating_pairs] Round took {:?}. Reseeding workers with {} accumulated cuts...",
-                round_dt,
-                accumulated_cuts.len()
-            );
-            for tx in &worker_senders {
-                let _ = tx.send(WorkerCmd::Reseed(accumulated_cuts.clone(), current_hints.clone()));
-            }
-        } else {
-            for tx in &worker_senders {
-                let _ = tx.send(WorkerCmd::AddCnf(cuts.clone()));
-            }
+        for tx in &worker_senders {
+            let _ = tx.send(WorkerCmd::AddCnf(cuts.clone()));
         }
     }
 

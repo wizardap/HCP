@@ -277,6 +277,8 @@ impl MacroSatSolver {
                         let _ = solver.add_clause(Clause::from_iter(cl));
                     }
 
+                    crate::solver::cegar_engine::add_at_most_2(&mut solver, &mut var_mgr, &ext_edges);
+
                     if ext_edges.len() < 2 {
                         let _ = solver.add_clause(clause![!b_var]);
                     } else {
@@ -351,13 +353,7 @@ impl MacroSatSolver {
             if c_edges.len() < 2 {
                 return Err(format!("Corridor node {} has degree < 2 in macro edges", c));
             }
-            for i in 0..c_edges.len() {
-                for j in (i + 1)..c_edges.len() {
-                    for k in (j + 1)..c_edges.len() {
-                        let _ = solver.add_clause(clause![!c_edges[i], !c_edges[j], !c_edges[k]]);
-                    }
-                }
-            }
+            crate::solver::cegar_engine::add_at_most_2(&mut solver, &mut var_mgr, &c_edges);
             for i in 0..c_edges.len() {
                 let mut cl = Vec::new();
                 for j in 0..c_edges.len() {
@@ -610,13 +606,7 @@ pub fn solve_cluster_path(
                 }
                 let _ = solver.add_clause(Clause::from_iter(cl));
             }
-            for i in 0..lits.len() {
-                for j in (i + 1)..lits.len() {
-                    for k in (j + 1)..lits.len() {
-                        let _ = solver.add_clause(clause![!lits[i], !lits[j], !lits[k]]);
-                    }
-                }
-            }
+            crate::solver::cegar_engine::add_at_most_2(&mut solver, &mut var_mgr, &lits);
         }
     }
 
@@ -627,7 +617,7 @@ pub fn solve_cluster_path(
         }
     }
 
-    let max_it = 300;
+    let max_it = 1200;
     let mut in_cyc = vec![false; m];
     let mut vis = vec![false; m];
 
@@ -638,7 +628,16 @@ pub fn solve_cluster_path(
 
         match solver.solve() {
             Ok(SolverResult::Sat) => {}
-            _ => return None,
+            res => {
+                println!(
+                    "[hub_cluster] Cluster {} solve ended with {:?} at iter {} in {:.2}s",
+                    _cluster_id,
+                    res,
+                    _it,
+                    t0.elapsed().as_secs_f64()
+                );
+                return None;
+            }
         }
 
         let sol = solver.full_solution().ok()?;
@@ -779,8 +778,20 @@ pub fn solve_cluster_path(
                 in_cyc[u] = false;
             }
 
-            if !cut_lits.is_empty() && cut_lits.len() <= 60 {
+            if !cut_lits.is_empty() {
                 let _ = solver.add_clause(Clause::from_iter(cut_lits.iter().copied()));
+                if cut_lits.len() <= 10 {
+                    for i in 0..cut_lits.len() {
+                        let mut cl = Vec::with_capacity(cut_lits.len());
+                        cl.push(!cut_lits[i]);
+                        for j in 0..cut_lits.len() {
+                            if i != j {
+                                cl.push(cut_lits[j]);
+                            }
+                        }
+                        let _ = solver.add_clause(Clause::from_iter(cl));
+                    }
+                }
             }
 
             let mut neg_clause = Vec::with_capacity(cyc.len());
@@ -795,6 +806,7 @@ pub fn solve_cluster_path(
         }
     }
 
+    println!("[hub_cluster] Cluster {} reached max_it={}", _cluster_id, max_it);
     None
 }
 

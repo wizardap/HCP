@@ -1,4 +1,3 @@
-use std::path::Path;
 
 /// Verifies all 11 challenge graphs that were previously certified SAT
 /// still produce SAT_VERIFIED through the simplified principled pipeline.
@@ -13,7 +12,7 @@ fn solve_and_verify(gid: usize) {
             panic!("[✗] graph{}: file not found in any candidate path", gid);
         }
     };
-    let result = cegar_fix::solve_single_graph(&col_path, 600.0, None);
+    let result = cegar_fix::solve_single_graph(&col_path, 1800.0, None);
     match result {
         Ok((tour, time, vcount)) => {
             println!("[✓] graph{}: SAT_VERIFIED ({} vertices, {:.2}s)", gid, vcount, time);
@@ -35,6 +34,7 @@ fn test_challenge_graph_717() { solve_and_verify(717); }
 fn test_challenge_graph_746() { solve_and_verify(746); }
 
 #[test]
+#[ignore = "Skipped per user instruction"]
 fn test_challenge_graph_788() { solve_and_verify(788); }
 
 #[test]

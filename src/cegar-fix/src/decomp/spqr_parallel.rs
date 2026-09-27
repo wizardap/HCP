@@ -40,24 +40,13 @@ pub fn find_separation_pairs(g: &Graph) -> Vec<SeparationPair> {
         })
         .collect();
 
-    // Sort candidates by degree (low-degree vertices are the most promising 2-cut ports)
-    let mut candidates: Vec<usize> = (0..n).collect();
-    candidates.sort_by_key(|&u| adj[u].len());
-
-    // On large graphs, 2-cut separation ports must have degree 3..=4
-    let candidate_slice: Vec<usize> = if n > 300 {
-        candidates
-            .into_iter()
-            .filter(|&u| adj[u].len() >= 3 && adj[u].len() <= 4)
-            .collect()
-    } else {
-        candidates
-    };
-
     let mut results = Vec::new();
-    let min_comp_size = if n > 300 { 10 } else if n > 50 { 2 } else { 1 };
+    let min_comp_size = 2;
 
-    for &u in &candidate_slice {
+    for u in 0..n {
+        if results.len() >= 20 {
+            break;
+        }
         // Run Tarjan articulation point DFS on G \ {u}
         let start = if u == 0 { 1 } else { 0 };
         let mut tin = vec![-1i32; n];
@@ -110,10 +99,16 @@ pub fn find_separation_pairs(g: &Graph) -> Vec<SeparationPair> {
         if root_children > 1 {
             art_pts.insert(start);
         }
+        if timer < n as i32 - 2 {
+            continue;
+        }
 
         // For each articulation point v, test if {u, v} is a valid 2-cut
         for &v in &art_pts {
-            let (u_min, v_min) = (u.min(v), u.max(v));
+            if u >= v {
+                continue;
+            }
+            let (u_min, v_min) = (u, v);
             // BFS to find components in G \ {u, v}
             let mut comp_tag = vec![false; n];
             comp_tag[u_min] = true;
@@ -166,7 +161,7 @@ pub fn find_separation_pairs(g: &Graph) -> Vec<SeparationPair> {
                     if !results.contains(&pair) {
                         results.push(pair);
                     }
-                    if results.len() >= 5 {
+                    if results.len() >= 20 {
                         return results;
                     }
                 }

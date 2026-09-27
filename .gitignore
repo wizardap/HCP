@@ -19,6 +19,8 @@ __pycache__/
 *.swp
 
 # Temporary scratch folders & artifacts
+bin/
+scratch/
 src/cegar-fix/scratch/
 tools/
 *.patch

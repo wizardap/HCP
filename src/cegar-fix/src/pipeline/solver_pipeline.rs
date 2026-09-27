@@ -8,7 +8,7 @@ use crate::decomp::hub_cluster;
 use crate::decomp::spqr_parallel::{extract_subcomponent_graph, find_separation_pairs};
 use crate::decomp::spqr_series::{contract_series_chains, expand_series_tour};
 use crate::pipeline::options::Options;
-use crate::solver::cegar_engine::{solve_cycle, solve_cycle_with_forced_edges, solve_path};
+use crate::solver::cegar_engine::{solve_cycle, solve_cycle_with_forced_edges, solve_path_with_forced_edges};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -79,8 +79,11 @@ pub fn verify_and_export(
     start_time: Instant,
     output_tour_path: Option<&str>,
 ) -> Result<(Vec<i32>, f64, usize), SolverPipelineError> {
+    let solve_time = start_time.elapsed().as_secs_f64();
     let vertex_count = raw_g.adjacency_list.len();
+    let verify_start = Instant::now();
     let (is_valid, err_msg) = TourVerifier::verify(raw_g, tour);
+    let verify_time = verify_start.elapsed().as_secs_f64();
     if !is_valid {
         return Err(SolverPipelineError {
             message: format!("Tour verification failed: {}", err_msg),
@@ -88,6 +91,8 @@ pub fn verify_and_export(
         });
     }
     let elapsed_time = start_time.elapsed().as_secs_f64();
+    println!("solve_time_sec: {:.6}", solve_time);
+    println!("verify_time_sec: {:.6}", verify_time);
     if let Some(out_path) = output_tour_path {
         let name = Path::new(out_path)
             .file_stem()
@@ -213,50 +218,59 @@ pub fn solve_single_graph(
             break;
         }
 
-        // Pick pair with smallest subcomponent
-        let best_pair = valid_pairs
-            .into_iter()
-            .min_by_key(|p| p.components[0].len().min(p.components[1].len()))
-            .unwrap();
+        // Sort pairs by smallest component
+        let mut valid_pairs = valid_pairs;
+        valid_pairs.sort_by_key(|p| p.components[0].len().min(p.components[1].len()));
+        println!("[pipeline] Found {} valid separation pairs. Checking candidates...", valid_pairs.len());
 
-        let (u, v) = (best_pair.u, best_pair.v);
-        let smaller_comp = if best_pair.components[0].len() <= best_pair.components[1].len() {
-            &best_pair.components[0]
-        } else {
-            &best_pair.components[1]
-        };
+        let mut chosen = None;
+        for (idx, p) in valid_pairs.iter().enumerate() {
+            let (u, v) = (p.u, p.v);
+            let smaller_comp = p.components.iter().min_by_key(|c| c.len()).unwrap();
+            let comp_set: HashSet<i32> = smaller_comp.iter().copied().collect();
+            let deg_u_in = cur_g.adjacency_list.get(&u).map(|nbrs| nbrs.iter().filter(|n| comp_set.contains(n)).count()).unwrap_or(0);
+            let deg_v_in = cur_g.adjacency_list.get(&v).map(|nbrs| nbrs.iter().filter(|n| comp_set.contains(n)).count()).unwrap_or(0);
+            let deg_u_out = cur_g.adjacency_list.get(&u).map(|nbrs| nbrs.iter().filter(|n| !comp_set.contains(n) && **n != v).count()).unwrap_or(0);
+            let deg_v_out = cur_g.adjacency_list.get(&v).map(|nbrs| nbrs.iter().filter(|n| !comp_set.contains(n) && **n != u).count()).unwrap_or(0);
 
-        // Isolate smaller component G_sub
-        let sub_g = extract_subcomponent_graph(&cur_g, smaller_comp, u, v);
+            if deg_u_in >= 1 && deg_v_in >= 1 && deg_u_out >= 1 && deg_v_out >= 1 {
+                let sub_g = extract_subcomponent_graph(&cur_g, smaller_comp, u, v);
+                let mut sub_forced: HashSet<(i32, i32)> = chain_map
+                    .keys()
+                    .filter(|(a, b)| sub_g.adjacency_list.contains_key(a) && sub_g.adjacency_list.contains_key(b))
+                    .copied()
+                    .collect();
+                for (su, sv, _) in &stitched_cuts {
+                    if sub_g.adjacency_list.contains_key(su) && sub_g.adjacency_list.contains_key(sv) {
+                        sub_forced.insert((*su.min(sv), *su.max(sv)));
+                    }
+                }
 
-        let rem_time = (deadline - Instant::now()).as_secs_f64();
-        if rem_time <= 0.0 {
-            return Err(SolverPipelineError {
-                message: format!("TIMEOUT (elapsed: {:.2}s)", start_time.elapsed().as_secs_f64()),
-                vertex_count,
-            });
+                let rem_time = (deadline - Instant::now()).as_secs_f64();
+                if rem_time <= 0.0 { break; }
+                let trial_budget = rem_time.min(5.0);
+                println!(
+                    "  [pipeline] Testing pair {}/{} ({}, {}) with comp size {} (deg_in: {}, {})...",
+                    idx + 1, valid_pairs.len(), u, v, smaller_comp.len(), deg_u_in, deg_v_in
+                );
+                match solve_path_with_forced_edges(&sub_g, u, v, trial_budget, &sub_forced) {
+                    Ok(path) => {
+                        println!("  [pipeline] Pair ({}, {}) SOLVED! Subpath len {}", u, v, path.len());
+                        chosen = Some((u, v, smaller_comp.clone(), path));
+                        break;
+                    }
+                    Err(e) => {
+                        println!("  [pipeline] Pair ({}, {}) failed path solve: {}", u, v, e);
+                    }
+                }
+            }
         }
-        let subpath = match solve_path(&sub_g, u, v, rem_time) {
-            Ok(p) => p,
-            Err(e) => {
-                let is_timeout = start_time.elapsed().as_secs_f64() >= timeout_secs
-                    || e.to_uppercase().contains("TIMEOUT");
-                if is_timeout {
-                    return Err(SolverPipelineError {
-                        message: format!("TIMEOUT (elapsed: {:.2}s)", start_time.elapsed().as_secs_f64()),
-                        vertex_count,
-                    });
-                }
-                if e.to_uppercase().contains("UNSAT") || e.to_uppercase().contains("INFEASIBLE") {
-                    return Err(SolverPipelineError {
-                        message: format!("UNSAT: Subcomponent path infeasible: {}", e),
-                        vertex_count,
-                    });
-                }
-                return Err(SolverPipelineError {
-                    message: format!("Subcomponent solver error: {}", e),
-                    vertex_count,
-                });
+
+        let (u, v, smaller_comp, subpath) = match chosen {
+            Some(c) => c,
+            None => {
+                println!("[pipeline] No 2-cut component was solvable as path. Breaking to skeleton.");
+                break;
             }
         };
 
@@ -292,6 +306,12 @@ pub fn solve_single_graph(
 
     // Step 4: Solve skeleton using unified cegar_engine
     let rem_skeleton = (deadline - Instant::now()).as_secs_f64();
+    println!(
+        "[pipeline] Step 4: Solving skeleton with {} vertices (rem_time = {:.2}s, forced_edges = {})...",
+        cur_g.adjacency_list.len(),
+        rem_skeleton,
+        chain_map.len() + stitched_cuts.len()
+    );
     if rem_skeleton <= 0.0 {
         return Err(SolverPipelineError {
             message: format!("TIMEOUT (elapsed: {:.2}s)", start_time.elapsed().as_secs_f64()),
@@ -301,7 +321,9 @@ pub fn solve_single_graph(
 
     let mut forced_edges: HashSet<(i32, i32)> = chain_map.keys().copied().collect();
     for (u, v, _) in &stitched_cuts {
-        forced_edges.insert((*u.min(v), *u.max(v)));
+        if cur_g.adjacency_list.contains_key(u) && cur_g.adjacency_list.contains_key(v) {
+            forced_edges.insert((*u.min(v), *u.max(v)));
+        }
     }
     let skeleton_tour_res = solve_cycle_with_forced_edges(&cur_g, rem_skeleton, &forced_edges);
 
@@ -330,31 +352,11 @@ pub fn solve_single_graph(
 
     // Step 5: Expand virtual edges and series chains using tour_stitcher and expand_series_tour
     while let Some((u, v, subpath)) = stitched_cuts.pop() {
-        tour = match stitch_subpath(&tour, u, v, &subpath) {
-            Ok(t) => t,
-            Err(_) => {
-                // If the skeleton cycle didn't traverse (u, v), solve as Hamiltonian path in skeleton \ (u, v)
-                let mut cur_without_uv = cur_g.clone();
-                cur_without_uv.remove_edge_if_exists(u, v);
-                let rem3 = (deadline - Instant::now()).as_secs_f64();
-                if rem3 <= 0.0 {
-                    return Err(SolverPipelineError {
-                        message: format!("TIMEOUT (elapsed: {:.2}s)", start_time.elapsed().as_secs_f64()),
-                        vertex_count,
-                    });
-                }
-                let path = solve_path(&cur_without_uv, u, v, rem3)
-                    .map_err(|e| SolverPipelineError {
-                        message: format!("Failed to route through ports ({}, {}): {}", u, v, e),
-                        vertex_count,
-                    })?;
-                stitch_subpath(&path, u, v, &subpath)
-                    .map_err(|e| SolverPipelineError {
-                        message: format!("Failed to stitch subpath: {}", e),
-                        vertex_count,
-                    })?
-            }
-        };
+        tour = stitch_subpath(&tour, u, v, &subpath)
+            .map_err(|e| SolverPipelineError {
+                message: format!("Failed to stitch subpath for ({}, {}): {}", u, v, e),
+                vertex_count,
+            })?;
     }
 
     if !chain_map.is_empty() {
