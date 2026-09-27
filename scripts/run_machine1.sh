@@ -9,6 +9,15 @@
 
 set -euo pipefail
 
+# Ensure Cargo/Rust environment is sourced if present
+if [ -f "$HOME/.cargo/env" ]; then
+    # shellcheck disable=SC1091
+    source "$HOME/.cargo/env"
+fi
+if [ -d "$HOME/.cargo/bin" ]; then
+    export PATH="$HOME/.cargo/bin:$PATH"
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Default: 1 to 700 into benchmark_machine1

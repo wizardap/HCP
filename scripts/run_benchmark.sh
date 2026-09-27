@@ -15,6 +15,15 @@
 
 set -euo pipefail
 
+# Ensure Cargo/Rust environment is sourced if present
+if [ -f "$HOME/.cargo/env" ]; then
+    # shellcheck disable=SC1091
+    source "$HOME/.cargo/env"
+fi
+if [ -d "$HOME/.cargo/bin" ]; then
+    export PATH="$HOME/.cargo/bin:$PATH"
+fi
+
 # --- Arguments & Defaults ---
 START_ID="${1:-1}"
 END_ID="${2:-1001}"
@@ -71,8 +80,26 @@ locate_runlim() {
 
 # --- Function: Ensure Solver Binary is Built ---
 ensure_solver() {
-    echo "[INFO] Ensuring solver binary is built and up-to-date..."
-    (cd "$PROJECT_ROOT/src/cegar-fix" && cargo build --release)
+    if [ -f "$HOME/.cargo/env" ]; then
+        # shellcheck disable=SC1091
+        source "$HOME/.cargo/env"
+    fi
+    if [ -d "$HOME/.cargo/bin" ]; then
+        export PATH="$HOME/.cargo/bin:$PATH"
+    fi
+
+    if command -v cargo >/dev/null 2>&1; then
+        echo "[INFO] Ensuring solver binary is built and up-to-date with cargo..."
+        (cd "$PROJECT_ROOT/src/cegar-fix" && cargo build --release)
+    elif [ -x "$SOLVER_BIN" ]; then
+        echo "[WARNING] 'cargo' command not found, but solver binary exists at: $SOLVER_BIN. Proceeding."
+    else
+        echo "[ERROR] 'cargo' is not installed or not in PATH, and solver binary does not exist at: $SOLVER_BIN"
+        echo "[INFO] Please install Rust using: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
+        echo "       and then run: source \"\$HOME/.cargo/env\""
+        exit 1
+    fi
+
     if [ ! -x "$SOLVER_BIN" ]; then
         echo "[ERROR] Solver binary at $SOLVER_BIN is not executable."
         exit 1
