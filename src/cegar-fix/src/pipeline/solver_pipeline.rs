@@ -9,6 +9,7 @@ use crate::decomp::spqr_parallel::{extract_subcomponent_graph, find_separation_p
 use crate::decomp::spqr_series::{contract_series_chains, expand_series_tour};
 use crate::pipeline::options::Options;
 use crate::solver::cegar_engine::{solve_cycle, solve_cycle_with_forced_edges, solve_path_with_forced_edges};
+use crate::solver::directed_cegar;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -151,6 +152,27 @@ pub fn solve_single_graph(
         } else if alternating_pairs::can_solve_alternating_pairs(&g) {
             if let Some(tour) = alternating_pairs::solve_alternating_pairs(&g, rem_timeout) {
                 return verify_and_export(&g, &tour, start_time, output_tour_path);
+            }
+        } else if directed_cegar::can_solve_directed_cubic(&g) {
+            println!("[pipeline] Detected 3-regular cubic graph with {} vertices. Dispatching to directed CEGAR...", g.adjacency_list.len());
+            match directed_cegar::solve_directed_cubic(&g, rem_timeout) {
+                Ok(tour) => {
+                    return verify_and_export(&g, &tour, start_time, output_tour_path);
+                }
+                Err(err) => {
+                    if err.to_uppercase().contains("UNSAT") {
+                        return Err(SolverPipelineError {
+                            message: "UNSAT".to_string(),
+                            vertex_count,
+                        });
+                    }
+                    if err.to_uppercase().contains("TIMEOUT") {
+                        return Err(SolverPipelineError {
+                            message: format!("TIMEOUT (elapsed: {:.2}s)", start_time.elapsed().as_secs_f64()),
+                            vertex_count,
+                        });
+                    }
+                }
             }
         }
     }
