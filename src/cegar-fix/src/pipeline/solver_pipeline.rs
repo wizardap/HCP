@@ -270,12 +270,19 @@ pub fn solve_single_graph(
 
                 let rem_time = (deadline - Instant::now()).as_secs_f64();
                 if rem_time <= 0.0 { break; }
-                let trial_budget = rem_time.min(5.0);
+                let comp_size = smaller_comp.len();
+                let budget_cap = ((comp_size as f64) * 0.1).clamp(5.0, 60.0);
+                let trial_budget = rem_time.min(budget_cap);
                 println!(
-                    "  [pipeline] Testing pair {}/{} ({}, {}) with comp size {} (deg_in: {}, {})...",
-                    idx + 1, valid_pairs.len(), u, v, smaller_comp.len(), deg_u_in, deg_v_in
+                    "  [pipeline] Testing pair {}/{} ({}, {}) with comp size {} (deg_in: {}, {}, budget: {:.1}s)...",
+                    idx + 1, valid_pairs.len(), u, v, comp_size, deg_u_in, deg_v_in, trial_budget
                 );
-                match solve_path_with_forced_edges(&sub_g, u, v, trial_budget, &sub_forced) {
+                let path_res = if directed_cegar::can_solve_directed_path(&sub_g) {
+                    directed_cegar::solve_directed_path_with_forced_edges(&sub_g, u, v, trial_budget, &sub_forced)
+                } else {
+                    solve_path_with_forced_edges(&sub_g, u, v, trial_budget, &sub_forced)
+                };
+                match path_res {
                     Ok(path) => {
                         println!("  [pipeline] Pair ({}, {}) SOLVED! Subpath len {}", u, v, path.len());
                         chosen = Some((u, v, smaller_comp.clone(), path));
