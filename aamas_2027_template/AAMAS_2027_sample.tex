@@ -684,9 +684,10 @@ measure of complementarity.
 
 The final resource-constrained ablation uses one fixed CaDiCaL seed
 (seed 1) and one run for every instance--condition pair. All conditions
-share the release binary, cut policy, machine, and cyclically balanced
-within-instance execution-order policy, as well as the
-$1{,}800$-second end-to-end cutoff. The design uses a nested chain from
+share the release binary, cut policy, machine, and
+$1{,}800$-second end-to-end cutoff. The four condition jobs run
+sequentially without overlap on that machine. The design uses a nested
+chain from
 \texttt{full} to \texttt{no-dispatch}, then to
 \texttt{no-decomposition}; it also includes \texttt{no-two-cut}. The first contrast
 measures the tailored hub, alternating, and cubic front ends; the second

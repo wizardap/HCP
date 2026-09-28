@@ -26,9 +26,8 @@ of the final matrix.
 - Cutoff: 1,800 seconds end-to-end wall time for every run.
 - Seed: CaDiCaL seed 1.
 - Replication: one run per instance-condition pair, 4,004 runs total.
-- Scheduling: sequential benchmark invocations with no concurrent graph
-  instances. Rotate the first condition cyclically across consecutive graphs so
-  every condition occupies each within-graph order position as evenly as possible.
+- Scheduling: four condition jobs on the same machine, run sequentially without
+  overlap. Each job traverses all 1,001 instances in natural numeric order.
 - Solver parallelism: at most three internal workers, with
   `RAYON_NUM_THREADS=3` and `OMP_NUM_THREADS=1`.
 - Artifact: one release binary from one clean Git revision. Record the Git hash,
@@ -72,12 +71,18 @@ the direct 2-cut claim.
 
 ## Execution
 
-From the repository root, run:
+From the repository root, run these four entrypoints one at a time. They append
+to one binary-checked result matrix and regenerate the report after every
+completed condition:
 
 ```bash
-./scripts/run_ablation_final_once.sh
+./scripts/run_ablation_full_once.sh
+./scripts/run_ablation_no_dispatch_once.sh
+./scripts/run_ablation_no_decomposition_once.sh
+./scripts/run_ablation_no_two_cut_once.sh
 ```
 
-The same command safely resumes an interrupted run when its frozen artifact and
-metadata match. Outputs are written to
+Re-running an interrupted condition safely resumes it when its frozen artifact
+and metadata match. A lock prevents two condition scripts from sharing CPU and
+writing the result matrix concurrently. Outputs are written to
 `benchmark-runs/ablation-final-once-1001/`.

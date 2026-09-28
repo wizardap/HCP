@@ -49,6 +49,6 @@
     "cutoff_seconds": 1800,
     "instances": 1001,
     "runs_expected": 4004,
-    "execution": "sequential"
+    "execution": "four sequential nonoverlapping condition scripts"
   }
 }
