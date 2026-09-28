@@ -154,7 +154,7 @@ pub fn solve_single_graph(
                 return verify_and_export(&g, &tour, start_time, output_tour_path);
             }
         } else if directed_cegar::can_solve_directed_cubic(&g) {
-            println!("[pipeline] Detected 3-regular cubic graph with {} vertices. Dispatching to directed CEGAR...", g.adjacency_list.len());
+            println!("[pipeline] Detected cubic/near-cubic graph with {} vertices. Dispatching to directed CEGAR...", g.adjacency_list.len());
             match directed_cegar::solve_directed_cubic(&g, rem_timeout) {
                 Ok(tour) => {
                     return verify_and_export(&g, &tour, start_time, output_tour_path);

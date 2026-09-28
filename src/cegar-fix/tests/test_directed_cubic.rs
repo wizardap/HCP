@@ -92,3 +92,42 @@ fn test_directed_cubic_graph707() {
         assert!(ok, "Tour verification failed: {}", msg);
     }
 }
+
+#[test]
+fn test_directed_near_cubic_graph12_and_21() {
+    let candidates_12 = [
+        "FHCPCS-col/graph12.col",
+        "../../FHCPCS-col/graph12.col",
+        "../../../FHCPCS-col/graph12.col",
+    ];
+    if let Some(&p) = candidates_12.iter().find(|p| Path::new(p).is_file()) {
+        let g = cegar_fix::core::file_operations::parse_graph_from_file(p).expect("parse graph12");
+        assert!(can_solve_directed_cubic(&g), "graph12 must be detected as near-cubic");
+        let start = std::time::Instant::now();
+        let tour = solve_directed_cubic(&g, 10.0).expect("solve graph12 within 10s");
+        let elapsed = start.elapsed().as_secs_f64();
+        println!("graph12 solved in {:.3}s", elapsed);
+        assert!(elapsed < 5.0, "graph12 must be solved in under 5.0s");
+        assert_eq!(tour.len(), 132);
+        let (ok, msg) = TourVerifier::verify(&g, &tour);
+        assert!(ok, "Tour verification failed for graph12: {}", msg);
+    }
+
+    let candidates_21 = [
+        "FHCPCS-col/graph21.col",
+        "../../FHCPCS-col/graph21.col",
+        "../../../FHCPCS-col/graph21.col",
+    ];
+    if let Some(&p) = candidates_21.iter().find(|p| Path::new(p).is_file()) {
+        let g = cegar_fix::core::file_operations::parse_graph_from_file(p).expect("parse graph21");
+        assert!(can_solve_directed_cubic(&g), "graph21 must be detected as near-cubic");
+        let start = std::time::Instant::now();
+        let tour = solve_directed_cubic(&g, 15.0).expect("solve graph21 within 15s");
+        let elapsed = start.elapsed().as_secs_f64();
+        println!("graph21 solved in {:.3}s", elapsed);
+        assert!(elapsed < 10.0, "graph21 must be solved in under 10.0s");
+        assert_eq!(tour.len(), 180);
+        let (ok, msg) = TourVerifier::verify(&g, &tour);
+        assert!(ok, "Tour verification failed for graph21: {}", msg);
+    }
+}

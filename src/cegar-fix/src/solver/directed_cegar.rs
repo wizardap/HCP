@@ -7,13 +7,25 @@ use rustsat::types::{Clause, Lit, TernaryVal};
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
-/// Checks if graph `g` is 3-regular (cubic): all vertices have degree exactly 3.
+/// Checks if graph `g` is suitable for directed 2-loop CEGAR.
+/// Covers:
+///   - Pure 3-regular (cubic) graphs: all vertices have degree exactly 3.
+///   - Near-cubic graphs: min_degree >= 3, max_degree <= 6.
+///     No degree-2 vertices means no series contraction needed.
+///     Max degree <= 6 keeps AMO clause count manageable (at most 15 per vertex).
 pub fn can_solve_directed_cubic(g: &Graph) -> bool {
     let n = g.adjacency_list.len();
     if n < 4 {
         return false;
     }
-    g.adjacency_list.values().all(|nbrs| nbrs.len() == 3)
+    let mut min_deg = usize::MAX;
+    let mut max_deg = 0usize;
+    for nbrs in g.adjacency_list.values() {
+        let d = nbrs.len();
+        if d < min_deg { min_deg = d; }
+        if d > max_deg { max_deg = d; }
+    }
+    min_deg >= 3 && max_deg <= 6
 }
 
 /// Solves Hamiltonian cycle on 3-regular graph `g` using Directed 2-Loop SAT-CEGAR.
@@ -157,7 +169,7 @@ pub fn solve_directed_cubic(g: &Graph, timeout_secs: f64) -> Result<Vec<i32>, St
 
                 // Termination: single cycle containing all vertices
                 if cycles.len() == 1 && cycles[0].len() == n {
-                    println!("[directed_cegar] Solved 3-regular cubic graph in {} iterations!", iter_count);
+                    println!("[directed_cegar] Solved graph in {} iterations!", iter_count);
                     return Ok(cycles.pop().unwrap());
                 }
 
