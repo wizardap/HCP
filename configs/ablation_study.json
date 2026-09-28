@@ -36,5 +36,19 @@
     "binary_sha256",
     "git_commit",
     "command_line"
-  ]
+  ],
+  "final_single_run_profile": {
+    "protocol": "docs/research/experiments/2026-09-28-final-single-run-ablation-protocol.md",
+    "conditions": [
+      "full",
+      "no-dispatch",
+      "no-decomposition",
+      "no-two-cut"
+    ],
+    "seeds": [1],
+    "cutoff_seconds": 1800,
+    "instances": 1001,
+    "runs_expected": 4004,
+    "execution": "sequential"
+  }
 }

@@ -186,7 +186,11 @@ def main() -> None:
     parser.add_argument("--input", default="logs/ablation_results.jsonl")
     parser.add_argument("--cactus-out", default="logs/cactus_ablation.csv")
     parser.add_argument("--timeout", type=float, default=1800.0)
+    parser.add_argument("--expected-seeds", type=int, default=5)
     args = parser.parse_args()
+
+    if args.expected_seeds <= 0:
+        parser.error("--expected-seeds must be positive")
 
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     resolve = lambda path: path if os.path.isabs(path) else os.path.join(repo_root, path)
@@ -203,10 +207,14 @@ def main() -> None:
         parser.error("input mixes multiple solver binaries; split the JSONL by binary hash")
 
     rows, grouped = summarize(records, args.timeout)
-    incomplete = [row["condition"] for row in rows if row["seeds"] < 5]
+    incomplete = [
+        row["condition"] for row in rows
+        if row["seeds"] < args.expected_seeds
+    ]
     if incomplete:
         print(
-            "Warning: fewer than five seeds for: " + ", ".join(incomplete),
+            f"Warning: fewer than {args.expected_seeds} seeds for: "
+            + ", ".join(incomplete),
             file=sys.stderr,
         )
     conditions = [row["condition"] for row in rows]

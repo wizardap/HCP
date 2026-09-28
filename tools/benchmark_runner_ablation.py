@@ -7,10 +7,12 @@ import hashlib
 import json
 import os
 import re
+import resource
 import shlex
 import shutil
 import signal
 import subprocess
+import sys
 import time
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -196,6 +198,7 @@ def run_benchmark_instance(
     seed: int,
     timeout: float,
     tour_dir: str,
+    raw_log_dir: Optional[str],
     cores: Optional[str],
     graph_cache: Dict[str, Tuple[int, int, Dict[int, Set[int]]]],
 ) -> Dict:
@@ -218,6 +221,7 @@ def run_benchmark_instance(
     taskset = shutil.which("taskset")
     command = [taskset, "-c", cores] + solver_cmd if cores and taskset else solver_cmd
 
+    usage_before = resource.getrusage(resource.RUSAGE_CHILDREN)
     start = time.perf_counter()
     timed_out = False
     stdout = ""
@@ -231,7 +235,10 @@ def run_benchmark_instance(
             text=True,
             start_new_session=True,
         )
-        stdout, stderr = process.communicate(timeout=timeout + max(5.0, timeout * 0.1))
+        # The process-level limit is the published end-to-end wall-clock cutoff.
+        # The solver receives the same deadline, but the harness remains the
+        # authority when a blocking backend call does not poll its terminator.
+        stdout, stderr = process.communicate(timeout=timeout)
         returncode = process.returncode
         wall_time = time.perf_counter() - start
     except subprocess.TimeoutExpired:
@@ -243,6 +250,31 @@ def run_benchmark_instance(
         except (OSError, subprocess.TimeoutExpired):
             pass
         returncode = -1
+    except KeyboardInterrupt:
+        # The solver runs in its own session so an interrupted benchmark must
+        # explicitly reap it before the checkpointed driver exits.
+        try:
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+            process.communicate(timeout=2.0)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        raise
+
+    usage_after = resource.getrusage(resource.RUSAGE_CHILDREN)
+    cpu_user_time = usage_after.ru_utime - usage_before.ru_utime
+    cpu_system_time = usage_after.ru_stime - usage_before.ru_stime
+
+    stdout_path = None
+    stderr_path = None
+    if raw_log_dir:
+        os.makedirs(raw_log_dir, exist_ok=True)
+        run_stem = f"{graph_base}_{condition}_s{seed}"
+        stdout_path = os.path.abspath(os.path.join(raw_log_dir, f"{run_stem}.stdout.log"))
+        stderr_path = os.path.abspath(os.path.join(raw_log_dir, f"{run_stem}.stderr.log"))
+        with open(stdout_path, "w", encoding="utf-8") as handle:
+            handle.write(stdout)
+        with open(stderr_path, "w", encoding="utf-8") as handle:
+            handle.write(stderr)
 
     if "s SATISFIABLE" in stdout:
         status = "SATISFIABLE"
@@ -288,6 +320,9 @@ def run_benchmark_instance(
         "seed": seed,
         "status": status,
         "wall_time": round(wall_time, 6),
+        "cpu_user_time": round(cpu_user_time, 6),
+        "cpu_system_time": round(cpu_system_time, 6),
+        "cpu_total_time": round(cpu_user_time + cpu_system_time, 6),
         "solve_time": round(solve_time, 6),
         "verify_time": round(verify_time, 6) if verify_time is not None else None,
         "cegar_iterations": cegar_iterations,
@@ -299,6 +334,8 @@ def run_benchmark_instance(
         "timeout_limit": timeout,
         "returncode": returncode,
         "error_message": stderr.strip() or None,
+        "stdout_path": stdout_path,
+        "stderr_path": stderr_path,
         "command": shlex.join(command),
         "binary_sha256": binary_sha256,
         "git_commit": commit,
@@ -306,6 +343,14 @@ def run_benchmark_instance(
 
 
 def main() -> None:
+    # Reset both handlers explicitly: shells may launch background jobs with
+    # SIGINT ignored, and an interrupted final run must still reap its solver.
+    def interrupt_as_keyboard(_signum, _frame):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGINT, interrupt_as_keyboard)
+    signal.signal(signal.SIGTERM, interrupt_as_keyboard)
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", default="src/cegar-fix/target/release/cegar-fix")
     parser.add_argument("--graphs", help="Comma-separated graph names or paths")
@@ -318,6 +363,10 @@ def main() -> None:
     parser.add_argument("--cores", default=None,
                         help="Linux taskset core list; omitted on other platforms")
     parser.add_argument("--tour-dir", default="scratch/ablation_tours")
+    parser.add_argument("--raw-log-dir",
+                        help="Directory for per-run stdout/stderr audit logs")
+    parser.add_argument("--balanced-condition-order", action="store_true",
+                        help="Rotate the first condition across consecutive graphs")
     parser.add_argument("--no-resume", action="store_true",
                         help="Start a fresh run and replace the JSONL output")
     parser.add_argument("--list-conditions", action="store_true")
@@ -353,6 +402,7 @@ def main() -> None:
 
     output_path = resolve(args.output)
     tour_dir = resolve(args.tour_dir)
+    raw_log_dir = resolve(args.raw_log_dir) if args.raw_log_dir else None
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     binary_hash = sha256_file(binary_path)
     completed = set() if args.no_resume else load_completed_keys(output_path)
@@ -364,11 +414,20 @@ def main() -> None:
         )
     commit = git_commit(repo_root)
 
+    scheduled = []
+    for graph_index, graph in enumerate(selected_graphs):
+        graph_conditions = conditions
+        if args.balanced_condition_order and len(conditions) > 1:
+            offset = graph_index % len(conditions)
+            graph_conditions = conditions[offset:] + conditions[:offset]
+        scheduled.extend(
+            (graph, condition, seed)
+            for condition in graph_conditions
+            for seed in seeds
+        )
     pending = [
         (graph, condition, seed)
-        for graph in selected_graphs
-        for condition in conditions
-        for seed in seeds
+        for graph, condition, seed in scheduled
         if (os.path.abspath(graph), condition, seed, float(args.timeout), binary_hash)
         not in completed
     ]
@@ -382,7 +441,7 @@ def main() -> None:
         for index, (graph_path, condition, seed) in enumerate(pending, 1):
             record = run_benchmark_instance(
                 binary_path, binary_hash, commit, graph_path, condition, seed,
-                args.timeout, tour_dir, args.cores, graph_cache,
+                args.timeout, tour_dir, raw_log_dir, args.cores, graph_cache,
             )
             output.write(json.dumps(record, sort_keys=True) + "\n")
             output.flush()
@@ -394,4 +453,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("Benchmark interrupted; completed JSONL records are safe to resume.",
+              file=sys.stderr)
+        raise SystemExit(130)

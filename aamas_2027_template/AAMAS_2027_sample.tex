@@ -568,8 +568,9 @@ The evidence bundle retains SHA-256 hashes of inputs and canonical tours.
 ``Additional'' means beyond these records, not every published solver.
 
 \paragraph{Current artifact.}
-The ongoing matched study evaluates commit \texttt{cd48f5f} from the
-principled-SPQR branch. Each invocation receives only a \texttt{.col} input
+The ongoing matched study evaluates a frozen release build from the
+principled-SPQR branch; its Git revision and binary SHA-256 are recorded
+with the raw results. Each invocation receives only a \texttt{.col} input
 and an output path. The new source removes the legacy Python corridor
 solver, stored tour caches, duplicate encoders, and graph-specific
 modules. Its fast test suite is run separately from the 1,800-second
@@ -681,41 +682,43 @@ measure of complementarity.
 \subsection{Ablation Study}
 \label{sec:ablation}
 
-Each named ablation changes one factor while retaining the CaDiCaL
-version, cut policy, cutoff, and random seed.  We use five paired seeds
-per condition.  The coarse \textsc{NoDecomposition} compatibility
-condition removes all three decomposition stages together; it is not
-used to attribute a gain to any one stage.
+The final resource-constrained ablation uses one fixed CaDiCaL seed
+(seed 1) and one run for every instance--condition pair. All conditions
+share the release binary, cut policy, machine, and cyclically balanced
+within-instance execution-order policy, as well as the
+$1{,}800$-second end-to-end cutoff. The design uses a nested chain from
+\texttt{full} to \texttt{no-dispatch}, then to
+\texttt{no-decomposition}; it also includes \texttt{no-two-cut}. The first contrast
+measures the tailored hub, alternating, and cubic front ends; the second
+then removes series contraction and separation-pair substitution from
+the remaining general pipeline. The direct \texttt{full} versus
+\texttt{no-two-cut} comparison isolates separation-pair substitution.
 
 \begin{table}[t]
-  \caption{Planned ablations for the current architecture. Measurements
-  are pending the matched full-suite run.}
+  \caption{Frozen full-suite ablation matrix. Each of the 1,001 instances
+  is run once per condition with seed 1 and a 1,800-second cutoff.}
   \label{tab:ablation}
   \centering\small
   \begin{tabular}{@{}p{.47\columnwidth}p{.47\columnwidth}@{}}\toprule
     CLI condition & Mechanism isolated\\ \midrule
     \texttt{full} & Reference proposed solver\\
-    \texttt{no-decomposition} & Dispatch, series, and 2-cut stages together\\
     \texttt{no-dispatch} & Hub, alternating, cubic front ends\\
-    \texttt{no-series} & Forced degree-2 chain contraction\\
+    \texttt{no-decomposition} & Series and 2-cut stages after dispatch is disabled\\
     \texttt{no-two-cut} & Separation-pair substitution\\
-    \texttt{no-repair} & 2-opt/3-opt cycle and path repair\\
-    \texttt{undirected-cubic} & Directed cubic encoding\\
-    \texttt{one-alternating-worker} & Three-worker portfolio\\
     \bottomrule
   \end{tabular}
 \end{table}
 
-The single-factor conditions separate dispatch, contraction, 2-cut
-substitution, repair, cubic orientation, and the alternating portfolio.
-Because the alternating frontend requires forced-chain contraction,
-\texttt{no-series} also makes that dependent route unavailable. Statistics
+The nested contrasts avoid attributing the coarse combined effect to an
+individual component. Statistics
 are accumulated across macro, local, and
 skeleton solvers so that work moved into path subproblems is not
 misattributed to the final SAT call. The executable logs the resolved
-feature vector and CaDiCaL seed for every run. Vertex permutations test
-unintended label dependence but are not counted as an ablation condition
-or as independent benchmark instances.
+feature vector and CaDiCaL seed for every run, and the harness preserves
+raw output and independently verifies every reported tour. Paired
+comparisons use the common 1,001 instances. With one observation per
+instance--condition pair, they quantify this fixed-seed experiment and
+do not estimate run-to-run or seed variability.
 
 \subsection{Limitations}
 \label{sec:limitations}
@@ -743,6 +746,10 @@ to be Hamiltonian, so a complete solver study must also include
 non-Hamiltonian families and independently check UNSAT results. Finally,
 the 11-certificate result alone does not establish runtime superiority;
 that conclusion depends on the matched matrix described above.
+The ablation matrix uses a single fixed seed and one run per condition,
+so small runtime differences may reflect measurement noise and no claim
+of seed robustness is made. Solved-count differences and large PAR-2
+effects receive priority over marginal timing differences.
 
 \section{Related Work}
 \label{sec:related-work}
