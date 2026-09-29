@@ -1,0 +1,52 @@
+[runlim] version:		2.0.0rc14
+[runlim] host:			hcup-hcp
+[runlim] time limit:		311040000 seconds
+[runlim] real time limit:	1800 seconds
+[runlim] space limit:		7168 MB
+[runlim] argv[0]:		taskset
+[runlim] argv[1]:		-c
+[runlim] argv[2]:		0-6
+[runlim] argv[3]:		/home/ubuntu/HCP/src/cegar-fix/target/release/cegar-fix
+[runlim] argv[4]:		-i
+[runlim] argv[5]:		/home/ubuntu/HCP/FHCPCS-col/graph990.col
+[runlim] argv[6]:		--timeout
+[runlim] argv[7]:		1800
+[runlim] argv[8]:		-o
+[runlim] argv[9]:		benchmark_machine2/tours/graph_990.hcp
+[runlim] start:			Mon Sep 28 15:34:35 2026
+[runlim] child:			555153
+[runlim] sample:		69.87 time, 10.01 real, 215 MB, 1.88 load
+[runlim] sample:		139.77 time, 20.01 real, 224 MB, 2.66 load
+[runlim] sample:		209.76 time, 30.01 real, 229 MB, 3.33 load
+[runlim] sample:		279.73 time, 40.01 real, 269 MB, 3.90 load
+[runlim] sample:		348.90 time, 50.01 real, 270 MB, 4.37 load
+[runlim] sample:		418.89 time, 60.01 real, 260 MB, 4.78 load
+[runlim] sample:		488.87 time, 70.01 real, 291 MB, 5.12 load
+[runlim] sample:		558.85 time, 80.01 real, 309 MB, 5.41 load
+[runlim] sample:		625.13 time, 90.01 real, 349 MB, 5.65 load
+[runlim] sample:		694.97 time, 100.01 real, 337 MB, 5.86 load
+[runlim] sample:		764.80 time, 110.01 real, 391 MB, 6.04 load
+[runlim] sample:		834.79 time, 120.01 real, 374 MB, 6.19 load
+[runlim] sample:		904.78 time, 130.01 real, 326 MB, 6.46 load
+[runlim] sample:		965.16 time, 140.01 real, 310 MB, 6.39 load
+[runlim] sample:		1025.16 time, 150.01 real, 326 MB, 6.33 load
+[runlim] sample:		1076.64 time, 160.01 real, 316 MB, 6.12 load
+[runlim] sample:		1118.30 time, 170.01 real, 302 MB, 5.80 load
+[runlim] sample:		1158.30 time, 180.01 real, 308 MB, 5.52 load
+[runlim] sample:		1191.27 time, 190.01 real, 285 MB, 5.13 load
+[runlim] sample:		1220.04 time, 200.01 real, 243 MB, 4.72 load
+[runlim] sample:		1239.31 time, 210.01 real, 224 MB, 4.22 load
+[runlim] sample:		1249.31 time, 220.01 real, 247 MB, 3.73 load
+[runlim] sample:		1259.31 time, 230.01 real, 250 MB, 3.31 load
+[runlim] sample:		1269.31 time, 240.01 real, 259 MB, 2.95 load
+[runlim] sample:		1279.31 time, 250.01 real, 259 MB, 2.65 load
+[runlim] end:			Mon Sep 28 15:38:53 2026
+[runlim] status:		ok
+[runlim] result:		0
+[runlim] children:		1
+[runlim] processes:		2
+[runlim] real:			257.75 seconds
+[runlim] time:			1287.02 seconds
+[runlim] space:			394 MB
+[runlim] load:			6.46 maximum
+[runlim] samples:		2578

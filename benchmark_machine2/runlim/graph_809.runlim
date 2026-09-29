@@ -1,0 +1,47 @@
+[runlim] version:		2.0.0rc14
+[runlim] host:			hcup-hcp
+[runlim] time limit:		311040000 seconds
+[runlim] real time limit:	1800 seconds
+[runlim] space limit:		7168 MB
+[runlim] argv[0]:		taskset
+[runlim] argv[1]:		-c
+[runlim] argv[2]:		0-6
+[runlim] argv[3]:		/home/ubuntu/HCP/src/cegar-fix/target/release/cegar-fix
+[runlim] argv[4]:		-i
+[runlim] argv[5]:		/home/ubuntu/HCP/FHCPCS-col/graph809.col
+[runlim] argv[6]:		--timeout
+[runlim] argv[7]:		1800
+[runlim] argv[8]:		-o
+[runlim] argv[9]:		benchmark_machine2/tours/graph_809.hcp
+[runlim] start:			Mon Sep 28 01:26:30 2026
+[runlim] child:			509487
+[runlim] sample:		9.98 time, 10.01 real, 58 MB, 1.12 load
+[runlim] sample:		19.97 time, 20.01 real, 57 MB, 1.10 load
+[runlim] sample:		29.98 time, 30.01 real, 40 MB, 1.08 load
+[runlim] sample:		39.97 time, 40.01 real, 52 MB, 1.07 load
+[runlim] sample:		49.98 time, 50.01 real, 52 MB, 1.06 load
+[runlim] sample:		59.97 time, 60.01 real, 52 MB, 1.05 load
+[runlim] sample:		69.97 time, 70.01 real, 52 MB, 1.04 load
+[runlim] sample:		79.97 time, 80.01 real, 52 MB, 1.04 load
+[runlim] sample:		89.97 time, 90.01 real, 52 MB, 1.03 load
+[runlim] sample:		99.97 time, 100.01 real, 52 MB, 1.02 load
+[runlim] sample:		109.97 time, 110.01 real, 52 MB, 1.02 load
+[runlim] sample:		119.97 time, 120.01 real, 52 MB, 1.02 load
+[runlim] sample:		129.97 time, 130.01 real, 62 MB, 1.01 load
+[runlim] sample:		139.97 time, 140.01 real, 63 MB, 1.01 load
+[runlim] sample:		149.97 time, 150.01 real, 65 MB, 1.01 load
+[runlim] sample:		159.97 time, 160.01 real, 61 MB, 1.01 load
+[runlim] sample:		169.97 time, 170.01 real, 92 MB, 1.01 load
+[runlim] sample:		179.97 time, 180.01 real, 96 MB, 1.00 load
+[runlim] sample:		189.97 time, 190.01 real, 77 MB, 1.00 load
+[runlim] sample:		199.97 time, 200.01 real, 139 MB, 1.00 load
+[runlim] end:			Mon Sep 28 01:29:57 2026
+[runlim] status:		ok
+[runlim] result:		0
+[runlim] children:		1
+[runlim] processes:		2
+[runlim] real:			207.10 seconds
+[runlim] time:			206.97 seconds
+[runlim] space:			139 MB
+[runlim] load:			1.14 maximum
+[runlim] samples:		2071

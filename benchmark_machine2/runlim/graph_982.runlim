@@ -1,0 +1,46 @@
+[runlim] version:		2.0.0rc14
+[runlim] host:			hcup-hcp
+[runlim] time limit:		311040000 seconds
+[runlim] real time limit:	1800 seconds
+[runlim] space limit:		7168 MB
+[runlim] argv[0]:		taskset
+[runlim] argv[1]:		-c
+[runlim] argv[2]:		0-6
+[runlim] argv[3]:		/home/ubuntu/HCP/src/cegar-fix/target/release/cegar-fix
+[runlim] argv[4]:		-i
+[runlim] argv[5]:		/home/ubuntu/HCP/FHCPCS-col/graph982.col
+[runlim] argv[6]:		--timeout
+[runlim] argv[7]:		1800
+[runlim] argv[8]:		-o
+[runlim] argv[9]:		benchmark_machine2/tours/graph_982.hcp
+[runlim] start:			Mon Sep 28 14:15:47 2026
+[runlim] child:			551145
+[runlim] sample:		69.13 time, 10.01 real, 212 MB, 1.96 load
+[runlim] sample:		139.01 time, 20.01 real, 232 MB, 2.81 load
+[runlim] sample:		209.00 time, 30.01 real, 239 MB, 3.46 load
+[runlim] sample:		278.06 time, 40.01 real, 283 MB, 4.00 load
+[runlim] sample:		347.49 time, 50.01 real, 271 MB, 4.46 load
+[runlim] sample:		417.48 time, 60.01 real, 297 MB, 4.93 load
+[runlim] sample:		487.27 time, 70.01 real, 284 MB, 5.25 load
+[runlim] sample:		557.25 time, 80.01 real, 304 MB, 5.52 load
+[runlim] sample:		626.94 time, 90.01 real, 326 MB, 5.74 load
+[runlim] sample:		696.81 time, 100.01 real, 308 MB, 5.94 load
+[runlim] sample:		765.84 time, 110.01 real, 280 MB, 6.10 load
+[runlim] sample:		816.64 time, 120.01 real, 280 MB, 6.01 load
+[runlim] sample:		856.63 time, 130.01 real, 270 MB, 5.70 load
+[runlim] sample:		892.74 time, 140.01 real, 271 MB, 5.36 load
+[runlim] sample:		922.74 time, 150.01 real, 293 MB, 4.99 load
+[runlim] sample:		952.74 time, 160.01 real, 263 MB, 4.69 load
+[runlim] sample:		981.28 time, 170.01 real, 256 MB, 4.51 load
+[runlim] sample:		991.40 time, 180.01 real, 251 MB, 3.97 load
+[runlim] sample:		1001.40 time, 190.01 real, 230 MB, 3.51 load
+[runlim] end:			Mon Sep 28 14:19:03 2026
+[runlim] status:		ok
+[runlim] result:		0
+[runlim] children:		1
+[runlim] processes:		2
+[runlim] real:			195.36 seconds
+[runlim] time:			1006.70 seconds
+[runlim] space:			332 MB
+[runlim] load:			6.10 maximum
+[runlim] samples:		1954
