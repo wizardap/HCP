@@ -1,0 +1,34 @@
+[runlim] version:		2.0.0rc14
+[runlim] host:			cegar-2025
+[runlim] time limit:		311040000 seconds
+[runlim] real time limit:	1800 seconds
+[runlim] space limit:		7168 MB
+[runlim] argv[0]:		taskset
+[runlim] argv[1]:		-c
+[runlim] argv[2]:		0-6
+[runlim] argv[3]:		/home/ubuntu/HCP/src/cegar-fix/target/release/cegar-fix
+[runlim] argv[4]:		-i
+[runlim] argv[5]:		/home/ubuntu/HCP/FHCPCS-col/graph615.col
+[runlim] argv[6]:		--timeout
+[runlim] argv[7]:		1800
+[runlim] argv[8]:		-o
+[runlim] argv[9]:		benchmark_machine1/tours/graph_615.hcp
+[runlim] start:			Tue Sep 29 05:50:46 2026
+[runlim] child:			123397
+[runlim] sample:		50.00 time, 10.01 real, 139 MB, 3.53 load
+[runlim] sample:		99.99 time, 20.01 real, 160 MB, 3.91 load
+[runlim] sample:		149.99 time, 30.01 real, 172 MB, 4.08 load
+[runlim] sample:		199.99 time, 40.01 real, 193 MB, 4.22 load
+[runlim] sample:		248.37 time, 50.01 real, 167 MB, 4.34 load
+[runlim] sample:		270.74 time, 60.01 real, 133 MB, 3.98 load
+[runlim] sample:		290.74 time, 70.01 real, 153 MB, 3.67 load
+[runlim] end:			Tue Sep 29 05:52:01 2026
+[runlim] status:		ok
+[runlim] result:		0
+[runlim] children:		1
+[runlim] processes:		2
+[runlim] real:			74.98 seconds
+[runlim] time:			296.16 seconds
+[runlim] space:			205 MB
+[runlim] load:			4.34 maximum
+[runlim] samples:		750

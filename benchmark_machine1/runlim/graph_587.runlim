@@ -1,0 +1,61 @@
+[runlim] version:		2.0.0rc14
+[runlim] host:			cegar-2025
+[runlim] time limit:		311040000 seconds
+[runlim] real time limit:	1800 seconds
+[runlim] space limit:		7168 MB
+[runlim] argv[0]:		taskset
+[runlim] argv[1]:		-c
+[runlim] argv[2]:		0-6
+[runlim] argv[3]:		/home/ubuntu/HCP/src/cegar-fix/target/release/cegar-fix
+[runlim] argv[4]:		-i
+[runlim] argv[5]:		/home/ubuntu/HCP/FHCPCS-col/graph587.col
+[runlim] argv[6]:		--timeout
+[runlim] argv[7]:		1800
+[runlim] argv[8]:		-o
+[runlim] argv[9]:		benchmark_machine1/tours/graph_587.hcp
+[runlim] start:			Tue Sep 29 04:12:58 2026
+[runlim] child:			117700
+[runlim] sample:		10.00 time, 10.01 real, 33 MB, 0.95 load
+[runlim] sample:		20.00 time, 20.01 real, 33 MB, 0.95 load
+[runlim] sample:		30.00 time, 30.01 real, 33 MB, 0.96 load
+[runlim] sample:		40.00 time, 40.01 real, 33 MB, 0.97 load
+[runlim] sample:		50.00 time, 50.01 real, 33 MB, 0.97 load
+[runlim] sample:		59.99 time, 60.01 real, 33 MB, 0.98 load
+[runlim] sample:		70.00 time, 70.01 real, 34 MB, 0.98 load
+[runlim] sample:		80.00 time, 80.01 real, 34 MB, 0.98 load
+[runlim] sample:		89.99 time, 90.01 real, 47 MB, 0.99 load
+[runlim] sample:		100.00 time, 100.01 real, 42 MB, 0.99 load
+[runlim] sample:		109.99 time, 110.01 real, 86 MB, 0.99 load
+[runlim] sample:		119.99 time, 120.01 real, 79 MB, 0.99 load
+[runlim] sample:		129.99 time, 130.01 real, 83 MB, 1.00 load
+[runlim] sample:		139.99 time, 140.01 real, 88 MB, 1.00 load
+[runlim] sample:		149.99 time, 150.01 real, 81 MB, 1.00 load
+[runlim] sample:		159.99 time, 160.01 real, 85 MB, 1.00 load
+[runlim] sample:		169.99 time, 170.01 real, 93 MB, 1.00 load
+[runlim] sample:		179.99 time, 180.01 real, 114 MB, 1.00 load
+[runlim] sample:		189.99 time, 190.01 real, 133 MB, 1.00 load
+[runlim] sample:		199.99 time, 200.01 real, 113 MB, 1.00 load
+[runlim] sample:		209.99 time, 210.01 real, 120 MB, 1.00 load
+[runlim] sample:		219.99 time, 220.01 real, 173 MB, 1.00 load
+[runlim] sample:		229.98 time, 230.01 real, 176 MB, 1.00 load
+[runlim] sample:		239.99 time, 240.01 real, 125 MB, 1.07 load
+[runlim] sample:		249.98 time, 250.01 real, 116 MB, 1.06 load
+[runlim] sample:		259.99 time, 260.01 real, 118 MB, 1.13 load
+[runlim] sample:		269.98 time, 270.01 real, 177 MB, 1.11 load
+[runlim] sample:		279.98 time, 280.01 real, 178 MB, 1.09 load
+[runlim] sample:		289.98 time, 290.01 real, 116 MB, 1.08 load
+[runlim] sample:		299.98 time, 300.01 real, 136 MB, 1.06 load
+[runlim] sample:		309.98 time, 310.01 real, 136 MB, 1.05 load
+[runlim] sample:		319.98 time, 320.01 real, 136 MB, 1.04 load
+[runlim] sample:		329.98 time, 330.01 real, 136 MB, 1.04 load
+[runlim] sample:		339.98 time, 340.01 real, 136 MB, 1.03 load
+[runlim] end:			Tue Sep 29 04:18:42 2026
+[runlim] status:		ok
+[runlim] result:		0
+[runlim] children:		1
+[runlim] processes:		2
+[runlim] real:			343.99 seconds
+[runlim] time:			343.88 seconds
+[runlim] space:			203 MB
+[runlim] load:			1.14 maximum
+[runlim] samples:		3440
